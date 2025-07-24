@@ -9,19 +9,23 @@ export function useFloodForecast(stationId: string, platform: string, start: Dat
   const startYmd = start.toISOString().slice(0,10).replace(/-/g,'');
   const endYmd = end.toISOString().slice(0,10).replace(/-/g,'');
 
-  const predictionsQuery = useQuery(['noaa', stationId, startYmd, endYmd], () =>
-    cachedFetch(
-      `noaa-${stationId}-${startYmd}-${endYmd}`,
-      () => fetchNoaaPredictions(stationId, startYmd, endYmd)
-    )
-  );
+  const predictionsQuery = useQuery({
+    queryKey: ['noaa', stationId, startYmd, endYmd],
+    queryFn: () =>
+      cachedFetch(
+        `noaa-${stationId}-${startYmd}-${endYmd}`,
+        () => fetchNoaaPredictions(stationId, startYmd, endYmd)
+      )
+  });
 
-  const sensorQuery = useQuery(['sunny', platform, start.toISOString(), end.toISOString()], () =>
-    cachedFetch(
-      `sunny-${platform}-${start.toISOString()}-${end.toISOString()}`,
-      () => fetchSunnyDayData(platform, start.toISOString(), end.toISOString())
-    )
-  );
+  const sensorQuery = useQuery({
+    queryKey: ['sunny', platform, start.toISOString(), end.toISOString()],
+    queryFn: () =>
+      cachedFetch(
+        `sunny-${platform}-${start.toISOString()}-${end.toISOString()}`,
+        () => fetchSunnyDayData(platform, start.toISOString(), end.toISOString())
+      )
+  });
 
   const forecast = React.useMemo<FloodForecastPoint[] | undefined>(() => {
     if (!predictionsQuery.data) return undefined;
