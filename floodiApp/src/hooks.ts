@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchNoaaPredictions } from './api/noaa';
+import { fetchNoaaPredictions, fetchNoaaObservations } from './api/noaa';
 import { fetchSunnyDayData } from './api/sunnyDay';
 import { calculateFloodForecast, summarizeFloodWindows, FloodForecastPoint, FloodWindow } from './prediction';
 import { cachedFetch } from './api/cache';
@@ -15,6 +15,15 @@ export function useFloodForecast(stationId: string, platform: string, start: Dat
       cachedFetch(
         `noaa-${stationId}-${startYmd}-${endYmd}`,
         () => fetchNoaaPredictions(stationId, startYmd, endYmd)
+      )
+  });
+
+  const observationsQuery = useQuery({
+    queryKey: ['noaa-obs', stationId, startYmd, endYmd],
+    queryFn: () =>
+      cachedFetch(
+        `noaa-obs-${stationId}-${startYmd}-${endYmd}`,
+        () => fetchNoaaObservations(stationId, startYmd, endYmd)
       )
   });
 
@@ -39,6 +48,7 @@ export function useFloodForecast(stationId: string, platform: string, start: Dat
 
   return {
     predictionsQuery,
+    observationsQuery,
     sensorQuery,
     forecast,
     windows

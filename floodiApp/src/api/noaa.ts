@@ -3,8 +3,17 @@ export interface NoaaPredictionPoint {
   v: string;
 }
 
+export interface NoaaObservationPoint {
+  t: string;
+  v: string;
+}
+
 export interface NoaaPredictionResponse {
   predictions: NoaaPredictionPoint[];
+}
+
+export interface NoaaObservationResponse {
+  data: NoaaObservationPoint[];
 }
 
 export async function fetchNoaaPredictions(station: string, beginDate: string, endDate: string): Promise<NoaaPredictionPoint[]> {
@@ -27,4 +36,26 @@ export async function fetchNoaaPredictions(station: string, beginDate: string, e
   }
   const data: NoaaPredictionResponse = await res.json();
   return data.predictions;
+}
+
+export async function fetchNoaaObservations(station: string, beginDate: string, endDate: string): Promise<NoaaObservationPoint[]> {
+  const params = new URLSearchParams({
+    product: 'water_level',
+    begin_date: beginDate,
+    end_date: endDate,
+    datum: 'MLLW',
+    station,
+    time_zone: 'GMT',
+    units: 'english',
+    format: 'json',
+    application: 'floodi'
+  });
+
+  const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?${params.toString()}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch NOAA observations: ${res.status} ${res.statusText}`);
+  }
+  const data: NoaaObservationResponse = await res.json();
+  return data.data;
 }

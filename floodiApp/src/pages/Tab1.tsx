@@ -15,7 +15,7 @@ const Tab1: React.FC = () => {
   const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const end = new Date(now.getTime() + 48 * 60 * 60 * 1000);
 
-  const { sensorQuery, forecast, windows } = useFloodForecast(
+  const { sensorQuery, observationsQuery, forecast, windows } = useFloodForecast(
     segment.stationId,
     segment.sensorPlatform!,
     start,
@@ -26,12 +26,19 @@ const Tab1: React.FC = () => {
   const chartData = React.useMemo(() => {
     if (!forecast) return undefined;
     const sensorData = sensorQuery.data || [];
+    const obsData = observationsQuery.data || [];
     return {
       datasets: [
         {
           label: 'Predicted Level (ft)',
           data: forecast.map(p => ({ x: p.timestamp, y: p.predictedLevelFt })),
           borderColor: 'blue',
+          fill: false
+        },
+        {
+          label: 'Observed Level (ft)',
+          data: obsData.map(d => ({ x: d.t + 'Z', y: parseFloat(d.v) })),
+          borderColor: 'orange',
           fill: false
         },
         {
@@ -49,7 +56,7 @@ const Tab1: React.FC = () => {
         }
       ]
     };
-  }, [forecast, sensorQuery.data, segment.elevationFtMLLW]);
+  }, [forecast, sensorQuery.data, observationsQuery.data, segment.elevationFtMLLW]);
 
   return (
     <IonPage>
