@@ -7,7 +7,8 @@ import {
   IonToolbar,
   IonList,
   IonItem,
-  IonSpinner
+  IonSpinner,
+  IonPage
 } from '@ionic/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Line } from 'react-chartjs-2';
@@ -74,12 +75,13 @@ const App: React.FC = () => {
   return (
     <QueryClientProvider client={client}>
       <IonApp>
-        <IonHeader>
-          <IonToolbar>
-            <IonTitle>Floodi</IonTitle>
-          </IonToolbar>
-        </IonHeader>
-        <IonContent className="ion-padding">
+        <IonPage>
+          <IonHeader>
+            <IonToolbar>
+              <IonTitle>Floodi</IonTitle>
+            </IonToolbar>
+          </IonHeader>
+          <IonContent className="ion-padding">
           {chartData ? (
             <Line
               data={chartData}
@@ -103,6 +105,7 @@ const App: React.FC = () => {
             ))}
           </IonList>
         </IonContent>
+        </IonPage>
       </IonApp>
     </QueryClientProvider>
   );
