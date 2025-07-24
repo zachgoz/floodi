@@ -1,0 +1,7 @@
+{
+  "name": "floodiApp",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react-vite"
+}
