@@ -1,0 +1,117 @@
+# Codemagic CI/CD configuration for the Floodi Ionic (React + Capacitor) app
+# Workflows build Web, iOS (IPA), and Android (APK/AAB). Update signing vars/groups
+# in Codemagic UI (Environment Variables & Groups) before running iOS/Android.
+
+workflows:
+  web_release:
+    name: Web Release (Vite build)
+    environment:
+      vars:
+        WORKING_DIRECTORY: floodi
+    cache:
+      cache_paths:
+        - $WORKING_DIRECTORY/node_modules
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd "$WORKING_DIRECTORY"
+          npm ci
+      - name: Build web
+        script: |
+          cd "$WORKING_DIRECTORY"
+          npm run build
+      - name: Archive web dist
+        script: |
+          cd "$WORKING_DIRECTORY"
+          tar -czf ../web_dist.tar.gz dist
+    artifacts:
+      - web_dist.tar.gz
+      - floodi/dist/**
+
+  ios_release:
+    name: iOS Release (Capacitor + Xcode)
+    environment:
+      vars:
+        WORKING_DIRECTORY: floodi
+        XCODE_WORKSPACE: floodi/ios/App.xcworkspace
+        XCODE_SCHEME: App
+      xcode: latest
+      cocoapods: default
+    cache:
+      cache_paths:
+        - $WORKING_DIRECTORY/node_modules
+        - $WORKING_DIRECTORY/ios/Pods
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd "$WORKING_DIRECTORY"
+          npm ci
+      - name: Sync iOS platform (Capacitor)
+        script: |
+          cd "$WORKING_DIRECTORY"
+          npx cap sync ios
+      - name: Install CocoaPods
+        script: |
+          cd "$WORKING_DIRECTORY/ios"
+          pod install
+      - name: Build IPA (uses Codemagic signing settings)
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME" \
+            --archive-configuration Release \
+            --export-method app-store
+    artifacts:
+      - **/*.ipa
+      - **/*.dSYM.zip
+      - **/*.xcarchive
+
+  android_release:
+    name: Android Release (Capacitor + Gradle)
+    environment:
+      vars:
+        WORKING_DIRECTORY: floodi
+      android: latest
+      java: 17
+    cache:
+      cache_paths:
+        - $WORKING_DIRECTORY/node_modules
+        - $WORKING_DIRECTORY/android/.gradle
+        - $HOME/.gradle/caches
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd "$WORKING_DIRECTORY"
+          npm ci
+      - name: Sync Android platform (Capacitor)
+        script: |
+          cd "$WORKING_DIRECTORY"
+          npx cap sync android
+      - name: Build AAB + APK
+        script: |
+          cd "$WORKING_DIRECTORY/android"
+          ./gradlew :app:bundleRelease :app:assembleRelease
+    artifacts:
+      - **/outputs/**/*.aab
+      - **/outputs/**/*.apk
+
+  release_all:
+    name: Build Web, iOS, Android
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+    scripts:
+      - name: Build web
+        script: |
+          cm build --workflow web_release
+      - name: Build iOS
+        script: |
+          cm build --workflow ios_release
+      - name: Build Android
+        script: |
+          cm build --workflow android_release
+
