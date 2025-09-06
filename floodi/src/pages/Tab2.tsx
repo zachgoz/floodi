@@ -1,10 +1,11 @@
-import { IonContent, IonHeader, IonItem, IonLabel, IonList, IonNote, IonPage, IonSpinner, IonTitle, IonToolbar, IonRefresher, IonRefresherContent, IonSelect, IonSelectOption, IonAccordionGroup, IonAccordion, IonSegment, IonSegmentButton, IonDatetime } from '@ionic/react';
+import { IonContent, IonHeader, IonItem, IonLabel, IonList, IonNote, IonPage, IonSpinner, IonTitle, IonToolbar, IonRefresher, IonRefresherContent, IonSelect, IonSelectOption, IonAccordionGroup, IonAccordion, IonSegment, IonSegmentButton, IonDatetime, IonButtons, IonButton, IonIcon, IonModal, IonInput, IonListHeader } from '@ionic/react';
+import { settingsOutline, closeOutline, navigateOutline, warningOutline, speedometerOutline, calendarOutline, globeOutline } from 'ionicons/icons';
 import './Tab2.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildAdjustedFuture, fetchObservedWaterLevels, fetchPredictions, findNextThresholdCrossing } from '../lib/noaa';
 
-const STATION = '8658163';
-const THRESHOLD_FT = 6.1; // MLLW feet
+const DEFAULT_STATION = '8658163';
+const DEFAULT_THRESHOLD_FT = 6.1; // MLLW feet
 const DEFAULT_LOOKBACK_PAST_H = 36;
 const DEFAULT_LOOKAHEAD_H = 48;
 const H_LB_KEY = 'floodi.hist.lookbackH';
@@ -13,6 +14,10 @@ const H_MODE_KEY = 'floodi.hist.rangeMode';
 const TZ_KEY = 'floodi.tz';
 const H_ABS_START_KEY = 'floodi.hist.absStart';
 const H_ABS_END_KEY = 'floodi.hist.absEnd';
+const STATION_KEY = 'floodi.station';
+const THRESH_KEY = 'floodi.threshold';
+const OFFSET_VAL_KEY = 'floodi.offset.value';
+const OFFSET_MODE_KEY = 'floodi.offset.mode';
 
 type Point = { t: Date; v: number };
 
@@ -77,6 +82,54 @@ const Tab2: React.FC = () => {
     return s;
   }, [tz]);
   const [hoverT, setHoverT] = useState<Date | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [station, setStation] = useState<string>(() => {
+    try { return (typeof window !== 'undefined' && (window.localStorage.getItem(STATION_KEY) || DEFAULT_STATION)) as string; } catch { return DEFAULT_STATION; }
+  });
+  const [threshold, setThreshold] = useState<number>(() => {
+    try {
+      const v = typeof window !== 'undefined' ? window.localStorage.getItem(THRESH_KEY) : null;
+      const n = v ? parseFloat(v) : NaN;
+      return Number.isFinite(n) && n > 0 ? n : DEFAULT_THRESHOLD_FT;
+    } catch { return DEFAULT_THRESHOLD_FT; }
+  });
+  const [validatingStation, setValidatingStation] = useState(false);
+  const [stationInfo, setStationInfo] = useState<null | { id: string; name: string; state?: string; lat?: number; lon?: number }>(null);
+  const [stationInfoErr, setStationInfoErr] = useState<string | null>(null);
+
+  const validateStation = useCallback(async () => {
+    setValidatingStation(true);
+    setStationInfoErr(null);
+    setStationInfo(null);
+    try {
+      const res = await fetch(`https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/${encodeURIComponent(station)}.json`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const st = data?.stations?.[0];
+      if (!st) throw new Error('Station not found');
+      setStationInfo({ id: st.id, name: st.name, state: st.state, lat: st.lat, lon: st.lng ?? st.lon });
+    } catch (e: any) {
+      setStationInfoErr(e?.message || 'Failed to fetch station');
+    } finally {
+      setValidatingStation(false);
+    }
+  }, [station]);
+
+  // Auto-validate station when settings open if not validated yet for this ID
+  useEffect(() => {
+    if (showSettings) {
+      if (!validatingStation && (!stationInfo || stationInfo.id !== station)) {
+        validateStation();
+      }
+    }
+  }, [showSettings, station, stationInfo, validatingStation, validateStation]);
+  const [manualOffsetStr, setManualOffsetStr] = useState<string>(() => {
+    try { return (typeof window !== 'undefined' && (window.localStorage.getItem(OFFSET_VAL_KEY) || '')) as string; } catch { return ''; }
+  });
+  const [offsetMode, setOffsetMode] = useState<'auto' | 'manual'>(() => {
+    try { return ((typeof window !== 'undefined' && window.localStorage.getItem(OFFSET_MODE_KEY)) as any) || 'auto'; } catch { return 'auto'; }
+  });
+  
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -87,7 +140,7 @@ const Tab2: React.FC = () => {
       const endFuture = rangeMode === 'relative' ? new Date(now.getTime() + lookaheadH * 3600_000) : new Date(absEnd);
       // Build adjusted future (also computes surge offset from last 6h internally)
       const { adjusted, offset, n } = await buildAdjustedFuture({
-        station: STATION,
+        station: station,
         now,
         lookbackHours: 6,
         lookaheadHours: lookaheadH,
@@ -96,7 +149,7 @@ const Tab2: React.FC = () => {
         units: 'english',
       });
       const obs = await fetchObservedWaterLevels({
-        station: STATION,
+        station: station,
         start: startPast,
         end: now,
         interval: 6,
@@ -104,7 +157,7 @@ const Tab2: React.FC = () => {
         units: 'english',
       });
       const pred = await fetchPredictions({
-        station: STATION,
+        station: station,
         start: startPast,
         end: endFuture,
         interval: 6,
@@ -121,7 +174,7 @@ const Tab2: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [rangeMode, lookbackH, lookaheadH, absStart, absEnd]);
+  }, [rangeMode, lookbackH, lookaheadH, absStart, absEnd, station]);
 
   useEffect(() => {
     refresh();
@@ -134,6 +187,18 @@ const Tab2: React.FC = () => {
   useEffect(() => {
     try { window.localStorage.setItem(H_LA_KEY, String(lookaheadH)); } catch {}
   }, [lookaheadH]);
+  useEffect(() => {
+    try { window.localStorage.setItem(STATION_KEY, station); } catch {}
+  }, [station]);
+  useEffect(() => {
+    try { window.localStorage.setItem(THRESH_KEY, String(threshold)); } catch {}
+  }, [threshold]);
+  useEffect(() => {
+    try { window.localStorage.setItem(OFFSET_VAL_KEY, manualOffsetStr); } catch {}
+  }, [manualOffsetStr]);
+  useEffect(() => {
+    try { window.localStorage.setItem(OFFSET_MODE_KEY, offsetMode); } catch {}
+  }, [offsetMode]);
   useEffect(() => {
     try { window.localStorage.setItem(TZ_KEY, tz); } catch {}
   }, [tz]);
@@ -152,11 +217,27 @@ const Tab2: React.FC = () => {
   const domainEnd = rangeMode === 'relative' ? new Date(now.getTime() + lookaheadH * 3600_000) : new Date(absEnd);
 
   const obsPts = useMemo(() => seriesToPoints(observed).filter(p => p.t >= domainStart && p.t <= domainEnd), [observed]);
-  const adjPts = useMemo(() => seriesToPoints(adjusted).filter(p => p.t >= domainStart && p.t <= domainEnd), [adjusted]);
+  const effectiveOffset = useMemo(() => {
+    if (offsetMode === 'manual') {
+      const v = parseFloat(manualOffsetStr);
+      return !Number.isNaN(v) ? v : 0;
+    }
+    return offset ?? 0;
+  }, [manualOffsetStr, offsetMode, offset]);
+  const adjustedSeries = useMemo(() => {
+    const out: Record<string, number> = {};
+    const nowMs = now.getTime();
+    for (const [k, v] of Object.entries(predicted)) {
+      const t = new Date(k).getTime();
+      if (t >= nowMs) out[k] = v + effectiveOffset;
+    }
+    return out;
+  }, [predicted, effectiveOffset]);
+  const adjPts = useMemo(() => seriesToPoints(adjustedSeries).filter(p => p.t >= domainStart && p.t <= domainEnd), [adjustedSeries]);
   const predPts = useMemo(() => seriesToPoints(predicted).filter(p => p.t >= domainStart && p.t <= domainEnd), [predicted]);
 
   const yMinMax = useMemo(() => {
-    const vals = [...obsPts.map(p => p.v), ...adjPts.map(p => p.v), ...predPts.map(p => p.v), THRESHOLD_FT];
+    const vals = [...obsPts.map(p => p.v), ...adjPts.map(p => p.v), ...predPts.map(p => p.v), threshold];
     if (vals.length === 0) return { min: 0, max: 1 };
     let min = Math.min(...vals);
     let max = Math.max(...vals);
@@ -167,7 +248,23 @@ const Tab2: React.FC = () => {
   }, [obsPts, adjPts]);
 
   // SVG sizing
-  const W = 900, H = 420; // viewBox
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 900, h: 420 });
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) {
+        const cr = e.contentRect;
+        const w = Math.max(320, Math.floor(cr.width));
+        const h = Math.max(240, Math.floor(cr.height));
+        setSize({ w, h });
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const W = size.w, H = size.h; // match device pixels to keep text readable
   const M = { l: 50, r: 20, t: 10, b: 30 };
   const innerW = W - M.l - M.r;
   const innerH = H - M.t - M.b;
@@ -198,13 +295,13 @@ const Tab2: React.FC = () => {
     for (let i = 1; i < adjPts.length; i++) {
       const a = adjPts[i - 1];
       const b = adjPts[i];
-      const aAbove = a.v >= THRESHOLD_FT;
-      const bAbove = b.v >= THRESHOLD_FT;
+      const aAbove = a.v >= threshold;
+      const bAbove = b.v >= threshold;
       if (!above && (aAbove || (!aAbove && bAbove))) {
         // entering segment - interpolate start
         let startT = a.t;
         if (!aAbove && bAbove && b.v !== a.v) {
-          const frac = (THRESHOLD_FT - a.v) / (b.v - a.v);
+          const frac = (threshold - a.v) / (b.v - a.v);
           startT = new Date(a.t.getTime() + frac * (b.t.getTime() - a.t.getTime()));
         }
         segStart = startT; above = true;
@@ -213,7 +310,7 @@ const Tab2: React.FC = () => {
         // leaving segment - interpolate end
         let endT = b.t;
         if (b.v !== a.v) {
-          const frac = (THRESHOLD_FT - a.v) / (b.v - a.v);
+          const frac = (threshold - a.v) / (b.v - a.v);
           endT = new Date(a.t.getTime() + frac * (b.t.getTime() - a.t.getTime()));
         }
         const x = xOf(segStart!);
@@ -230,7 +327,7 @@ const Tab2: React.FC = () => {
     return rects;
   }, [adjPts]);
 
-  const crossing = useMemo(() => findNextThresholdCrossing(adjusted, THRESHOLD_FT, now), [adjusted]);
+  const crossing = useMemo(() => findNextThresholdCrossing(adjustedSeries, threshold, now), [adjustedSeries, threshold]);
 
   function nearest(points: Point[], t: Date): { p: Point; dtMin: number } | null {
     if (points.length === 0) return null;
@@ -248,34 +345,130 @@ const Tab2: React.FC = () => {
       <IonHeader>
         <IonToolbar>
           <IonTitle>History & Forecast</IonTitle>
+          <IonButtons slot="end">
+            <IonButton aria-label="Settings" onClick={() => setShowSettings(true)}>
+              <IonIcon icon={settingsOutline} />
+            </IonButton>
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
         <IonHeader collapse="condense">
           <IonToolbar>
             <IonTitle size="large">History & Forecast</IonTitle>
+            <IonButtons slot="end">
+              <IonButton aria-label="Settings" onClick={() => setShowSettings(true)}>
+                <IonIcon icon={settingsOutline} />
+              </IonButton>
+            </IonButtons>
           </IonToolbar>
         </IonHeader>
         <IonRefresher slot="fixed" onIonRefresh={async (e) => { try { await refresh(); } finally { (e as any).detail.complete(); } }}>
           <IonRefresherContent pullingText="Pull to refresh" refreshingSpinner="crescent" />
         </IonRefresher>
-        <IonAccordionGroup>
-          <IonAccordion value="settings">
-            <IonItem slot="header">
-              <IonLabel>Settings</IonLabel>
-            </IonItem>
-            <div slot="content">
-              <div className="ion-padding">
-                <IonSegment value={tz} onIonChange={(e) => setTz(e.detail.value as any)}>
-                  <IonSegmentButton value="local">
-                    <IonLabel>Local</IonLabel>
+        <IonModal isOpen={showSettings} onDidDismiss={() => setShowSettings(false)}>
+          <IonHeader>
+            <IonToolbar>
+              <IonTitle>Settings</IonTitle>
+              <IonButtons slot="end">
+                <IonButton onClick={() => setShowSettings(false)}>
+                  <IonIcon icon={closeOutline} />
+                </IonButton>
+              </IonButtons>
+            </IonToolbar>
+          </IonHeader>
+          <IonContent className="settingsContent">
+            <IonList inset className="settings-section">
+              <IonListHeader>
+                <IonIcon icon={navigateOutline} slot="start" />
+                <IonLabel>Station</IonLabel>
+              </IonListHeader>
+              <IonItem lines="none">
+                <IonNote color="medium">NOAA station ID to use for observations and predictions.</IonNote>
+              </IonItem>
+              <IonItem>
+                <IonLabel position="stacked">Station ID</IonLabel>
+                <IonInput value={station} inputmode="numeric" onIonChange={(e) => setStation((e.detail.value as string) || '')} placeholder={DEFAULT_STATION} />
+              </IonItem>
+              <IonItem lines="none">
+                <IonButton onClick={validateStation} disabled={!station || validatingStation} color="primary">
+                  {validatingStation ? 'Validating…' : 'Validate Station'}
+                </IonButton>
+                {stationInfoErr && (
+                  <IonNote slot="end" color="danger">{stationInfoErr}</IonNote>
+                )}
+              </IonItem>
+              {stationInfo && (
+                <IonItem lines="none">
+                  <IonLabel>
+                    <p><strong>{stationInfo.name} ({stationInfo.id}){stationInfo.state ? `, ${stationInfo.state}` : ''}</strong></p>
+                    {(stationInfo.lat !== undefined && stationInfo.lon !== undefined) && (
+                      <p>{Number(stationInfo.lat).toFixed(4)}, {Number(stationInfo.lon).toFixed(4)}</p>
+                    )}
+                  </IonLabel>
+                </IonItem>
+              )}
+            </IonList>
+            <IonList inset className="settings-section">
+              <IonListHeader>
+                <IonIcon icon={warningOutline} slot="start" />
+                <IonLabel>Flood Threshold</IonLabel>
+              </IonListHeader>
+              <IonItem lines="none">
+                <IonNote color="medium">Water level (ft MLLW) where flooding starts. The red line and alerts use this value.</IonNote>
+              </IonItem>
+              <IonItem>
+                <IonLabel position="stacked">Flood Threshold (ft, MLLW)</IonLabel>
+                <IonInput value={String(threshold)} inputmode="decimal" onIonChange={(e) => {
+                  const raw = (e.detail.value as string) || '';
+                  const v = parseFloat(raw);
+                  if (!Number.isNaN(v)) setThreshold(v);
+                }} />
+              </IonItem>
+            </IonList>
+            <IonList inset className="settings-section">
+              <IonListHeader>
+                <IonIcon icon={speedometerOutline} slot="start" />
+                <IonLabel>Surge Offset</IonLabel>
+              </IonListHeader>
+              <IonItem lines="none">
+                <IonNote color="medium">Offset accounts for wind/pressure setup by comparing recent observed levels to predictions. It is added to future predictions to form the adjusted prediction.</IonNote>
+              </IonItem>
+              <IonItem>
+                <IonSegment value={offsetMode} onIonChange={(e) => setOffsetMode(e.detail.value as any)}>
+                  <IonSegmentButton value="auto">
+                    <IonLabel>Auto</IonLabel>
                   </IonSegmentButton>
-                  <IonSegmentButton value="gmt">
-                    <IonLabel>GMT</IonLabel>
+                  <IonSegmentButton value="manual">
+                    <IonLabel>Manual</IonLabel>
                   </IonSegmentButton>
                 </IonSegment>
-              </div>
-              <div className="ion-padding">
+              </IonItem>
+              {offsetMode === 'manual' ? (
+                <IonItem>
+                  <IonLabel position="stacked">Manual Offset (ft)</IonLabel>
+                  <IonInput value={manualOffsetStr} inputmode="decimal" placeholder="Enter offset in feet" onIonChange={(e) => {
+                    setManualOffsetStr(((e.detail.value as string) ?? ''));
+                  }} />
+                </IonItem>
+              ) : (
+                <IonItem>
+                  <IonLabel>
+                    <p><strong>Computed Surge Offset</strong></p>
+                    <p>{offset !== null ? `${offset >= 0 ? '+' : ''}${offset.toFixed(2)} ft ${nPoints} pts` : '—'}</p>
+                  </IonLabel>
+                </IonItem>
+              )}
+            </IonList>
+            <IonList inset className="settings-section">
+              <IonListHeader>
+                <IonIcon icon={calendarOutline} slot="start" />
+                <IonLabel>Time Range</IonLabel>
+              </IonListHeader>
+              <IonItem lines="none">
+                <IonNote color="medium">Choose between a window around now (Relative) or a specific interval (Absolute).</IonNote>
+              </IonItem>
+              <IonItem>
                 <IonSegment value={rangeMode} onIonChange={(e) => setRangeMode(e.detail.value as any)}>
                   <IonSegmentButton value="relative">
                     <IonLabel>Relative</IonLabel>
@@ -284,41 +477,67 @@ const Tab2: React.FC = () => {
                     <IonLabel>Absolute</IonLabel>
                   </IonSegmentButton>
                 </IonSegment>
-              </div>
-              {rangeMode === 'relative' ? (
-                <IonList inset>
-                  <IonItem>
-                    <IonLabel>Past window</IonLabel>
-                    <IonSelect value={lookbackH} onIonChange={(e) => setLookbackH(e.detail.value)} interface="popover">
-                      {[12, 24, 36, 48, 60].map(h => (
-                        <IonSelectOption key={h} value={h}>{h} hours</IonSelectOption>
-                      ))}
-                    </IonSelect>
-                  </IonItem>
-                  <IonItem>
-                    <IonLabel>Future window</IonLabel>
-                    <IonSelect value={lookaheadH} onIonChange={(e) => setLookaheadH(e.detail.value)} interface="popover">
-                      {[24, 36, 48, 60, 72].map(h => (
-                        <IonSelectOption key={h} value={h}>{h} hours</IonSelectOption>
-                      ))}
-                    </IonSelect>
-                  </IonItem>
-                </IonList>
-              ) : (
-                <IonList inset>
-                  <IonItem>
-                    <IonLabel>Start ({tz === 'gmt' ? 'GMT' : 'Local'})</IonLabel>
-                    <IonDatetime value={absStart} onIonChange={(e) => setAbsStart(e.detail.value as string)} presentation="date-time" minuteValues="0,6,12,18,24,30,36,42,48,54" />
-                  </IonItem>
-                  <IonItem>
-                    <IonLabel>End ({tz === 'gmt' ? 'GMT' : 'Local'})</IonLabel>
-                    <IonDatetime value={absEnd} onIonChange={(e) => setAbsEnd(e.detail.value as string)} presentation="date-time" minuteValues="0,6,12,18,24,30,36,42,48,54" />
-                  </IonItem>
-                </IonList>
-              )}
-            </div>
-          </IonAccordion>
-        </IonAccordionGroup>
+              </IonItem>
+             </IonList>
+            <IonList inset className="settings-section">
+              <IonListHeader>
+                <IonIcon icon={globeOutline} slot="start" />
+                <IonLabel>Time Zone</IonLabel>
+              </IonListHeader>
+              <IonItem lines="none">
+                <IonNote color="medium">Controls how times are displayed and picked. NOAA data is in GMT; this setting only changes display.</IonNote>
+              </IonItem>
+              <IonItem>
+                <IonSegment value={tz} onIonChange={(e) => setTz(e.detail.value as any)}>
+                  <IonSegmentButton value="local">
+                    <IonLabel>Local</IonLabel>
+                  </IonSegmentButton>
+                  <IonSegmentButton value="gmt">
+                    <IonLabel>GMT</IonLabel>
+                  </IonSegmentButton>
+                </IonSegment>
+              </IonItem>
+            </IonList>
+            {rangeMode === 'relative' ? (
+              <IonList inset>
+                <IonItem lines="none">
+                  <IonNote color="medium">Relative windows are measured from the current time.</IonNote>
+                </IonItem>
+                <IonItem>
+                  <IonLabel>Past window</IonLabel>
+                  <IonSelect value={lookbackH} onIonChange={(e) => setLookbackH(e.detail.value)} interface="popover">
+                    {[12, 24, 36, 48, 60].map(h => (
+                      <IonSelectOption key={h} value={h}>{h} hours</IonSelectOption>
+                    ))}
+                  </IonSelect>
+                </IonItem>
+                <IonItem>
+                  <IonLabel>Future window</IonLabel>
+                  <IonSelect value={lookaheadH} onIonChange={(e) => setLookaheadH(e.detail.value)} interface="popover">
+                    {[24, 36, 48, 60, 72].map(h => (
+                      <IonSelectOption key={h} value={h}>{h} hours</IonSelectOption>
+                    ))}
+                  </IonSelect>
+                </IonItem>
+              </IonList>
+            ) : (
+              <IonList inset>
+                <IonItem lines="none">
+                  <IonNote color="medium">Start and End respect the selected time zone above.</IonNote>
+                </IonItem>
+                <IonItem>
+                  <IonLabel>Start ({tz === 'gmt' ? 'GMT' : 'Local'})</IonLabel>
+                  <IonDatetime value={absStart} onIonChange={(e) => setAbsStart(e.detail.value as string)} presentation="date-time" minuteValues="0,6,12,18,24,30,36,42,48,54" />
+                </IonItem>
+                <IonItem>
+                  <IonLabel>End ({tz === 'gmt' ? 'GMT' : 'Local'})</IonLabel>
+                  <IonDatetime value={absEnd} onIonChange={(e) => setAbsEnd(e.detail.value as string)} presentation="date-time" minuteValues="0,6,12,18,24,30,36,42,48,54" />
+                </IonItem>
+              </IonList>
+            )}
+            
+          </IonContent>
+        </IonModal>
         {loading && (
           <div style={{ padding: 16 }}>
             <IonSpinner name="crescent" />
@@ -333,12 +552,12 @@ const Tab2: React.FC = () => {
           </IonItem>
         )}
         {!error && (
-          <div style={{ padding: 8 }}>
+          <div className="chartWrap" ref={wrapRef}>
             <svg
               ref={svgRef}
               viewBox={`0 0 ${W} ${H}`}
-              width="100%"
-              height="auto"
+              width={W}
+              height={H}
               role="img"
               aria-label="Water level chart"
               onPointerMove={onPointerMove}
@@ -349,24 +568,24 @@ const Tab2: React.FC = () => {
                 <pattern id="grid" width="1" height="1" patternUnits="userSpaceOnUse" />
               </defs>
               {/* Background */}
-              <rect x={0} y={0} width={W} height={H} fill="#0b0e12" />
+              <rect x={0} y={0} width={W} height={H} fill="var(--chart-bg)" />
               {/* Plot area */}
-              <rect x={M.l} y={M.t} width={innerW} height={innerH} fill="#0f1522" stroke="#233" />
+              <rect x={M.l} y={M.t} width={innerW} height={innerH} fill="var(--chart-plot-bg)" stroke="var(--chart-plot-stroke)" />
               {/* Flood segments */}
               {floodRects.map((r, i) => (
                 <rect key={i} x={r.x} y={M.t} width={r.w} height={innerH} fill="rgba(255,0,0,0.08)" />
               ))}
               {/* Threshold line */}
-              <line x1={M.l} x2={M.l + innerW} y1={yOf(THRESHOLD_FT)} y2={yOf(THRESHOLD_FT)} stroke="#e74c3c" strokeDasharray="6 4" />
-              <text x={M.l + 6} y={yOf(THRESHOLD_FT) - 6} fill="#e74c3c" fontSize="12">6.1 ft threshold</text>
+              <line x1={M.l} x2={M.l + innerW} y1={yOf(threshold)} y2={yOf(threshold)} stroke="#e74c3c" strokeDasharray="6 4" />
+              <text x={M.l + 6} y={yOf(threshold) - 6} fill="#e74c3c" fontSize="12">{threshold.toFixed(1)} ft threshold</text>
               {/* Now marker */}
               <line x1={xOf(now)} x2={xOf(now)} y1={M.t} y2={M.t + innerH} stroke="#888" strokeDasharray="2 4" />
-              <text x={xOf(now) + 4} y={M.t + 12} fill="#aaa" fontSize="12">now</text>
+              <text x={xOf(now) + 4} y={M.t + 12} fill="var(--chart-axis-text)" fontSize="12">now</text>
               {/* Observed polyline */}
               {obsPts.length > 1 && (
                 <polyline fill="none" stroke="#2ecc71" strokeWidth="2" points={buildPolyline(obsPts, xOf, yOf)} />
               )}
-              {/* Adjusted forecast polyline */}
+              {/* Adjusted prediction polyline */}
               {adjPts.length > 1 && (
                 <polyline fill="none" stroke="#2ecc71" strokeWidth="2" strokeDasharray="5 4" points={buildPolyline(adjPts, xOf, yOf)} />
               )}
@@ -380,19 +599,19 @@ const Tab2: React.FC = () => {
                 const y = yOf(v);
                 return (
                   <g key={i}>
-                    <line x1={M.l} x2={M.l + innerW} y1={y} y2={y} stroke="#1d2838" />
-                    <text x={4} y={y + 4} fill="#8ba1bd" fontSize="12">{v.toFixed(1)} ft</text>
+                    <line x1={M.l} x2={M.l + innerW} y1={y} y2={y} stroke="var(--chart-grid)" />
+                    <text x={4} y={y + 4} fill="var(--chart-axis-text)" fontSize="12">{v.toFixed(1)} ft</text>
                   </g>
                 );
               })}
-              {/* Legend */}
+              {/* Legend (matches tooltip labels and order) */}
               <g transform={`translate(${M.l}, ${H - 10})`}>
                 <circle r={4} fill="#2ecc71" />
-                <text x={10} y={4} fill="#c8d5e3" fontSize="12">Observed</text>
-                <line x1={90} x2={110} y1={0} y2={0} stroke="#2ecc71" strokeWidth={2} strokeDasharray="5 4" />
-                <text x={120} y={4} fill="#c8d5e3" fontSize="12">Adjusted forecast</text>
-                <line x1={230} x2={250} y1={0} y2={0} stroke="#95a5a6" strokeWidth={2} />
-                <text x={260} y={4} fill="#c8d5e3" fontSize="12">Prediction</text>
+                <text x={10} y={4} fill="var(--chart-label-text)" fontSize="12">Observed</text>
+                <line x1={90} x2={110} y1={0} y2={0} stroke="#95a5a6" strokeWidth={2} />
+                <text x={120} y={4} fill="var(--chart-label-text)" fontSize="12">Prediction</text>
+                <line x1={210} x2={230} y1={0} y2={0} stroke="#2ecc71" strokeWidth={2} strokeDasharray="5 4" />
+                <text x={240} y={4} fill="var(--chart-label-text)" fontSize="12">Adjusted prediction</text>
               </g>
 
               {/* Hover crosshair and tooltip */}
@@ -410,7 +629,7 @@ const Tab2: React.FC = () => {
                       rows.push({ label: 'Observed', value: '—', color: '#2ecc71' });
                     }
                     if (nPred) rows.push({ label: 'Prediction', value: `${nPred.p.v.toFixed(2)} ft`, color: '#95a5a6', cx: xOf(nPred.p.t), cy: yOf(nPred.p.v) });
-                    if (nAdj) rows.push({ label: 'Adjusted', value: `${nAdj.p.v.toFixed(2)} ft`, color: '#2ecc71', cx: xOf(nAdj.p.t), cy: yOf(nAdj.p.v) });
+                    if (nAdj) rows.push({ label: 'Adjusted prediction', value: `${nAdj.p.v.toFixed(2)} ft`, color: '#2ecc71', cx: xOf(nAdj.p.t), cy: yOf(nAdj.p.v) });
 
                     // Marker dots
                     return (
@@ -429,12 +648,12 @@ const Tab2: React.FC = () => {
                           const boxY = y;
                           return (
                             <g>
-                              <rect x={boxX} y={boxY} width={boxW} height={rowsH} rx={6} ry={6} fill="#1b2433" stroke="#2a3a55" />
-                              <text x={boxX + 8} y={boxY + 16} fill="#c8d5e3" fontSize="12">{fmt(hoverT)} {tz === 'gmt' ? 'GMT' : ''}</text>
+                              <rect x={boxX} y={boxY} width={boxW} height={rowsH} rx={6} ry={6} fill="var(--chart-tooltip-bg)" stroke="var(--chart-tooltip-stroke)" />
+                              <text x={boxX + 8} y={boxY + 16} fill="var(--chart-label-text)" fontSize="12">{fmt(hoverT)} {tz === 'gmt' ? 'GMT' : ''}</text>
                               {rows.map((r, i) => (
                                 <g key={`row-${i}`}>
                                   <circle cx={boxX + 10} cy={boxY + 30 + i * lineH - 4} r={4} fill={r.color} />
-                                  <text x={boxX + 20} y={boxY + 30 + i * lineH} fill="#c8d5e3" fontSize="12">{r.label}: {r.value}</text>
+                                  <text x={boxX + 20} y={boxY + 30 + i * lineH} fill="var(--chart-label-text)" fontSize="12">{r.label}: {r.value}</text>
                                 </g>
                               ))}
                             </g>
@@ -450,12 +669,6 @@ const Tab2: React.FC = () => {
         )}
         {!loading && !error && (
           <IonList inset>
-            <IonItem>
-              <IonLabel>
-                <h2>Surge Offset</h2>
-                <p>{offset !== null ? `${offset >= 0 ? '+' : ''}${offset.toFixed(2)} ft` : '—'}<IonNote style={{ marginLeft: 8 }} color="medium">{nPoints} pts</IonNote></p>
-              </IonLabel>
-            </IonItem>
             {crossing && (
               <IonItem>
                 <IonLabel>

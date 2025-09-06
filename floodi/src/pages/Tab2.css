@@ -1,0 +1,79 @@
+/* Chart color variables that adapt to light/dark mode */
+:root {
+  --chart-bg: #ffffff;
+  --chart-plot-bg: #f6f8fa;
+  --chart-plot-stroke: #e0e6ef;
+  --chart-grid: #e6edf5;
+  --chart-axis-text: #6b778c;
+  --chart-label-text: #334155;
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-stroke: #cbd5e1;
+  --settings-bg: #ffffff;
+  --settings-border: #e5e7eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-bg: #0b0e12;
+    --chart-plot-bg: #0f1522;
+    --chart-plot-stroke: #223344;
+    --chart-grid: #1d2838;
+    --chart-axis-text: #8ba1bd;
+    --chart-label-text: #c8d5e3;
+    --chart-tooltip-bg: #1b2433;
+    --chart-tooltip-stroke: #2a3a55;
+    --settings-bg: #111827;
+    --settings-border: #243040;
+  }
+}
+
+/* Responsive chart wrapper: scales with viewport */
+.chartWrap {
+  padding: 8px;
+  width: 100%;
+  /* Occupy most of the viewport for a consistent feel */
+  height: 75vh;
+}
+
+.chartWrap svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Settings modal readability */
+.settingsContent {
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: 0;
+}
+
+.settings-section {
+  margin: 8px;
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  background: var(--settings-bg);
+}
+
+.settings-section .ion-list-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  padding: 8px 12px;
+}
+
+.settings-section ion-note {
+  font-size: 1.05rem;
+}
+
+.settings-section ion-label {
+  font-size: 1.08rem;
+}
+
+.settings-section ion-item {
+  --min-height: 40px;
+  --padding-start: 12px;
+  --inner-padding-end: 12px;
+}
