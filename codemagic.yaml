@@ -71,7 +71,6 @@ workflows:
     environment:
       vars:
         WORKING_DIRECTORY: floodi
-      android: latest
       java: 17
     cache:
       cache_paths:
