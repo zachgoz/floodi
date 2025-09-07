@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#00bcd4"/>
+      <stop offset="100%" stop-color="#1976d2"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="#0b1b2b"/>
+  <!-- Droplet -->
+  <path d="M256 88c-48 84-120 132-120 200 0 66 54 120 120 120s120-54 120-120c0-68-72-116-120-200z" fill="url(#g1)"/>
+  <!-- Broadcast rings -->
+  <g fill="none" stroke="#e3f2fd" stroke-width="14" stroke-linecap="round">
+    <path d="M256 188c36 0 66 30 66 66"/>
+    <path d="M256 160c52 0 94 42 94 94" opacity=".7"/>
+    <path d="M256 132c68 0 122 54 122 122" opacity=".4"/>
+  </g>
+  <!-- Inner ripple -->
+  <circle cx="256" cy="254" r="22" fill="#e3f2fd"/>
+</svg>

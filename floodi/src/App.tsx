@@ -10,7 +10,9 @@ import {
   setupIonicReact
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import { ellipse, square, triangle } from 'ionicons/icons';
+import { ellipse, informationCircleOutline } from 'ionicons/icons';
+import Intro from './pages/Intro';
+import React from 'react';
 import Tab2 from './pages/Tab2';
 import Tab3 from './pages/Tab3';
 
@@ -46,11 +48,25 @@ import './theme/variables.css';
 
 setupIonicReact();
 
+const InitialRoute: React.FC = () => {
+  const seen = (() => {
+    try {
+      return localStorage.getItem('floodcast_intro_seen') === '1';
+    } catch {
+      return true; // default to skip if storage unavailable
+    }
+  })();
+  return <Redirect to={seen ? '/tab2' : '/intro'} />;
+};
+
 const App: React.FC = () => (
   <IonApp>
     <IonReactRouter>
       <IonTabs>
         <IonRouterOutlet>
+          <Route exact path="/intro">
+            <Intro />
+          </Route>
           <Route exact path="/tab2">
             <Tab2 />
           </Route>
@@ -58,16 +74,16 @@ const App: React.FC = () => (
             <Tab3 />
           </Route>
           <Route exact path="/">
-            <Redirect to="/tab2" />
+            <InitialRoute />
           </Route>
         </IonRouterOutlet>
         <IonTabBar slot="bottom">
           <IonTabButton tab="tab2" href="/tab2">
             <IonIcon aria-hidden="true" icon={ellipse} />
-            <IonLabel>History</IonLabel>
+            <IonLabel>FloodCast</IonLabel>
           </IonTabButton>
           <IonTabButton tab="tab3" href="/tab3">
-            <IonIcon aria-hidden="true" icon={square} />
+            <IonIcon aria-hidden="true" icon={informationCircleOutline} />
             <IonLabel>About</IonLabel>
           </IonTabButton>
         </IonTabBar>

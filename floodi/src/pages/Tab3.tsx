@@ -7,16 +7,26 @@ const Tab3: React.FC = () => {
     <IonPage>
       <IonHeader>
         <IonToolbar>
-          <IonTitle>Tab 3</IonTitle>
+          <IonTitle>About FloodCast</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
         <IonHeader collapse="condense">
           <IonToolbar>
-            <IonTitle size="large">Tab 3</IonTitle>
+            <IonTitle size="large">FloodCast</IonTitle>
           </IonToolbar>
         </IonHeader>
-        <ExploreContainer name="Tab 3 page" />
+        <div style={{ textAlign: 'center', padding: 16 }}>
+          <img
+            src={new URL('../assets/floodcast-logo.svg', import.meta.url).toString()}
+            alt="FloodCast"
+            style={{ width: 220, maxWidth: '60vw', height: 'auto', margin: '16px auto' }}
+          />
+          <p>
+            FloodCast provides hyperlocal tide and flood insights to help you
+            plan with confidence. This is an early build.
+          </p>
+        </div>
       </IonContent>
     </IonPage>
   );

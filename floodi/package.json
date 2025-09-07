@@ -1,5 +1,5 @@
 {
-  "name": "floodi",
+  "name": "floodcast",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -21,6 +21,7 @@
     "@ionic/react-router": "^8.5.0",
     "@types/react-router": "^5.1.20",
     "@types/react-router-dom": "^5.3.3",
+    "firebase": "^12.2.1",
     "ionicons": "^7.4.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",

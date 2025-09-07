@@ -1,0 +1,40 @@
+:root {
+  --intro-bg: #0b1b2b;
+}
+
+.intro-content {
+  --background: var(--intro-bg);
+}
+
+.intro-center {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+}
+
+.intro-logo {
+  width: 240px;
+  max-width: 60vw;
+  height: auto;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 6px 18px rgba(0,0,0,0.35));
+}
+
+.intro-title {
+  margin: 8px 0 4px;
+  letter-spacing: 0.5px;
+}
+
+.intro-sub {
+  margin: 0 0 28px;
+}
+
+.intro-button {
+  --background: linear-gradient(135deg, #00bcd4, #1976d2);
+  --background-activated: linear-gradient(135deg, #00bcd4, #1565c0);
+}
+

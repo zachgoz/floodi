@@ -10,6 +10,8 @@
   --chart-tooltip-stroke: #cbd5e1;
   --settings-bg: #ffffff;
   --settings-border: #e5e7eb;
+  --settings-header-bg: #f3f4f6; /* subtle tint for headers */
+  --settings-header-text: #111827;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -24,6 +26,8 @@
     --chart-tooltip-stroke: #2a3a55;
     --settings-bg: #111827;
     --settings-border: #243040;
+    --settings-header-bg: #0f172a;
+    --settings-header-text: #e5e7eb;
   }
 }
 
@@ -51,29 +55,160 @@
 .settings-section {
   margin: 8px;
   border: 1px solid var(--settings-border);
+  border-top: 0; /* avoid top border line showing above rounded header */
+  border-left: 0; /* avoid side borders showing alongside header */
+  border-right: 0;
   border-radius: 12px;
   background: var(--settings-bg);
+  /* allow autocomplete popover to overflow */
+  overflow: visible;
+  /* Subtle side shadows for separation (toned down) */
+  box-shadow:
+    0 1px 4px rgba(0,0,0,0.08),               /* general soft shadow */
+    -2px 0 8px -6px rgba(0,0,0,0.12),         /* left side light */
+    2px 0 8px -6px rgba(0,0,0,0.12);          /* right side light */
 }
 
-.settings-section .ion-list-header {
+/* Support both the Ionic class and the host element selector */
+.settings-section .ion-list-header,
+.settings-section ion-list-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 1.2rem;
-  font-weight: 700;
-  padding: 8px 12px;
+  font-size: 1.35rem; /* stand out from sub labels */
+  font-weight: 800;
+  color: var(--settings-header-text);
+  padding: 12px 12px;
+  background: var(--settings-header-bg);
+  border-bottom: 1px solid var(--settings-border);
+  /* rounded header corners, still clipped by parent */
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  /* If Ionic uses CSS vars for background, set it too */
+  --background: var(--settings-header-bg);
+}
+
+/* Remove potential Ionic separator lines that can extend beyond corners */
+.settings-section ion-list-header::before,
+.settings-section ion-list-header::after,
+.settings-section .ion-list-header::before,
+.settings-section .ion-list-header::after {
+  content: none !important;
+  display: none !important;
 }
 
 .settings-section ion-note {
-  font-size: 1.05rem;
+  font-size: 0.95rem;
 }
 
 .settings-section ion-label {
-  font-size: 1.08rem;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+/* Unified sub-section label style */
+.subLabel {
+  font-size: 1rem;
+  font-weight: 500;
 }
 
 .settings-section ion-item {
   --min-height: 40px;
   --padding-start: 12px;
   --inner-padding-end: 12px;
+}
+
+/* Keep numeric inputs compact and aligned on the right side */
+.numericInput {
+  max-width: 140px;
+}
+
+/* Make selects align like numeric inputs on the right */
+.compactSelect {
+  max-width: 160px;
+}
+
+/* Ensure stacked/floating labels match the unified sub-label style */
+.settings-section .item-label-stacked,
+.settings-section .item-label-floating {
+  font-size: 1rem !important;
+  font-weight: 500 !important;
+}
+
+/* Ensure space between stacked label and custom input wrapper */
+.settings-section ion-item .stationFieldWrap {
+  margin-top: 6px;
+}
+
+/* Two-column stacked fields (e.g., Past/Future window side-by-side) */
+.twoFieldRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+}
+.twoFieldRow ion-select {
+  width: 100%;
+}
+
+/* Station autocomplete layout */
+.stationFieldWrap {
+  position: relative;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto; /* input + buttons */
+  gap: 8px;
+  align-items: center;
+}
+.stationFieldWrap ion-input {
+  grid-column: 1 / 2;
+}
+.stationFieldWrap .textInput {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  background: var(--settings-bg);
+  color: var(--chart-label-text);
+}
+.stationFieldWrap ion-buttons {
+  grid-column: 2 / 3;
+}
+.autocompleteMenu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 10000;
+  background: var(--settings-bg);
+  border: 1px solid var(--settings-border);
+  border-top: none;
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+  max-height: 240px;
+  overflow: auto;
+}
+.suggestItem {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--chart-label-text);
+  cursor: pointer;
+}
+.suggestItem:hover {
+  background: rgba(148,163,184,0.12);
+}
+.suggestItem.highlight {
+  background: rgba(148,163,184,0.18);
+}
+
+.noResults {
+  padding: 10px 12px;
+  color: var(--chart-axis-text);
 }

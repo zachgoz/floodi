@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2732 2732">
+  <!-- Transparent background; generator will apply bg color -->
+  <g transform="translate(1366,1366)">
+    <g transform="translate(-256,-320) scale(4)">
+      <defs>
+        <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#00bcd4"/>
+          <stop offset="100%" stop-color="#1976d2"/>
+        </linearGradient>
+      </defs>
+      <path d="M128 22C88 90 32 129 32 192c0 58 46 104 96 104s96-46 96-104c0-63-56-102-96-170z" fill="url(#g1)"/>
+      <g fill="none" stroke="#e3f2fd" stroke-width="6" stroke-linecap="round">
+        <path d="M128 86c22 0 40 18 40 40"/>
+        <path d="M128 70c31 0 58 27 58 58" opacity=".7"/>
+        <path d="M128 54c40 0 74 34 74 74" opacity=".4"/>
+      </g>
+      <circle cx="128" cy="150" r="10" fill="#e3f2fd"/>
+    </g>
+  </g>
+</svg>

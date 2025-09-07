@@ -8,6 +8,8 @@ workflows:
     environment:
       vars:
         WORKING_DIRECTORY: floodi
+      groups:
+        - firebase # Define FIREBASE_TOKEN, FIREBASE_PROJECT_ID, optional FIREBASE_SITE
     cache:
       cache_paths:
         - $WORKING_DIRECTORY/node_modules
@@ -24,6 +26,22 @@ workflows:
         script: |
           cd "$WORKING_DIRECTORY"
           tar -czf ../web_dist.tar.gz dist
+      - name: Deploy PWA to Firebase Hosting
+        script: |
+          set -euo pipefail
+          cd "$WORKING_DIRECTORY"
+          if [ -z "${FIREBASE_TOKEN:-}" ] || [ -z "${FIREBASE_PROJECT_ID:-}" ]; then
+            echo "Firebase env vars missing (FIREBASE_TOKEN, FIREBASE_PROJECT_ID)." >&2
+            exit 1
+          fi
+          npm i -g firebase-tools@latest
+          firebase --version
+          SITE_ARG="--only hosting"
+          if [ -n "${FIREBASE_SITE:-}" ]; then
+            SITE_ARG="--only hosting:${FIREBASE_SITE}"
+          fi
+          echo "Deploying to Firebase Hosting (project: $FIREBASE_PROJECT_ID ${FIREBASE_SITE:+site: $FIREBASE_SITE})"
+          firebase deploy --project "$FIREBASE_PROJECT_ID" $SITE_ARG --non-interactive --token "$FIREBASE_TOKEN"
     artifacts:
       - "web_dist.tar.gz"
       - "floodi/dist/**"
@@ -46,6 +64,21 @@ workflows:
         script: |
           cd "$WORKING_DIRECTORY"
           npm ci
+      - name: Ensure iOS platform exists
+        script: |
+          cd "$WORKING_DIRECTORY"
+          if [ ! -d ios ]; then
+            npx cap add ios
+          else
+            echo "iOS platform already present"
+          fi
+      - name: Generate Capacitor icons/splashes
+        script: |
+          cd "$WORKING_DIRECTORY"
+          npx --yes @capacitor/assets@latest generate --platform ios \
+            --iconBackground "#0b1b2b" \
+            --splashBackground "#0b1b2b" \
+            --splashDarkBackground "#0b1b2b"
       - name: Sync iOS platform (Capacitor)
         script: |
           cd "$WORKING_DIRECTORY"
@@ -82,6 +115,21 @@ workflows:
         script: |
           cd "$WORKING_DIRECTORY"
           npm ci
+      - name: Ensure Android platform exists
+        script: |
+          cd "$WORKING_DIRECTORY"
+          if [ ! -d android ]; then
+            npx cap add android
+          else
+            echo "Android platform already present"
+          fi
+      - name: Generate Capacitor icons/splashes
+        script: |
+          cd "$WORKING_DIRECTORY"
+          npx --yes @capacitor/assets@latest generate --platform android \
+            --iconBackground "#0b1b2b" \
+            --splashBackground "#0b1b2b" \
+            --splashDarkBackground "#0b1b2b"
       - name: Sync Android platform (Capacitor)
         script: |
           cd "$WORKING_DIRECTORY"
