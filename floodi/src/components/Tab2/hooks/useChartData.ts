@@ -174,11 +174,17 @@ export function useChartData(config: AppConfiguration) {
       }
     }
 
+    // Build future surge forecast (constant offset) for future timestamps
+    const surgeForecastPoints: Point[] = predictedPoints
+      .filter(p => p.t.getTime() >= now.getTime())
+      .map(p => ({ t: p.t, v: effectiveOffset }));
+
     return {
       observedPoints,
       predictedPoints,
       adjustedPoints,
       deltaPoints,
+      surgeForecastPoints,
       effectiveOffset,
       timeDomain,
     };

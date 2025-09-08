@@ -119,12 +119,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onOffsetConfigChange={onOffsetConfigChange}
             computedOffset={computedOffset}
             offsetDataPoints={offsetDataPoints}
+            showDelta={config.display.showDelta}
+            onShowDeltaChange={(show) => onDisplayChange({ showDelta: show })}
           />
 
           {/* Display Settings */}
           <DisplaySettings
-            showDelta={config.display.showDelta}
-            onShowDeltaChange={(showDelta) => onDisplayChange({ showDelta })}
+            theme={config.display.theme || 'auto'}
+            onThemeChange={(theme) => onDisplayChange({ theme })}
           />
 
           {/* Time Settings */}

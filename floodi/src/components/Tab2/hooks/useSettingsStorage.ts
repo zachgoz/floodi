@@ -16,6 +16,7 @@ const STORAGE_KEYS = {
   ABS_END: 'floodi.hist.absEnd',
   TIMEZONE: 'floodi.tz',
   SHOW_DELTA: 'floodi.delta.show',
+  THEME: 'floodi.theme',
 } as const;
 
 /**
@@ -42,6 +43,7 @@ const DEFAULT_CONFIG: AppConfiguration = {
   display: {
     timezone: 'local',
     showDelta: false,
+    theme: 'auto',
   },
 };
 
@@ -113,6 +115,7 @@ export function useSettingsStorage() {
       display: {
         timezone: safeGetStorageItem(STORAGE_KEYS.TIMEZONE, DEFAULT_CONFIG.display.timezone) as 'local' | 'gmt',
         showDelta: safeGetStorageItem(STORAGE_KEYS.SHOW_DELTA, '0') === '1',
+        theme: safeGetStorageItem(STORAGE_KEYS.THEME, DEFAULT_CONFIG.display.theme!),
       },
     };
   });
@@ -161,6 +164,17 @@ export function useSettingsStorage() {
   useEffect(() => {
     safeSetStorageItem(STORAGE_KEYS.SHOW_DELTA, config.display.showDelta ? '1' : '0');
   }, [config.display.showDelta]);
+
+  useEffect(() => {
+    const theme = config.display.theme ?? 'auto';
+    safeSetStorageItem(STORAGE_KEYS.THEME, theme);
+    try {
+      const root = document.documentElement;
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const shouldDark = theme === 'dark' || (theme === 'auto' && prefersDark);
+      root.classList.toggle('ion-palette-dark', shouldDark);
+    } catch {}
+  }, [config.display.theme]);
 
   // Update functions for different configuration sections
   const updateStation = useCallback((station: Partial<AppConfiguration['station']>) => {

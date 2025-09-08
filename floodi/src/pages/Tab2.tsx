@@ -182,6 +182,7 @@ const Tab2: React.FC = () => {
             predictedPoints={processedData.predictedPoints}
             adjustedPoints={processedData.adjustedPoints}
             deltaPoints={processedData.deltaPoints}
+            surgeForecastPoints={processedData.surgeForecastPoints}
             domainStart={processedData.timeDomain.start}
             domainEnd={processedData.timeDomain.end}
             now={processedData.timeDomain.now}

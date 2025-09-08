@@ -53,8 +53,8 @@ import '@ionic/react/css/display.css';
  */
 
 /* import '@ionic/react/css/palettes/dark.always.css'; */ // Always dark
-/* import '@ionic/react/css/palettes/dark.class.css'; */  // CSS class toggle
-import '@ionic/react/css/palettes/dark.system.css';        // System preference
+import '@ionic/react/css/palettes/dark.class.css';  // Toggle via class on document
+/* import '@ionic/react/css/palettes/dark.system.css'; */        // System preference
 
 /* Custom theme variables and app-specific styling */
 import './theme/variables.css';
@@ -113,6 +113,13 @@ const InitialRoute: React.FC = () => {
  * @component
  * @returns {JSX.Element} The complete app component with navigation
  */
+const applyTheme = (mode: 'auto' | 'light' | 'dark') => {
+  const root = document.documentElement;
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const shouldDark = mode === 'dark' || (mode === 'auto' && prefersDark);
+  root.classList.toggle('ion-palette-dark', shouldDark);
+};
+
 const App: React.FC = () => (
   <IonApp>
     <IonReactRouter>
@@ -156,3 +163,22 @@ const App: React.FC = () => (
 );
 
 export default App;
+
+// Apply theme on load and when user/system preference changes
+if (typeof window !== 'undefined') {
+  const THEME_KEY = 'floodi.theme';
+  const mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const syncFromStorage = () => applyTheme((localStorage.getItem(THEME_KEY) as any) || 'auto');
+  const handleMql = () => {
+    const mode = (localStorage.getItem(THEME_KEY) as any) || 'auto';
+    if (mode === 'auto') applyTheme('auto');
+  };
+  // Initial
+  syncFromStorage();
+  // React to storage changes (e.g., settings modal updates)
+  window.addEventListener('storage', (e) => {
+    if (e.key === THEME_KEY) syncFromStorage();
+  });
+  // React to system changes when in auto
+  if (mql && mql.addEventListener) mql.addEventListener('change', handleMql);
+}

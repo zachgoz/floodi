@@ -9,6 +9,7 @@ import {
   IonSegment,
   IonSegmentButton,
   IonIcon,
+  IonToggle,
 } from '@ionic/react';
 import { warningOutline } from 'ionicons/icons';
 import type { OffsetConfig } from './types';
@@ -29,6 +30,10 @@ interface FloodSettingsProps {
   computedOffset: number | null;
   /** Number of data points used for offset calculation */
   offsetDataPoints: number;
+  /** Whether to show surge offset trend (Δ obs - pred and forecast) */
+  showDelta?: boolean;
+  /** Callback when surge trend visibility changes */
+  onShowDeltaChange?: (show: boolean) => void;
 }
 
 /**
@@ -47,6 +52,8 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
   onOffsetConfigChange,
   computedOffset,
   offsetDataPoints,
+  showDelta,
+  onShowDeltaChange,
 }) => {
   /**
    * Handle threshold input changes with validation
@@ -162,6 +169,18 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
           </IonNote>
         </IonItem>
       )}
+
+      {/* Surge offset trend toggle */}
+      <IonItem>
+        <IonLabel>
+          <h3>Show surge offset trend</h3>
+          <p>Display past Δ (obs - pred) and forecast offset</p>
+        </IonLabel>
+        <IonToggle
+          checked={!!showDelta}
+          onIonChange={(e) => onShowDeltaChange?.(!!(e as any).detail.checked)}
+        />
+      </IonItem>
     </IonList>
   );
 };

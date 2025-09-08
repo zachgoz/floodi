@@ -63,6 +63,7 @@ export interface AppConfiguration {
   display: {
     timezone: 'local' | 'gmt';
     showDelta: boolean;
+    theme?: 'auto' | 'light' | 'dark';
   };
 }
 

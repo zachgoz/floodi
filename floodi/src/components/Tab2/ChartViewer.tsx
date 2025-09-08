@@ -14,6 +14,8 @@ interface ChartViewerProps {
   adjustedPoints: Point[];
   /** Delta (observed - predicted) data points */
   deltaPoints: Point[];
+  /** Future surge forecast (offset trend) points */
+  surgeForecastPoints?: Point[];
   /** Time domain start */
   domainStart: Date;
   /** Time domain end */
@@ -103,6 +105,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   predictedPoints,
   adjustedPoints,
   deltaPoints,
+  surgeForecastPoints = [],
   domainStart,
   domainEnd,
   now,
@@ -162,6 +165,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
       ...adjustedPoints.map(p => p.v),
       ...predictedPoints.map(p => p.v),
       ...(showDelta ? deltaPoints.map(p => p.v) : []),
+      ...(showDelta ? surgeForecastPoints.map(p => p.v) : []),
       threshold,
     ];
 
@@ -384,7 +388,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           />
         ))}
 
-        {/* Delta series */}
+        {/* Delta series (past) */}
         {showDelta && deltaPoints.length > 1 && (
           <g>
             <line 
@@ -403,6 +407,18 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
               points={buildPolyline(deltaPoints, xOf, yOf)} 
             />
           </g>
+        )}
+
+        {/* Future surge forecast (dashed) */}
+        {showDelta && surgeForecastPoints.length > 1 && (
+          <polyline
+            fill="none"
+            stroke="#1976d2"
+            strokeWidth="2"
+            strokeDasharray="5 4"
+            opacity={0.9}
+            points={buildPolyline(surgeForecastPoints, xOf, yOf)}
+          />
         )}
 
         {/* Y-axis ticks and labels */}
@@ -442,7 +458,9 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             {showDelta && (
               <>
                 <line x1={380} x2={400} y1={0} y2={0} stroke="#1976d2" strokeWidth={2} />
-                <text x={410} y={4} fill="var(--chart-label-text)" fontSize="12">Δ obs - pred</text>
+                <text x={410} y={4} fill="var(--chart-label-text)" fontSize="12">Surge offset (past)</text>
+                <line x1={520} x2={540} y1={0} y2={0} stroke="#1976d2" strokeWidth={2} strokeDasharray="5 4" />
+                <text x={548} y={4} fill="var(--chart-label-text)" fontSize="12">Surge forecast</text>
               </>
             )}
           </g>
@@ -460,7 +478,9 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
               {showDelta && (
                 <>
                   <line x1={180} x2={200} y1={0} y2={0} stroke="#1976d2" strokeWidth={2} />
-                  <text x={204} y={4} fill="var(--chart-label-text)" fontSize="12">Δ obs - pred</text>
+                  <text x={204} y={4} fill="var(--chart-label-text)" fontSize="12">Surge offset (past)</text>
+                  <line x1={320} x2={340} y1={0} y2={0} stroke="#1976d2" strokeWidth={2} strokeDasharray="5 4" />
+                  <text x={344} y={4} fill="var(--chart-label-text)" fontSize="12">Surge forecast</text>
                 </>
               )}
             </g>

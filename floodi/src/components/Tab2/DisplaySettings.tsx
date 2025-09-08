@@ -4,8 +4,9 @@ import {
   IonLabel,
   IonList,
   IonListHeader,
-  IonToggle,
   IonIcon,
+  IonSegment,
+  IonSegmentButton,
 } from '@ionic/react';
 import { settingsOutline } from 'ionicons/icons';
 
@@ -13,10 +14,10 @@ import { settingsOutline } from 'ionicons/icons';
  * Props for the DisplaySettings component
  */
 interface DisplaySettingsProps {
-  /** Whether to show delta (observed - predicted) series */
-  showDelta: boolean;
-  /** Callback when showDelta changes */
-  onShowDeltaChange: (show: boolean) => void;
+  /** Theme mode setting */
+  theme: 'auto' | 'light' | 'dark' | undefined;
+  /** Callback when theme changes */
+  onThemeChange: (theme: 'auto' | 'light' | 'dark') => void;
 }
 
 /**
@@ -28,16 +29,10 @@ interface DisplaySettingsProps {
  * @param props DisplaySettingsProps
  * @returns JSX.Element
  */
-export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
-  showDelta,
-  onShowDeltaChange,
-}) => {
-  /**
-   * Handle delta visibility toggle
-   */
-  const handleDeltaToggle = (event: CustomEvent) => {
-    const checked = event.detail.checked as boolean;
-    onShowDeltaChange(checked);
+export const DisplaySettings: React.FC<DisplaySettingsProps> = ({ theme = 'auto', onThemeChange }) => {
+  const handleThemeChange = (event: CustomEvent) => {
+    const value = event.detail.value as 'auto' | 'light' | 'dark';
+    onThemeChange(value);
   };
 
   return (
@@ -48,14 +43,18 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
       </IonListHeader>
 
       <IonItem>
-        <IonLabel>
-          <h3>Show Δ obs - pred</h3>
-          <p>Display the difference between observed and predicted water levels</p>
-        </IonLabel>
-        <IonToggle
-          checked={showDelta}
-          onIonChange={handleDeltaToggle}
-        />
+        <IonLabel>Theme</IonLabel>
+        <IonSegment value={theme} onIonChange={handleThemeChange}>
+          <IonSegmentButton value="auto">
+            <IonLabel>Auto</IonLabel>
+          </IonSegmentButton>
+          <IonSegmentButton value="light">
+            <IonLabel>Light</IonLabel>
+          </IonSegmentButton>
+          <IonSegmentButton value="dark">
+            <IonLabel>Dark</IonLabel>
+          </IonSegmentButton>
+        </IonSegment>
       </IonItem>
     </IonList>
   );
