@@ -117,6 +117,19 @@
   --border-radius: var(--ion-border-radius-large, 16px);
 }
 
+/* iOS safe-area: ensure modal header is not clipped by the notch */
+.ios .settings-modal {
+  /* Reduce modal height to account for the top inset */
+  --height: calc(90vh - env(safe-area-inset-top));
+}
+
+.ios ion-modal.settings-modal::part(content) {
+  /* Offset the entire modal content below the notch */
+  margin-top: env(safe-area-inset-top);
+}
+
+
+
 .settings-content {
   --padding-start: 0;
   --padding-end: 0;

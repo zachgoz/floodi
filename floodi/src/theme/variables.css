@@ -1,2 +1,41 @@
 /* For information on how to create your own theme, please see:
 http://ionicframework.com/docs/theming/ */
+
+/*
+  iOS safe-area header fill
+  -------------------------
+  On Mobile Safari, Ionic adds top padding to `ion-header` using the iOS
+  safe-area inset. Without an explicit background on `ion-header`, that
+  padded region can appear as a white strip above the toolbar.
+
+  These rules ensure the safe-area above the toolbar uses the same background
+  as the toolbar, eliminating the perceived "white space above the header".
+*/
+.ios ion-header {
+  /* Fill the safe-area above the toolbar inside the header */
+  --background: var(--ion-toolbar-background, var(--ion-background-color));
+  background: var(--ion-toolbar-background, var(--ion-background-color));
+}
+
+.ios ion-header[collapse="condense"] {
+  /* Ensure condensed header matches too */
+  --background: var(--ion-toolbar-background, var(--ion-background-color));
+}
+
+.ios ion-toolbar {
+  /* Ensure toolbar background is explicitly set */
+  --background: var(--ion-toolbar-background, var(--ion-background-color));
+  background: var(--ion-toolbar-background, var(--ion-background-color));
+}
+
+/* Ensure the base document background matches the app theme */
+html, body {
+  background-color: var(--ion-background-color, #ffffff);
+}
+
+/* Make root Ionic containers inherit the app background */
+.ios ion-app, .ios ion-page {
+  background: var(--ion-background-color, #ffffff);
+}
+
+/* Removed global safe-area overlay to avoid clipping modals under the notch. */
