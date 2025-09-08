@@ -115,7 +115,10 @@ export function useSettingsStorage() {
       display: {
         timezone: safeGetStorageItem(STORAGE_KEYS.TIMEZONE, DEFAULT_CONFIG.display.timezone) as 'local' | 'gmt',
         showDelta: safeGetStorageItem(STORAGE_KEYS.SHOW_DELTA, '0') === '1',
-        theme: safeGetStorageItem(STORAGE_KEYS.THEME, DEFAULT_CONFIG.display.theme!),
+        theme: (() => {
+          const storedTheme = safeGetStorageItem(STORAGE_KEYS.THEME, DEFAULT_CONFIG.display.theme!);
+          return (storedTheme === 'auto' || storedTheme === 'light' || storedTheme === 'dark') ? storedTheme : DEFAULT_CONFIG.display.theme;
+        })(),
       },
     };
   });
