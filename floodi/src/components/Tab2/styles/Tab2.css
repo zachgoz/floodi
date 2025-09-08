@@ -1,0 +1,391 @@
+/**
+ * Professional Tab2 (FloodCast) Styles
+ * 
+ * This CSS file replaces the amateur custom implementations with proper
+ * Ionic design patterns, CSS variables, and professional styling.
+ */
+
+ /* ==========================================================================
+    CSS Variables and Design Tokens
+    ========================================================================== */
+
+:root {
+  /* Chart color variables that adapt to Ionic's theme system */
+  --chart-bg: var(--ion-color-step-50, #ffffff);
+  --chart-plot-bg: var(--ion-color-step-100, #f6f8fa);
+  --chart-plot-stroke: var(--ion-color-step-200, #e0e6ef);
+  --chart-grid: var(--ion-color-step-150, #e6edf5);
+  --chart-axis-text: var(--ion-color-step-500, #6b778c);
+  --chart-label-text: var(--ion-color-step-700, #334155);
+  --chart-tooltip-bg: var(--ion-color-step-50, #ffffff);
+  --chart-tooltip-stroke: var(--ion-color-step-300, #cbd5e1);
+  
+  /* FloodCast specific spacing using Ionic design tokens */
+  --floodcast-spacing-xs: 4px;
+  --floodcast-spacing-sm: 8px;
+  --floodcast-spacing-md: 12px;
+  --floodcast-spacing-lg: 16px;
+  --floodcast-spacing-xl: 24px;
+  
+  /* Professional shadows using Ionic elevation system */
+  --floodcast-shadow-sm: var(--ion-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
+  --floodcast-shadow-md: var(--ion-box-shadow, 0 4px 8px rgba(0, 0, 0, 0.12));
+  --floodcast-shadow-lg: var(--ion-box-shadow, 0 8px 16px rgba(0, 0, 0, 0.15));
+}
+
+/* Dark mode adaptations using Ionic's color system */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-bg: var(--ion-color-step-100, #0b0e12);
+    --chart-plot-bg: var(--ion-color-step-200, #0f1522);
+    --chart-plot-stroke: var(--ion-color-step-300, #223344);
+    --chart-grid: var(--ion-color-step-250, #1d2838);
+    --chart-axis-text: var(--ion-color-step-400, #8ba1bd);
+    --chart-label-text: var(--ion-color-step-100, #c8d5e3);
+    --chart-tooltip-bg: var(--ion-color-step-200, #1b2433);
+    --chart-tooltip-stroke: var(--ion-color-step-400, #2a3a55);
+  }
+}
+
+/* ==========================================================================
+   Main Page Layout
+   ========================================================================== */
+
+.floodcast-page {
+  --background: var(--ion-background-color);
+}
+
+.floodcast-content {
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: 0;
+  --padding-bottom: 70px; /* Add bottom padding to account for tab bar */
+}
+
+/* ==========================================================================
+   Chart Components
+   ========================================================================== */
+
+.chart-viewer {
+  padding: var(--floodcast-spacing-sm);
+  width: 100%;
+  /* Account for header height when IonContent is fullscreen */
+  height: calc(100vh - 176px); /* 56px header + 57px tabs + padding */
+  min-height: 300px;
+  max-height: 600px;
+  /* Add top margin to push below the header */
+  margin-top: 56px; /* Standard Ionic header height */
+  position: relative;
+  z-index: 1;
+}
+
+.chart-viewer svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--ion-border-radius, 8px);
+  box-shadow: var(--floodcast-shadow-sm);
+}
+
+/* ==========================================================================
+   Loading and Error States
+   ========================================================================== */
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--floodcast-spacing-md);
+  padding: var(--floodcast-spacing-xl);
+  min-height: 200px;
+}
+
+.error-item {
+  margin: var(--floodcast-spacing-md);
+  --border-radius: var(--ion-border-radius);
+}
+
+/* ==========================================================================
+   Settings Modal Components
+   ========================================================================== */
+
+.settings-modal {
+  --width: min(90vw, 600px);
+  --max-width: 600px;
+  --height: 90vh;
+  --border-radius: var(--ion-border-radius-large, 16px);
+}
+
+.settings-content {
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: var(--floodcast-spacing-sm);
+  --padding-bottom: var(--floodcast-spacing-lg);
+}
+
+/* Professional settings sections using Ionic list styling */
+.settings-modal ion-list {
+  margin: var(--floodcast-spacing-sm) var(--floodcast-spacing-md);
+  --border-radius: var(--ion-border-radius, 12px);
+  --background: var(--ion-item-background);
+  box-shadow: var(--floodcast-shadow-sm);
+}
+
+.settings-modal ion-list-header {
+  --background: var(--ion-color-step-100);
+  --color: var(--ion-color-step-800);
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: var(--floodcast-spacing-md);
+}
+
+.settings-modal ion-list-header ion-icon {
+  margin-inline-end: var(--floodcast-spacing-sm);
+  color: var(--ion-color-primary);
+}
+
+.settings-modal ion-item {
+  --min-height: 48px;
+  --padding-start: var(--floodcast-spacing-md);
+  --inner-padding-end: var(--floodcast-spacing-md);
+}
+
+.settings-modal ion-note {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+/* ==========================================================================
+   Station Selector Components
+   ========================================================================== */
+
+.station-selector .station-selector-field {
+  display: flex;
+  align-items: center;
+  gap: var(--floodcast-spacing-sm);
+  width: 100%;
+}
+
+.station-display-button {
+  --background: var(--ion-color-light);
+  --background-hover: var(--ion-color-light-shade);
+  --color: var(--ion-color-dark);
+  --border-color: var(--ion-color-medium);
+  flex: 1;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.station-selector-popover {
+  --width: min(90vw, 500px);
+  --max-height: 60vh;
+}
+
+.station-search-container {
+  min-width: 300px;
+}
+
+.station-searchbar {
+  --background: var(--ion-background-color);
+  --color: var(--ion-text-color);
+  --placeholder-color: var(--ion-color-medium);
+  --icon-color: var(--ion-color-medium);
+  --clear-button-color: var(--ion-color-medium);
+  padding: var(--floodcast-spacing-sm);
+}
+
+.station-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--floodcast-spacing-sm);
+  padding: var(--floodcast-spacing-lg);
+}
+
+.selected-station {
+  --background: var(--ion-color-primary-tint);
+  --color: var(--ion-color-primary-contrast);
+}
+
+.station-coordinates {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+/* Better contrast for station IDs in search results */
+.station-selector-popover ion-item ion-label p {
+  color: var(--ion-color-step-100, #ffffff);
+  opacity: 0.9;
+}
+
+/* Ensure station ID text is more visible */
+.station-selector-popover ion-item ion-label p {
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   Time Settings Components
+   ========================================================================== */
+
+.time-settings .time-range-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--floodcast-spacing-md);
+  width: 100%;
+  padding: var(--floodcast-spacing-sm) 0;
+}
+
+.time-settings .time-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--floodcast-spacing-xs);
+}
+
+.time-settings .time-field ion-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--ion-color-step-600);
+}
+
+.absolute-datetime {
+  --background: var(--ion-background-color);
+  --color: var(--ion-text-color);
+}
+
+/* ==========================================================================
+   Flood Settings Components
+   ========================================================================== */
+
+.threshold-input,
+.offset-input {
+  --background: var(--ion-item-background);
+  --color: var(--ion-text-color);
+  --placeholder-color: var(--ion-color-medium);
+}
+
+/* ==========================================================================
+   Crossing Information
+   ========================================================================== */
+
+.crossing-info {
+  margin: var(--floodcast-spacing-md);
+  margin-bottom: var(--floodcast-spacing-xl); /* Extra bottom margin for tab bar clearance */
+  --border-radius: var(--ion-border-radius);
+  box-shadow: var(--floodcast-shadow-sm);
+}
+
+.lead-time {
+  font-weight: 500;
+  margin-inline-start: var(--floodcast-spacing-xs);
+}
+
+/* ==========================================================================
+   Responsive Design
+   ========================================================================== */
+
+/* Mobile optimizations */
+@media (max-width: 576px) {
+  .chart-viewer {
+    height: calc(100vh - 196px); /* Account for header + tabs + extra mobile padding */
+    padding: var(--floodcast-spacing-xs);
+    margin-top: 56px; /* Header height */
+  }
+  
+  .settings-modal {
+    --width: 95vw;
+    --height: 95vh;
+  }
+  
+  .time-range-grid {
+    grid-template-columns: 1fr !important;
+    gap: var(--floodcast-spacing-sm) !important;
+  }
+  
+  .station-selector-popover {
+    --width: 95vw;
+  }
+}
+
+/* Tablet optimizations */
+@media (min-width: 577px) and (max-width: 992px) {
+  .chart-viewer {
+    height: calc(100vh - 186px); /* Account for header + tabs + padding */
+    margin-top: 56px; /* Header height */
+  }
+  
+  .settings-modal {
+    --width: 80vw;
+    --max-width: 700px;
+  }
+}
+
+/* Desktop optimizations */
+@media (min-width: 993px) {
+  .chart-viewer {
+    height: calc(100vh - 176px); /* Account for header + tabs + padding */
+    max-height: 600px;
+    margin-top: 56px; /* Header height */
+  }
+  
+  .settings-modal {
+    --width: 70vw;
+    --max-width: 800px;
+  }
+}
+
+/* ==========================================================================
+   Accessibility Enhancements
+   ========================================================================== */
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .chart-viewer svg {
+    --chart-plot-stroke: var(--ion-color-dark);
+    --chart-grid: var(--ion-color-medium);
+    --chart-tooltip-stroke: var(--ion-color-dark);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .settings-modal,
+  .station-selector-popover,
+  .chart-viewer svg {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Focus indicators for keyboard navigation */
+.settings-modal ion-button:focus-visible,
+.station-display-button:focus-visible {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   Print Styles
+   ========================================================================== */
+
+@media print {
+  .floodcast-page ion-header,
+  .settings-modal,
+  .loading-container,
+  .error-item {
+    display: none !important;
+  }
+  
+  .chart-viewer {
+    height: 80vh;
+    width: 100%;
+    page-break-inside: avoid;
+  }
+  
+  .crossing-info {
+    margin-top: var(--floodcast-spacing-lg);
+    border: 1px solid #ccc;
+  }
+}

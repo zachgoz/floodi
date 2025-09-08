@@ -17,14 +17,13 @@ import {
   IonIcon,
 } from '@ionic/react';
 import { settingsOutline } from 'ionicons/icons';
-import { ChartViewer } from '../components/Tab2/ChartViewer';
-import { SettingsModal } from '../components/Tab2/SettingsModal';
-import { useSettingsStorage } from '../components/Tab2/hooks/useSettingsStorage';
-import { useChartData } from '../components/Tab2/hooks/useChartData';
-import { formatTooltipTime } from '../components/Tab2/hooks/useChartInteraction';
-import type { Station } from '../components/Tab2/types';
-import '../components/Tab2/styles/Tab2.css';
-import './Tab2.css';
+import './styles/Tab2.css';
+import { ChartViewer } from './ChartViewer';
+import { SettingsModal } from './SettingsModal';
+import { useSettingsStorage } from './hooks/useSettingsStorage';
+import { useChartData } from './hooks/useChartData';
+import { formatTooltipTime } from './hooks/useChartInteraction';
+import type { Station } from './types';
 
 /**
  * Professional FloodCast Tab2 Component
@@ -45,7 +44,7 @@ import './Tab2.css';
  * 
  * @returns JSX.Element Professional FloodCast interface
  */
-const Tab2: React.FC = () => {
+export const Tab2Refactored: React.FC = () => {
   // Settings modal state
   const [showSettings, setShowSettings] = useState(false);
   
@@ -232,4 +231,4 @@ const Tab2: React.FC = () => {
   );
 };
 
-export default Tab2;
+export default Tab2Refactored;
