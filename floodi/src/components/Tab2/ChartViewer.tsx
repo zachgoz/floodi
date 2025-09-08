@@ -285,7 +285,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         aria-label="Water level chart showing observed, predicted, and adjusted predictions over time"
         onPointerMove={handlePointerMove}
         onPointerLeave={handlePointerLeave}
-        style={{ touchAction: 'none', cursor: 'crosshair' }}
+        // Allow vertical page scroll while interacting with the chart on mobile
+        style={{ touchAction: 'pan-y pinch-zoom', cursor: 'crosshair' }}
       >
         {/* Background */}
         <rect x={0} y={0} width={size.w} height={size.h} fill="var(--chart-bg)" />
