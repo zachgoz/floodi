@@ -1,0 +1,147 @@
+/**
+ * Comments Stylesheet
+ *
+ * Defines styling for comment components integrating with Ionic design system
+ * and app theme. Includes variables, layouts, responsive rules, and animations.
+ */
+
+:root {
+  --comment-bg: var(--ion-card-background, #1e1e1e);
+  --comment-border: rgba(128, 128, 128, 0.24);
+  --comment-hover: rgba(128, 128, 128, 0.16);
+  --comment-focus: var(--ion-color-primary);
+  --comment-color-threshold: var(--ion-color-danger);
+  --comment-color-surge: var(--ion-color-warning);
+  --comment-color-normal: var(--ion-color-primary);
+}
+
+.comments-card {
+  border: 1px solid var(--comment-border);
+}
+
+.comments-upgrade-note {
+  display: block;
+  margin-bottom: 8px;
+}
+
+/* TimeRangePicker */
+.comments-range-picker .comments-mini-timeline {
+  position: relative;
+  height: 16px;
+  margin-top: 8px;
+}
+.comments-range-picker .comments-mini-timeline .axis {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 7px;
+  height: 2px;
+  background: var(--ion-color-step-400);
+}
+.comments-range-picker .comments-mini-timeline .bar {
+  position: absolute;
+  top: 3px;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--ion-color-primary);
+}
+.comments-error-text {
+  display: block;
+  margin-top: 4px;
+}
+
+/* CommentForm */
+.comments-form .comments-form-actions {
+  margin-top: 8px;
+}
+
+/* CommentItem */
+.comments-item .comments-item-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.comments-avatar {
+  width: 40px;
+  height: 40px;
+}
+.comments-header-text {
+  flex: 1;
+}
+.comments-actions {
+  margin-left: auto;
+}
+.comments-item-content {
+  display: grid;
+  gap: 6px;
+}
+.comments-item-text {
+  white-space: pre-wrap;
+}
+.comments-item-station {
+  display: block;
+}
+
+/* CommentList */
+.comments-list .comments-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+.comments-skeleton {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+/* Timeline */
+.comments-timeline .timeline-controls {
+  display: flex;
+  justify-content: flex-end;
+}
+.comments-timeline .timeline-axis {
+  height: 2px;
+  background: var(--ion-color-step-400);
+  margin: 8px 0;
+}
+.comments-timeline .timeline-rows {
+  position: relative;
+}
+.comments-timeline .timeline-row {
+  position: relative;
+  height: 28px;
+}
+.comments-timeline .timeline-row .timeline-bar {
+  position: absolute;
+  top: 8px;
+  height: 12px;
+  border-radius: 6px;
+}
+.comments-timeline .timeline-row .timeline-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 12px;
+}
+
+/* Metadata */
+.comments-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Accessibility */
+.comments-card:focus-within {
+  outline: 2px solid var(--comment-focus);
+  outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  .comments-list .comments-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+

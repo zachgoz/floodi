@@ -96,16 +96,135 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // COMMENTS COLLECTION (future-proofing)
+    // COMMENTS COLLECTION
     match /comments/{id} {
-      allow read: if true; // public readable
-      allow create: if isAuthenticated();
-      allow update, delete: if isOwner(resource.data.authorUid) || isModerator();
+      // Read: public for non-deleted; deleted only visible to moderators/admins
+      allow read: if !resource.data.isDeleted || isModerator();
 
-      function validComment() {
-        return request.resource.data.authorUid is string && request.resource.data.createdAt is timestamp;
+      // Validation helpers
+      function validIso(s) { return s is string && s.size() >= 10; }
+
+      // Operation helpers
+      function isCreate() { return resource == null; }
+      function isUpdate() { return resource != null; }
+
+      // Enforce server time on create/update and immutability of createdAt after create
+      function validTimestamps() {
+        let d = request.resource.data;
+        if (isCreate()) {
+          return d.createdAt == request.time && d.updatedAt == request.time;
+        }
+        if (isUpdate()) {
+          return d.createdAt == resource.data.createdAt && d.updatedAt == request.time;
+        }
+        return false;
       }
-      allow create, update: if validComment();
+
+      function validCommentMetadata() {
+        let m = request.resource.data.metadata;
+        if !(m is map) return false;
+        // Station
+        let ok = (m.station is map) && (m.station.id is string) && m.station.id.matches('^[0-9]{3,10}$') &&
+                 (m.station.name is string) && m.station.name.size() >= 1 && m.station.name.size() <= 100;
+        // Time range
+        ok = ok && (m.timeRange is map) && validIso(m.timeRange.startTime) && validIso(m.timeRange.endTime) &&
+                  (timestamp(m.timeRange.endTime) > timestamp(m.timeRange.startTime));
+        // Data context
+        let ctx = m.dataContext;
+        let ctxOk = false;
+        if (ctx is string) {
+          ctxOk = ctx in ['observed','predicted','adjusted'];
+        } else if (ctx is list) {
+          ctxOk = ctx.size() >= 1 && ctx.size() <= 3;
+          if (ctxOk) {
+            for (val in ctx) { if (!(val in ['observed','predicted','adjusted'])) { ctxOk = false; } }
+          }
+        }
+        ok = ok && ctxOk;
+        // Optional fields
+        ok = ok && (!("thresholdValue" in m) || m.thresholdValue == null || (m.thresholdValue is number));
+        ok = ok && (!("eventType" in m.timeRange) || m.timeRange.eventType == null || (m.timeRange.eventType is string && m.timeRange.eventType.size() <= 50));
+        ok = ok && (!("label" in m.timeRange) || m.timeRange.label == null || (m.timeRange.label is string && m.timeRange.label.size() <= 120));
+        return ok;
+      }
+
+      function validEditHistory() {
+        let eh = request.resource.data.editHistory;
+        if (!(eh is list)) return false;
+        // permit empty list
+        if (eh.size() == 0) return true;
+        // Base shape validation for last record
+        let last = eh[eh.size() - 1];
+        let ok = (last is map) && (last.previousContent is string);
+        // Allow serverTimestamp() sentinel or concrete timestamp
+        let atOk = (last.at == request.time) || (last.at is timestamp);
+        ok = ok && atOk;
+        ok = ok && (!("editReason" in last) || last.editReason == null || (last.editReason is string && last.editReason.size() <= 200));
+        // Enforce strict append-only: existing history must be unchanged and at most one record appended
+        if (resource.data.editHistory is list) {
+          let prev = resource.data.editHistory;
+          // sizes allow either no change or exactly one new record
+          ok = ok && (eh.size() == prev.size() || eh.size() == prev.size() + 1);
+          // all previous entries must be exactly equal
+          if (ok) {
+            let i = 0;
+            while (i < prev.size()) {
+              if (!(eh[i] == prev[i])) { ok = false; }
+              i = i + 1;
+            }
+          }
+          // if one appended, ensure timestamp aligns with server time
+          if (ok && eh.size() == prev.size() + 1) {
+            ok = ok && (last.at == request.time);
+          }
+        }
+        return ok;
+      }
+
+      function validCommentData() {
+        let d = request.resource.data;
+        let ok = d.authorUid is string && d.authorUid == request.auth.uid;
+        ok = ok && ("content" in d) && (d.content is string) && d.content.size() >= 1 && d.content.size() <= 2000;
+        ok = ok && validCommentMetadata();
+        ok = ok && (d.isEdited is bool) && (d.isDeleted is bool);
+        ok = ok && validTimestamps();
+        ok = ok && validEditHistory();
+        // Prevent unexpected fields escalation
+        return ok;
+      }
+
+      // Permission helpers
+      function canEditComment() {
+        // Owner can edit within 24h; moderators/admins can always edit; cannot edit deleted
+        if (resource.data.isDeleted) return false;
+        if (isOwner(resource.data.authorUid)) {
+          return request.time < resource.data.createdAt + duration.value(24, 'h');
+        }
+        return isModerator();
+      }
+
+      function canDeleteComment() {
+        // Owner can delete within 24h; moderators/admins can delete any
+        if (isOwner(resource.data.authorUid)) {
+          return request.time < resource.data.createdAt + duration.value(24, 'h');
+        }
+        return isModerator();
+      }
+
+      // Create: must be authenticated, with valid data
+      allow create: if isAuthenticated() && validCommentData();
+
+      // Update: enforce permissions and validation; createdAt immutable (enforced by validTimestamps)
+      // Ensure general updates cannot toggle isDeleted; soft-delete rule below is the only path
+      allow update: if canEditComment() && validCommentData() &&
+        (request.resource.data.isDeleted == resource.data.isDeleted);
+
+      // Soft delete via update to isDeleted true; restrict changed keys to only isDeleted and updatedAt
+      allow update: if canDeleteComment() && (request.resource.data.isDeleted == true) &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(['isDeleted', 'updatedAt']);
+
+      // Hard delete only for admins
+      allow delete: if isAdmin();
     }
   }
 }
