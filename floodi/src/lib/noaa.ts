@@ -58,25 +58,7 @@ function fmtBeginEnd(d: Date): string {
   return `${y}${m}${day} ${hh}:${mm}`;
 }
 
-/**
- * Converts a Date object to an ISO minute string (UTC)
- * 
- * Creates standardized minute-precision timestamps for our TimeSeries data structure.
- * Seconds and milliseconds are zeroed out for consistency.
- * 
- * @param {Date} d - The date to convert
- * @returns {string} ISO string truncated to minute precision with Z suffix
- * 
- * @example
- * const date = new Date('2024-01-15T12:24:45.123Z');
- * console.log(isoMinute(date)); // "2024-01-15T12:24Z"
- */
-function isoMinute(d: Date): string {
-  // 2025-09-05 12:24 -> '2025-09-05T12:24Z'
-  const copy = new Date(d.getTime());
-  copy.setUTCSeconds(0, 0); // Zero out seconds and milliseconds
-  return copy.toISOString().slice(0, 16) + 'Z';
-}
+// (removed unused isoMinute helper)
 
 /**
  * Makes HTTP requests to the NOAA Tides and Currents API with error handling
@@ -97,7 +79,7 @@ function isoMinute(d: Date): string {
  * };
  * const data = await requestNOAA(params);
  */
-async function requestNOAA(params: Record<string, string | number>): Promise<any> {
+async function requestNOAA(params: Record<string, string | number>): Promise<unknown> {
   const usp = new URLSearchParams(params as Record<string, string>);
   const url = `${NOAA_BASE}?${usp.toString()}`;
   
@@ -109,11 +91,12 @@ async function requestNOAA(params: Record<string, string | number>): Promise<any
     throw new Error(`NOAA request failed: ${res.status}`);
   }
   
-  const data = await res.json();
-  
+  const data: unknown = await res.json();
+
   // Check for NOAA API-specific errors in response body
-  if (data && data.error) {
-    throw new Error(`NOAA API error: ${data.error?.message || 'unknown'}`);
+  if (typeof data === 'object' && data && 'error' in data) {
+    const err = (data as { error?: { message?: string } }).error;
+    if (err) throw new Error(`NOAA API error: ${err.message || 'unknown'}`);
   }
   
   return data;
@@ -170,7 +153,7 @@ export async function fetchObservedWaterLevels(opts: {
     end_date: fmtBeginEnd(end),       // Formatted end datetime
   };
   
-  const data = await requestNOAA(params);
+  const data = await requestNOAA(params) as { data?: Array<{ v: string; t: string }>; error?: { message?: string } };
   const out: TimeSeries = {};
   
   // Process response data into our TimeSeries format
@@ -239,7 +222,7 @@ export async function fetchPredictions(opts: {
     end_date: fmtBeginEnd(end),       // Formatted end datetime
   };
   
-  const data = await requestNOAA(params);
+  const data = await requestNOAA(params) as { predictions?: Array<{ v: string; t: string }>; error?: { message?: string } };
   const out: TimeSeries = {};
   
   // Process prediction data into our TimeSeries format

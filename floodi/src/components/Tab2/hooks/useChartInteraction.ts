@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import type { Point, ChartInteraction } from '../types';
 
 /**
@@ -62,7 +62,7 @@ export function formatTooltipTime(date: Date, timezone: 'local' | 'gmt'): string
   };
   
   if (timezone === 'gmt') {
-    (options as any).timeZone = 'UTC';
+    options.timeZone = 'UTC';
   }
   
   let formatted = new Intl.DateTimeFormat(undefined, options).format(date);

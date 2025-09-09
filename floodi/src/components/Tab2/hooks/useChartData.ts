@@ -109,11 +109,11 @@ export function useChartData(config: AppConfiguration) {
         error: null,
         data: chartData,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       setDataState(prev => ({
         ...prev,
         loading: false,
-        error: error?.message || String(error),
+        error: (error as { message?: string } | null)?.message || String(error),
       }));
     }
   }, [timeDomain, config]);

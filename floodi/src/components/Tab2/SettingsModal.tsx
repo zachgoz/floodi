@@ -16,6 +16,8 @@ import { FloodSettings } from './FloodSettings';
 import { TimeSettings } from './TimeSettings';
 import { DisplaySettings } from './DisplaySettings';
 import type { AppConfiguration, Station } from './types';
+import { UserMenu } from 'src/components/auth';
+import { useHistory } from 'react-router-dom';
 
 /**
  * Props for the SettingsModal component
@@ -73,6 +75,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   errorMessage,
   onClearMessages,
 }) => {
+  const history = useHistory();
   /**
    * Handle modal dismiss
    */
@@ -103,6 +106,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </IonHeader>
 
         <IonContent className="settings-content">
+          {/* User authentication section */}
+          <UserMenu
+            onNavigate={(path: string) => {
+              // Close modal first to prevent overlay sticking on route change
+              handleDismiss();
+              history.push(path);
+            }}
+          />
+
           {/* Station Selection */}
           <StationSelector
             selectedStationId={config.station.id}

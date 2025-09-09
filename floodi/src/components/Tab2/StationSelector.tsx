@@ -47,7 +47,7 @@ export const StationSelector: React.FC<StationSelectorProps> = ({
   successMessage,
 }) => {
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const [searchbarRef, setSearchbarRef] = useState<HTMLIonSearchbarElement | null>(null);
+  // Note: searchbar ref removed as it wasn't used
 
   const {
     searchResults,
@@ -57,7 +57,7 @@ export const StationSelector: React.FC<StationSelectorProps> = ({
     selectedStation,
     setSearchQuery,
     navigateSelection,
-    setSelectedIndex,
+    // setSelectedIndex,
     getStationDisplayName,
     loadStations,
   } = useStationSearch(selectedStationId);
@@ -74,8 +74,8 @@ export const StationSelector: React.FC<StationSelectorProps> = ({
   /**
    * Handle search input changes
    */
-  const handleSearchChange = (event: CustomEvent) => {
-    const query = event.detail.value;
+  const handleSearchChange = (event: CustomEvent<{ value?: string }>) => {
+    const query = event.detail.value || '';
     setSearchQuery(query);
   };
 
@@ -191,7 +191,6 @@ export const StationSelector: React.FC<StationSelectorProps> = ({
         <IonContent>
           <div className="station-search-container" onKeyDown={handleKeyDown}>
             <IonSearchbar
-              ref={setSearchbarRef}
               placeholder="Search stations by ID, name, or state..."
               value={searchQuery}
               onIonInput={handleSearchChange}

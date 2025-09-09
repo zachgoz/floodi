@@ -95,16 +95,17 @@ export const Tab2Refactored: React.FC = () => {
   /**
    * Handle refresh with proper error handling
    */
-  const handleRefresh = async (event: CustomEvent) => {
+  type RefresherDetail = { complete: () => void };
+  const handleRefresh = async (event: CustomEvent<RefresherDetail>) => {
     try {
       await refresh();
-    } catch (error: any) {
+    } catch (error: unknown) {
       setMessages({
-        error: error?.message || 'Failed to refresh data',
+        error: (error as { message?: string } | null)?.message || 'Failed to refresh data',
         success: null,
       });
     } finally {
-      (event as any).detail.complete();
+      event.detail.complete();
     }
   };
 

@@ -26,6 +26,9 @@ import Intro from './pages/Intro';
 import React from 'react';
 import Tab2 from './pages/Tab2';
 import Tab3 from './pages/Tab3';
+import { Login, Register, ResetPassword, Profile } from 'src/pages/auth';
+import { PrivateRoute } from 'src/components/routing';
+import { useAuth } from 'src/contexts/AuthContext';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -77,6 +80,7 @@ setupIonicReact();
  * // Returning users are redirected to /tab2 (main FloodCast page)
  */
 const InitialRoute: React.FC = () => {
+  const { loading } = useAuth();
   // Check localStorage to determine if user has seen intro before
   const seen = (() => {
     try {
@@ -88,8 +92,18 @@ const InitialRoute: React.FC = () => {
     }
   })();
   
-  // Route to main app if intro was seen, otherwise show intro
-  return <Redirect to={seen ? '/tab2' : '/intro'} />;
+  // Route based on intro and auth state
+  if (!seen) return <Redirect to={'/intro'} />;
+  // While auth state is being determined, show a minimal spinner
+  if (loading) {
+    return (
+      <div className="ion-padding ion-text-center">
+        <span className="sr-only">Loading…</span>
+      </div>
+    );
+  }
+  // After intro, everyone goes to main tab regardless of authentication
+  return <Redirect to={'/tab2'} />;
 };
 
 /**
@@ -130,6 +144,16 @@ const App: React.FC = () => (
           <Route exact path="/intro">
             <Intro />
           </Route>
+          {/* Auth routes */}
+          <Route exact path="/login">
+            <Login />
+          </Route>
+          <Route exact path="/register">
+            <Register />
+          </Route>
+          <Route exact path="/reset-password">
+            <ResetPassword />
+          </Route>
           {/* Primary FloodCast functionality - tide and flood data visualization */}
           <Route exact path="/tab2">
             <Tab2 />
@@ -138,6 +162,10 @@ const App: React.FC = () => (
           <Route path="/tab3">
             <Tab3 />
           </Route>
+          {/* Profile route accessible to all; content adapts to auth state */}
+          <PrivateRoute exact path="/profile" requireAuth={false}>
+            <Profile />
+          </PrivateRoute>
           {/* Root route with conditional intro/main app logic */}
           <Route exact path="/">
             <InitialRoute />
@@ -168,9 +196,12 @@ export default App;
 if (typeof window !== 'undefined') {
   const THEME_KEY = 'floodi.theme';
   const mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-  const syncFromStorage = () => applyTheme((localStorage.getItem(THEME_KEY) as any) || 'auto');
+  const syncFromStorage = () => {
+    const stored = localStorage.getItem(THEME_KEY) as 'auto' | 'light' | 'dark' | null;
+    applyTheme(stored ?? 'auto');
+  };
   const handleMql = () => {
-    const mode = (localStorage.getItem(THEME_KEY) as any) || 'auto';
+    const mode = (localStorage.getItem(THEME_KEY) as 'auto' | 'light' | 'dark' | null) || 'auto';
     if (mode === 'auto') applyTheme('auto');
   };
   // Initial

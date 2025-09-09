@@ -176,7 +176,7 @@ export function useSettingsStorage() {
       const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       const shouldDark = theme === 'dark' || (theme === 'auto' && prefersDark);
       root.classList.toggle('ion-palette-dark', shouldDark);
-    } catch {}
+    } catch { void 0; }
   }, [config.display.theme]);
 
   // Update functions for different configuration sections

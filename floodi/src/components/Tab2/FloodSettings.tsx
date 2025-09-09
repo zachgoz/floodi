@@ -58,8 +58,8 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
   /**
    * Handle threshold input changes with validation
    */
-  const handleThresholdChange = (event: CustomEvent) => {
-    const value = event.detail.value as string;
+  const handleThresholdChange = (event: CustomEvent<{ value?: string }>) => {
+    const value = event.detail.value || '';
     const numericValue = parseFloat(value);
     
     if (!isNaN(numericValue) && numericValue > 0) {
@@ -70,16 +70,16 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
   /**
    * Handle offset mode selection
    */
-  const handleOffsetModeChange = (event: CustomEvent) => {
-    const mode = event.detail.value as 'auto' | 'manual';
+  const handleOffsetModeChange = (event: CustomEvent<{ value?: 'auto' | 'manual' }>) => {
+    const mode = (event.detail.value || 'auto');
     onOffsetConfigChange({ mode });
   };
 
   /**
    * Handle manual offset value changes
    */
-  const handleManualOffsetChange = (event: CustomEvent) => {
-    const value = event.detail.value as string;
+  const handleManualOffsetChange = (event: CustomEvent<{ value?: string }>) => {
+    const value = event.detail.value || '';
     onOffsetConfigChange({ value });
   };
 
@@ -178,7 +178,7 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
         </IonLabel>
         <IonToggle
           checked={!!showDelta}
-          onIonChange={(e) => onShowDeltaChange?.(!!(e as any).detail.checked)}
+          onIonChange={(e: CustomEvent<{ checked: boolean }>) => onShowDeltaChange?.(!!e.detail.checked)}
         />
       </IonItem>
     </IonList>
