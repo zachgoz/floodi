@@ -33,15 +33,15 @@ const Register: React.FC = () => {
   const redirectTo = useMemo(() => getRedirectFromSearch(location.search, '/tab2'), [location.search]);
 
   useEffect(() => {
-    if (user) {
+    if (user && !isAnonymous) {
       history.replace(redirectTo);
     }
-  }, [user, history, redirectTo]);
+  }, [user, isAnonymous, history, redirectTo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValidEmail(email)) return setErrorMsg('Please enter a valid email address.');
-    if (!isValidPassword(password)) return setErrorMsg('Password must be at least 6 characters.');
+    if (!isValidPassword(password)) return setErrorMsg('Password must be greater than 6 characters.');
     if (password !== confirm) return setErrorMsg('Passwords do not match.');
     if (displayName && !isValidDisplayName(displayName)) return setErrorMsg('Display name must be 2–50 characters.');
     if (photoURL && !isValidAvatarUrl(photoURL)) return setErrorMsg('Please enter a valid image URL.');
@@ -100,7 +100,7 @@ const Register: React.FC = () => {
               onClick={async () => {
                 try {
                   setLoading(true);
-                  await signInAnonymously();
+                  if (!user) { await signInAnonymously(); }
                   history.replace(redirectTo);
                 } catch (err: unknown) {
                   setErrorMsg(formatFirebaseAuthError(err).message);

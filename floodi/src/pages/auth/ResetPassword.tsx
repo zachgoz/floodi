@@ -13,12 +13,13 @@ import {
   IonToast,
   IonToolbar,
 } from '@ionic/react';
-import { Link } from 'react-router-dom';
+import { Link, useHistory } from 'react-router-dom';
 import { useAuth } from 'src/contexts/AuthContext';
 import { isValidEmail, formatFirebaseAuthError } from 'src/utils/auth';
 
 const ResetPassword: React.FC = () => {
-  const { resetPassword, signInAnonymously } = useAuth();
+  const { resetPassword, signInAnonymously, user } = useAuth();
+  const history = useHistory();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -60,9 +61,10 @@ const ResetPassword: React.FC = () => {
             <IonButton type="button" expand="block" fill="outline" disabled={loading}
               onClick={async () => {
                 try {
-                  await signInAnonymously();
-                } catch (err) {
-                  // ignore; user can try again
+                  if (!user) { await signInAnonymously(); }
+                  history.replace('/tab2');
+                } catch (err: unknown) {
+                  setErrorMsg(formatFirebaseAuthError(err).message);
                 }
               }}
             >

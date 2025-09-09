@@ -2,6 +2,7 @@ import React from 'react';
 import { Redirect, Route, type RouteProps } from 'react-router-dom';
 import { IonContent, IonSpinner, IonPage } from '@ionic/react';
 import { useAuth } from 'src/contexts/AuthContext';
+import type { Location as HistoryLocation } from 'history';
 
 export type PrivateRouteProps = RouteProps & {
   requireAuth?: boolean;
@@ -14,7 +15,7 @@ export type PrivateRouteProps = RouteProps & {
  * - Preserves intended destination via `redirect` query param.
  * - Shows an Ionic spinner while auth state loads.
  */
-const Guard: React.FC<{ location: Location; redirectTo: string; requireAuth: boolean }> = ({ location, redirectTo, requireAuth, children }) => {
+const Guard: React.FC<{ location: HistoryLocation; redirectTo: string; requireAuth: boolean }> = ({ location, redirectTo, requireAuth, children }) => {
   const { user, loading } = useAuth();
   if (loading) {
     return (

@@ -2,8 +2,8 @@
 export const isValidEmail = (email: string): boolean =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-/** Password validation: minimum 6 characters */
-export const isValidPassword = (pwd: string): boolean => pwd.length >= 6;
+/** Password validation: greater than 6 characters */
+export const isValidPassword = (pwd: string): boolean => pwd.length > 6;
 
 /** Display name 2–50 chars */
 export const isValidDisplayName = (name: string): boolean => name.length >= 2 && name.length <= 50;

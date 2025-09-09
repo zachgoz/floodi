@@ -8,9 +8,11 @@ import {
   IonList,
   IonPopover,
   IonText,
+  IonBadge,
 } from '@ionic/react';
 import { logOutOutline, personCircleOutline, personOutline } from 'ionicons/icons';
 import { useAuth } from 'src/contexts/AuthContext';
+import { useUserPermissions } from 'src/hooks/useUserPermissions';
 
 type UserMenuProps = {
   onNavigate?: (path: string) => void;
@@ -20,6 +22,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ onNavigate }) => {
   const { user, isAnonymous, logout } = useAuth();
   const [open, setOpen] = useState<boolean>(false);
   const [event, setEvent] = useState<Event | undefined>(undefined);
+  const perms = useUserPermissions();
 
   if (!user) {
     return (
@@ -63,7 +66,12 @@ export const UserMenu: React.FC<UserMenuProps> = ({ onNavigate }) => {
           <img src={user.photoURL || 'https://www.gravatar.com/avatar?d=mp'} alt="User avatar" />
         </IonAvatar>
         <IonLabel>
-          <h2>{user.displayName || 'Account'}</h2>
+          <h2>
+            {user.displayName || 'Account'}{' '}
+            {perms.isAdmin() && (
+              <IonBadge color="danger" style={{ verticalAlign: 'middle' }}>admin</IonBadge>
+            )}
+          </h2>
           <p>{user.email}</p>
         </IonLabel>
         <IonIcon icon={personCircleOutline} slot="end" />
@@ -74,6 +82,12 @@ export const UserMenu: React.FC<UserMenuProps> = ({ onNavigate }) => {
             <IonIcon icon={personOutline} slot="start" />
             <IonLabel>Profile</IonLabel>
           </IonItem>
+          {perms.isAdmin() && (
+            <IonItem button onClick={() => { setOpen(false); onNavigate?.('/admin/users'); }}>
+              <IonIcon icon={personOutline} slot="start" />
+              <IonLabel>User Management</IonLabel>
+            </IonItem>
+          )}
           <IonItem button color="danger" onClick={() => { setOpen(false); void logout(); }}>
             <IonIcon icon={logOutOutline} slot="start" />
             <IonLabel>Logout</IonLabel>

@@ -1,0 +1,111 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Reads the role from the user's document. Beware of recursive reads.
+    function hasRole(required) {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == required;
+    }
+
+    function isAdmin() { return isAuthenticated() && hasRole('admin'); }
+    function isModerator() { return isAuthenticated() && (hasRole('moderator') || hasRole('admin')); }
+
+    // USERS COLLECTION
+    match /users/{uid} {
+      // Restrict reads to owner or admin
+      allow read: if isOwner(uid) || isAdmin();
+
+      // Validate structure and optional fields
+      function validUserData() {
+        // required and enum fields
+        let ok = request.resource.data.uid == uid &&
+                 request.resource.data.role in ['anonymous','user','moderator','admin'] &&
+                 request.resource.data.isActive is bool &&
+                 request.resource.data.createdAt is timestamp &&
+                 request.resource.data.updatedAt is timestamp;
+
+        // optional primitives with constraints
+        ok = ok && (
+          !("email" in request.resource.data) || request.resource.data.email == null || (
+            request.resource.data.email is string && request.resource.data.email.size() >= 3 && request.resource.data.email.size() <= 254 &&
+            request.resource.data.email.matches('^.+@.+\\..+$')
+          )
+        );
+        ok = ok && (
+          !("displayName" in request.resource.data) || request.resource.data.displayName == null || (
+            request.resource.data.displayName is string && request.resource.data.displayName.size() <= 50
+          )
+        );
+        ok = ok && (
+          !("photoURL" in request.resource.data) || request.resource.data.photoURL == null || (
+            request.resource.data.photoURL is string && request.resource.data.photoURL.matches('^https?://.*')
+          )
+        );
+        ok = ok && (
+          !("lastLoginAt" in request.resource.data) || request.resource.data.lastLoginAt == null || request.resource.data.lastLoginAt is timestamp
+        );
+        return ok;
+      }
+
+      // Create requires owner AND valid data
+      allow create: if isOwner(uid) && validUserData();
+
+      // Update requires valid data AND either owner-without-role-change or admin
+      allow update: if validUserData() && (
+        (isOwner(uid) && !('role' in request.resource.data.diff(resource.data).changedKeys())) ||
+        isAdmin()
+      );
+
+      // Only admins can delete users
+      allow delete: if isAdmin();
+    }
+
+    // PUBLIC PROFILES: limited exposure of user info
+    match /publicProfiles/{uid} {
+      // Any authenticated user can read public profiles
+      allow read: if isAuthenticated();
+
+      // Basic validation
+      function validPublicProfile() {
+        let ok = request.resource.data.uid == uid &&
+                 request.resource.data.createdAt is timestamp &&
+                 request.resource.data.updatedAt is timestamp;
+        ok = ok && (
+          !("displayName" in request.resource.data) || request.resource.data.displayName == null || (
+            request.resource.data.displayName is string && request.resource.data.displayName.size() <= 50
+          )
+        );
+        ok = ok && (
+          !("photoURL" in request.resource.data) || request.resource.data.photoURL == null || (
+            request.resource.data.photoURL is string && request.resource.data.photoURL.matches('^https?://.*')
+          )
+        );
+        return ok;
+      }
+
+      // Owner or admin can write public profile
+      allow create, update: if (isOwner(uid) || isAdmin()) && validPublicProfile();
+      allow delete: if isAdmin();
+    }
+
+    // COMMENTS COLLECTION (future-proofing)
+    match /comments/{id} {
+      allow read: if true; // public readable
+      allow create: if isAuthenticated();
+      allow update, delete: if isOwner(resource.data.authorUid) || isModerator();
+
+      function validComment() {
+        return request.resource.data.authorUid is string && request.resource.data.createdAt is timestamp;
+      }
+      allow create, update: if validComment();
+    }
+  }
+}

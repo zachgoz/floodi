@@ -18,7 +18,7 @@ import { useAuth } from 'src/contexts/AuthContext';
 import { isValidEmail, isValidPassword, getRedirectFromSearch, formatFirebaseAuthError } from 'src/utils/auth';
 
 const Login: React.FC = () => {
-  const { login, user, signInAnonymously } = useAuth();
+  const { login, user, isAnonymous, signInAnonymously } = useAuth();
   const history = useHistory();
   const location = useLocation();
   const [email, setEmail] = useState('');
@@ -29,10 +29,10 @@ const Login: React.FC = () => {
   const redirectTo = useMemo(() => getRedirectFromSearch(location.search, '/tab2'), [location.search]);
 
   useEffect(() => {
-    if (user) {
+    if (user && !isAnonymous) {
       history.replace(redirectTo);
     }
-  }, [user, history, redirectTo]);
+  }, [user, isAnonymous, history, redirectTo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +41,7 @@ const Login: React.FC = () => {
       return;
     }
     if (!isValidPassword(password)) {
-      setErrorMsg('Password must be at least 6 characters.');
+      setErrorMsg('Password must be greater than 6 characters.');
       return;
     }
     try {
@@ -96,7 +96,7 @@ const Login: React.FC = () => {
               onClick={async () => {
                 try {
                   setLoading(true);
-                  await signInAnonymously();
+                  if (!user) { await signInAnonymously(); }
                   history.replace(redirectTo);
                 } catch (err: unknown) {
                   setErrorMsg(formatFirebaseAuthError(err).message);

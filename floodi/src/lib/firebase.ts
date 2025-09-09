@@ -1,10 +1,16 @@
 /**
- * Firebase initialization and Auth configuration.
+ * Firebase initialization and configuration (Auth + Firestore).
  *
  * - Reads config from Vite env vars
  * - Initializes the Firebase app once
  * - Exports the `auth` instance configured with robust persistence fallbacks
+ * - Exports the `db` Firestore instance for data access
  * - Supports anonymous auth (must be enabled in Firebase Console)
+ *
+ * Firestore usage notes:
+ * - Import `db` and use Firestore SDK helpers (e.g., `doc`, `getDoc`, `setDoc`).
+ * - Prefer serverTimestamp() for createdAt/updatedAt fields when writing.
+ * - Keep data access logic in service modules (e.g., src/lib/userService.ts).
  */
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import {
@@ -15,6 +21,7 @@ import {
   inMemoryPersistence,
   type Auth,
 } from 'firebase/auth';
+import { getFirestore, type Firestore } from 'firebase/firestore';
 
 type FirebaseConfig = {
   apiKey: string;
@@ -66,9 +73,18 @@ export const auth: Auth = initializeAuth(app, {
   ],
 });
 
+/** Firestore database instance */
+export const db: Firestore = getFirestore(app);
+
 /**
  * Usage:
  * - Import `auth` and pass to Firebase Auth functions
+ * - Import `db` and compose Firestore calls:
+ *   ```ts
+ *   import { db } from 'src/lib/firebase';
+ *   import { doc, getDoc } from 'firebase/firestore';
+ *   const snap = await getDoc(doc(db, 'users', uid));
+ *   ```
  * - Ensure Anonymous authentication is enabled in Firebase Console to
  *   allow `signInAnonymously(auth)` from the client.
  */

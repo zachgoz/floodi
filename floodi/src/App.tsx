@@ -27,7 +27,8 @@ import React from 'react';
 import Tab2 from './pages/Tab2';
 import Tab3 from './pages/Tab3';
 import { Login, Register, ResetPassword, Profile } from 'src/pages/auth';
-import { PrivateRoute } from 'src/components/routing';
+import { PrivateRoute, AdminRoute } from 'src/components/routing';
+import { UserRoleManager } from 'src/components/admin';
 import { useAuth } from 'src/contexts/AuthContext';
 
 /* Core CSS required for Ionic components to work properly */
@@ -166,6 +167,10 @@ const App: React.FC = () => (
           <PrivateRoute exact path="/profile" requireAuth={false}>
             <Profile />
           </PrivateRoute>
+          {/* Admin user management route - admin only */}
+          <AdminRoute exact path="/admin/users" redirectTo="/profile">
+            <UserRoleManager />
+          </AdminRoute>
           {/* Root route with conditional intro/main app logic */}
           <Route exact path="/">
             <InitialRoute />

@@ -6,6 +6,30 @@ import { vi } from 'vitest';
 vi.mock('src/lib/firebase', () => {
   return {
     auth: { currentUser: null } as unknown,
+    db: {},
+  };
+});
+
+// Stub Firestore-backed user service to avoid touching real Firestore in these tests
+vi.mock('src/lib/userService', () => {
+  return {
+    touchLastLogin: vi.fn(async () => {}),
+    getUserProfile: vi.fn(async (_uid: string) => null),
+    getUserPermissions: vi.fn(async (_uid: string) => null),
+    ensureUserProfile: vi.fn(async (_uid: string, _data: any) => ({
+      uid: _uid,
+      email: _data.email ?? null,
+      displayName: _data.displayName ?? null,
+      photoURL: _data.photoURL ?? null,
+      role: 'user',
+      createdAt: { seconds: 0 } as any,
+      updatedAt: { seconds: 0 } as any,
+      lastLoginAt: null,
+      isActive: true,
+    })),
+    updateUserProfile: vi.fn(async () => {}),
+    updateUserRole: vi.fn(async () => {}),
+    createUserProfile: vi.fn(async () => {}),
   };
 });
 

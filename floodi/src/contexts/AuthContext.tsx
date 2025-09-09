@@ -12,6 +12,10 @@ import {
   EmailAuthProvider,
 } from 'firebase/auth';
 import { auth } from 'src/lib/firebase';
+import type { UserProfile } from 'src/types/user';
+import type { UserPermissions } from 'src/types/user';
+import { createUserProfile as createProfile, ensureUserProfile, getUserProfile as fetchProfile, updateUserRole as changeUserRole, getUserPermissions as fetchPermissions, touchLastLogin, updateUserProfile as persistUserProfile } from 'src/lib/userService';
+import { getDefaultRoleForUser } from 'src/utils/permissions';
 import type {
   AuthError,
   AuthState,
@@ -37,6 +41,16 @@ export interface AuthContextType extends AuthState {
     displayName?: string,
     photoURL?: string
   ) => Promise<void>;
+  /** Firestore-backed profile for the current user, if loaded */
+  userProfile: UserProfile | null;
+  /** Permission set derived from the user's role */
+  userPermissions: UserPermissions | null;
+  /** Refetch the profile and permissions */
+  refreshUserProfile: () => Promise<void>;
+  /** Admin-only: update a target user's role */
+  updateUserRole: (uid: string, newRole: UserProfile['role']) => Promise<void>;
+  /** Get current user permissions (shortcut) */
+  getCurrentUserPermissions: () => UserPermissions | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,14 +60,32 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<AuthError | null>(null);
   const isAnonymous = !!user?.isAnonymous;
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
     let mounted = true;
     try {
-      unsub = onAuthStateChanged(auth, (u) => {
+      unsub = onAuthStateChanged(auth, async (u) => {
         if (!mounted) return;
         setUser(u);
+        if (u) {
+          try {
+            // Touch lastLogin and ensure profile exists
+            await touchLastLogin(u.uid).catch(() => undefined);
+            const profile = await fetchProfile(u.uid);
+            setUserProfile(profile);
+            const perms = await fetchPermissions(u.uid);
+            setUserPermissions(perms);
+          } catch (err) {
+            // Non-fatal; keep auth but surface error
+            setError({ code: 'profile/load-failed', message: (err as { message?: string } | null)?.message || 'Failed to load profile' });
+          }
+        } else {
+          setUserProfile(null);
+          setUserPermissions(null);
+        }
         setLoading(false);
       });
     } catch (e: unknown) {
@@ -70,7 +102,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const login = async (email: string, password: string) => {
     setError(null);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      // Ensure profile and permissions are refreshed after login
+      await touchLastLogin(cred.user.uid).catch(() => undefined);
+      await refreshUserProfile();
     } catch (e: unknown) {
       setError(formatFirebaseAuthError(e));
       throw e;
@@ -93,6 +128,13 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         });
       }
       setUser(cred.user);
+      // Ensure Firestore profile exists/updated (idempotent)
+      await ensureUserProfile(cred.user.uid, {
+        email: cred.user.email ?? null,
+        displayName: cred.user.displayName ?? null,
+        photoURL: cred.user.photoURL ?? null,
+      }, { isAnonymous: false });
+      await refreshUserProfile();
     } catch (e: unknown) {
       setError(formatFirebaseAuthError(e));
       throw e;
@@ -131,9 +173,15 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         displayName: data.displayName,
         photoURL: data.photoURL,
       });
+      // Persist to Firestore profile as well
+      await persistUserProfile(auth.currentUser.uid, {
+        displayName: data.displayName,
+        photoURL: data.photoURL,
+      });
       // Ensure latest profile fields are reflected
       await auth.currentUser?.reload();
       setUser(auth.currentUser);
+      await refreshUserProfile();
     } catch (e: unknown) {
       setError(formatFirebaseAuthError(e));
       throw e;
@@ -143,7 +191,15 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const signInAnon = async () => {
     setError(null);
     try {
-      await signInAnonymously(auth);
+      const { user: u } = await signInAnonymously(auth);
+      // Ensure an anonymous profile exists (with role anonymous)
+      await createProfile(u.uid, {
+        email: null,
+        displayName: u.displayName ?? null,
+        photoURL: u.photoURL ?? null,
+        role: getDefaultRoleForUser(true),
+      }, { isAnonymous: true }).catch(() => undefined);
+      await refreshUserProfile();
     } catch (e: unknown) {
       setError(formatFirebaseAuthError(e));
       throw e;
@@ -156,9 +212,15 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     displayName?: string,
     photoURL?: string
   ) => {
-    if (!auth.currentUser || !auth.currentUser.isAnonymous) {
-      // Fallback to regular register when there is no anonymous session
+    if (!auth.currentUser) {
+      // No current user session, fall back to register
       return register(email, password, displayName, photoURL);
+    }
+    if (!auth.currentUser.isAnonymous) {
+      // Prevent registering while already signed in with a non-anonymous account
+      const err = { code: 'auth/already-registered-user', message: 'Use profile/settings to manage accounts.' } as AuthError;
+      setError(err);
+      throw err;
     }
     setError(null);
     try {
@@ -171,11 +233,37 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         });
       }
       setUser(result.user);
+      // Ensure Firestore profile exists/updated (idempotent)
+      await ensureUserProfile(result.user.uid, {
+        email: result.user.email ?? null,
+        displayName: result.user.displayName ?? null,
+        photoURL: result.user.photoURL ?? null,
+      }, { isAnonymous: false }).catch(() => undefined);
+      await refreshUserProfile();
     } catch (e: unknown) {
       setError(formatFirebaseAuthError(e));
       throw e;
     }
   };
+
+  const refreshUserProfile = async () => {
+    if (!auth.currentUser) {
+      setUserProfile(null);
+      setUserPermissions(null);
+      return;
+    }
+    const profile = await fetchProfile(auth.currentUser.uid);
+    setUserProfile(profile);
+    const perms = profile ? await fetchPermissions(auth.currentUser.uid) : null;
+    setUserPermissions(perms);
+  };
+
+  const updateUserRole = async (uid: string, newRole: UserProfile['role']) => {
+    await changeUserRole(uid, newRole);
+    if (auth.currentUser?.uid === uid) await refreshUserProfile();
+  };
+
+  const getCurrentUserPermissions = (): UserPermissions | null => userPermissions;
 
   const value: AuthContextType = useMemo(
     () => ({
@@ -183,6 +271,8 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       loading,
       error,
       isAnonymous,
+      userProfile,
+      userPermissions,
       login,
       register,
       logout,
@@ -190,8 +280,11 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       updateUserProfile,
       signInAnonymously: signInAnon,
       convertAnonymousToRegistered,
+      refreshUserProfile,
+      updateUserRole,
+      getCurrentUserPermissions,
     }) as AuthContextType,
-    [user, loading, error, isAnonymous]
+    [user, loading, error, isAnonymous, userProfile, userPermissions]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
