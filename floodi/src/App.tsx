@@ -21,14 +21,16 @@ import {
   setupIonicReact
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import { ellipse, informationCircleOutline } from 'ionicons/icons';
+import { ellipse, informationCircleOutline, chatbubblesOutline } from 'ionicons/icons';
 import Intro from './pages/Intro';
 import React from 'react';
 import Tab2 from './pages/Tab2';
 import Tab3 from './pages/Tab3';
+import Tab4 from './pages/Tab4';
 import { Login, Register, ResetPassword, Profile } from 'src/pages/auth';
 import { PrivateRoute, AdminRoute } from 'src/components/routing';
 import { UserRoleManager } from 'src/components/admin';
+import { SimpleAdminBootstrap } from 'src/components/admin/SimpleAdminBootstrap';
 import { useAuth } from 'src/contexts/AuthContext';
 
 /* Core CSS required for Ionic components to work properly */
@@ -159,6 +161,10 @@ const App: React.FC = () => (
           <Route exact path="/tab2">
             <Tab2 />
           </Route>
+          {/* Dedicated Comments tab */}
+          <Route path="/tab4">
+            <Tab4 />
+          </Route>
           {/* App information and about page */}
           <Route path="/tab3">
             <Tab3 />
@@ -171,6 +177,10 @@ const App: React.FC = () => (
           <AdminRoute exact path="/admin/users" redirectTo="/profile">
             <UserRoleManager />
           </AdminRoute>
+          {/* Admin bootstrap route - for first-time admin setup */}
+          <PrivateRoute exact path="/admin/bootstrap" requireAuth={true}>
+            <SimpleAdminBootstrap />
+          </PrivateRoute>
           {/* Root route with conditional intro/main app logic */}
           <Route exact path="/">
             <InitialRoute />
@@ -183,6 +193,11 @@ const App: React.FC = () => (
           <IonTabButton tab="tab2" href="/tab2">
             <IonIcon aria-hidden="true" icon={ellipse} />
             <IonLabel>FloodCast</IonLabel>
+          </IonTabButton>
+          {/* Comments tab - standalone comment management */}
+          <IonTabButton tab="tab4" href="/tab4" aria-label="Comments">
+            <IonIcon aria-hidden="true" icon={chatbubblesOutline} />
+            <IonLabel>Comments</IonLabel>
           </IonTabButton>
           {/* About tab - app information and help */}
           <IonTabButton tab="tab3" href="/tab3">

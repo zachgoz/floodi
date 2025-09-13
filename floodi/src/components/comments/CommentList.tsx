@@ -1,21 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  IonContent,
-  IonHeader,
   IonInfiniteScroll,
   IonInfiniteScrollContent,
   IonItem,
   IonLabel,
   IonList,
   IonNote,
-  IonRefresher,
-  IonRefresherContent,
   IonSearchbar,
   IonSelect,
   IonSelectOption,
   IonSkeletonText,
-  IonTitle,
-  IonToolbar,
 } from '@ionic/react';
 import { CommentItem, CommentModel } from 'src/components/comments/CommentItem';
 import 'src/components/comments/styles/Comments.css';
@@ -26,10 +20,12 @@ export interface CommentListProps {
   error?: string;
   onRefresh?: () => Promise<void> | void;
   onLoadMore?: () => Promise<void> | void;
+  hasMore?: boolean;
   onEdit?: (c: CommentModel) => void;
   onDelete?: (c: CommentModel) => void;
   canEdit?: (c: CommentModel) => boolean;
   canDelete?: (c: CommentModel) => boolean;
+  fullScreen?: boolean;
 }
 
 export const CommentList: React.FC<CommentListProps> = ({
@@ -38,13 +34,14 @@ export const CommentList: React.FC<CommentListProps> = ({
   error,
   onRefresh,
   onLoadMore,
+  hasMore,
   onEdit,
   onDelete,
   canEdit,
   canDelete,
 }) => {
   const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<'newest' | 'oldest'>('newest');
+  const [sort, setSort] = useState<'newest' | 'oldest' | 'author' | 'station'>('newest');
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -56,6 +53,12 @@ export const CommentList: React.FC<CommentListProps> = ({
         )
       : comments;
     const sorted = [...base].sort((a, b) => {
+      if (sort === 'author') {
+        return (a.author.displayName || '').localeCompare(b.author.displayName || '');
+      }
+      if (sort === 'station') {
+        return (a.meta?.stationName || '').localeCompare(b.meta?.stationName || '');
+      }
       const ta = new Date(a.createdAt).getTime();
       const tb = new Date(b.createdAt).getTime();
       return sort === 'newest' ? tb - ta : ta - tb;
@@ -64,13 +67,7 @@ export const CommentList: React.FC<CommentListProps> = ({
   }, [comments, query, sort]);
 
   return (
-    <IonContent className="comments-list">
-      <IonHeader collapse="condense">
-        <IonToolbar>
-          <IonTitle size="large">Comments</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-
+    <div className="comments-list">
       <div className="comments-controls">
         <IonSearchbar value={query} onIonInput={(e) => setQuery((e.detail.value as string) ?? '')} />
         <IonItem lines="none" className="comments-sort">
@@ -78,6 +75,8 @@ export const CommentList: React.FC<CommentListProps> = ({
           <IonSelect value={sort} onIonChange={(e) => setSort(e.detail.value)}>
             <IonSelectOption value="newest">Newest first</IonSelectOption>
             <IonSelectOption value="oldest">Oldest first</IonSelectOption>
+            <IonSelectOption value="author">Author</IonSelectOption>
+            <IonSelectOption value="station">Station</IonSelectOption>
           </IonSelect>
         </IonItem>
       </div>
@@ -109,6 +108,7 @@ export const CommentList: React.FC<CommentListProps> = ({
 
       {onLoadMore && (
         <IonInfiniteScroll
+          disabled={!hasMore}
           onIonInfinite={async (ev) => {
             try {
               await onLoadMore();
@@ -122,22 +122,7 @@ export const CommentList: React.FC<CommentListProps> = ({
           <IonInfiniteScrollContent loadingText="Loading more comments..." />
         </IonInfiniteScroll>
       )}
-
-      {onRefresh && (
-        <IonRefresher
-          slot="fixed"
-          onIonRefresh={async (ev) => {
-            try {
-              await onRefresh();
-            } finally {
-              ev.detail.complete();
-            }
-          }}
-        >
-          <IonRefresherContent />
-        </IonRefresher>
-      )}
-    </IonContent>
+    </div>
   );
 };
 

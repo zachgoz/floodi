@@ -76,7 +76,7 @@ function clampToDomain(range: TimeRange, domain?: TimeRange): TimeRange | undefi
 }
 
 export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({ initialRange, chartDomain, onChange }) => {
-  const [mode, setMode] = useState<TimeRangeMode>('current-view');
+  const [mode, setMode] = useState<TimeRangeMode>(chartDomain ? 'current-view' : 'custom-range');
   const [eventType, setEventType] = useState<CommentEventType>('normal-tide');
 
   // custom-range state
@@ -97,24 +97,64 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({ initialRange, 
         return { ...chartDomain };
       }
       if (mode === 'custom-range' && customStart && customEnd) {
-        const s = new Date(customStart).toISOString();
-        const e = new Date(customEnd).toISOString();
-        return s <= e ? { start: s, end: e } : { start: e, end: s };
+        const s = new Date(customStart);
+        const e = new Date(customEnd);
+        // Validate dates before using them
+        if (isNaN(s.getTime()) || isNaN(e.getTime())) {
+          // Return default range if dates are invalid
+          const now = new Date();
+          const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+          return { start: oneHourAgo.toISOString(), end: now.toISOString() };
+        }
+        return s <= e ? { start: s.toISOString(), end: e.toISOString() } : { start: e.toISOString(), end: s.toISOString() };
       }
       if (mode === 'around-point' && center) {
-        const c = new Date(center).getTime();
+        const c = new Date(center);
+        if (isNaN(c.getTime())) {
+          // Use current time if center is invalid
+          const now = new Date();
+          const half = (durationMinutes * 60 * 1000) / 2;
+          return { start: new Date(now.getTime() - half).toISOString(), end: new Date(now.getTime() + half).toISOString() };
+        }
         const half = (durationMinutes * 60 * 1000) / 2;
-        return { start: new Date(c - half).toISOString(), end: new Date(c + half).toISOString() };
+        return { start: new Date(c.getTime() - half).toISOString(), end: new Date(c.getTime() + half).toISOString() };
       }
       if (mode === 'preset-durations') {
         const preset = PRESETS.find((p) => p.key === presetKey) ?? PRESETS[1];
-        const c = new Date(center).getTime();
+        const c = new Date(center);
+        if (isNaN(c.getTime())) {
+          // Use current time if center is invalid
+          const now = new Date();
+          const half = (preset.minutes * 60 * 1000) / 2;
+          return { start: new Date(now.getTime() - half).toISOString(), end: new Date(now.getTime() + half).toISOString() };
+        }
         const half = (preset.minutes * 60 * 1000) / 2;
-        return { start: new Date(c - half).toISOString(), end: new Date(c + half).toISOString() };
+        return { start: new Date(c.getTime() - half).toISOString(), end: new Date(c.getTime() + half).toISOString() };
       }
-      return initialRange ?? chartDomain;
+      // If no valid range, provide a default 1-hour range around now
+      if (!initialRange && !chartDomain) {
+        const now = new Date();
+        const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+        return { start: oneHourAgo.toISOString(), end: now.toISOString() };
+      }
+      // Validate initialRange and chartDomain before returning them
+      const fallbackRange = initialRange ?? chartDomain;
+      if (fallbackRange) {
+        const s = new Date(fallbackRange.start);
+        const e = new Date(fallbackRange.end);
+        if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+          return fallbackRange;
+        }
+      }
+      // Final fallback if everything else fails
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      return { start: oneHourAgo.toISOString(), end: now.toISOString() };
     } catch {
-      return undefined;
+      // Final safety net - return a valid default range
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      return { start: oneHourAgo.toISOString(), end: now.toISOString() };
     }
   }, [mode, chartDomain, customStart, customEnd, center, durationMinutes, presetKey, initialRange]);
 
@@ -124,18 +164,14 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({ initialRange, 
     (range?: TimeRange) => {
       if (!range) return 'Please select a valid time range.';
       try {
-        const result = validateChartTimeRange(range, chartDomain);
-        if (result && typeof result === 'object' && 'valid' in result) {
-          return (result as any).valid ? '' : (result as any).message ?? 'Invalid time range.';
-        }
-        // If helper returns boolean
-        if (result === true) return '';
-        return typeof result === 'string' ? result : 'Invalid time range.';
+        const commentRange = { startTime: range.start, endTime: range.end } as any;
+        const result = validateChartTimeRange({} as any, commentRange); // _config is unused
+        return result.ok ? '' : result.errors.join(', ') || 'Invalid time range.';
       } catch {
-        return '';
+        return 'Invalid time range.';
       }
     },
-    [chartDomain]
+    []
   );
 
   useEffect(() => {
@@ -154,11 +190,41 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({ initialRange, 
   const preview = useMemo(() => {
     if (!computedRange) return '';
     try {
-      return formatTimeRangeForDisplay(computedRange);
+      // Validate the computed range first
+      const startStr = computedRange.start;
+      const endStr = computedRange.end;
+      if (!startStr || !endStr) return 'No time range selected';
+      
+      const s = new Date(startStr);
+      const e = new Date(endStr);
+      
+      // Check if dates are valid
+      if (isNaN(s.getTime()) || isNaN(e.getTime())) {
+        return 'Invalid time range';
+      }
+      
+      // Try to use formatTimeRangeForDisplay utility
+      try {
+        // Convert TimeRange to CommentTimeRange format
+        const commentTimeRange = {
+          startTime: computedRange.start,
+          endTime: computedRange.end
+        };
+        const formatted = formatTimeRangeForDisplay(commentTimeRange);
+        if (formatted && typeof formatted === 'object' && formatted.label) {
+          return formatted.label;
+        }
+        if (formatted && typeof formatted === 'object' && formatted.start && formatted.end) {
+          return `${formatted.start} – ${formatted.end}`;
+        }
+      } catch {
+        // Fallback to manual formatting if utility fails
+      }
+      
+      // Manual fallback formatting
+      return `${s.toLocaleString()} – ${e.toLocaleString()}`;
     } catch {
-      const s = new Date(computedRange.start).toLocaleString();
-      const e = new Date(computedRange.end).toLocaleString();
-      return `${s} – ${e}`;
+      return 'Invalid time range';
     }
   }, [computedRange]);
 

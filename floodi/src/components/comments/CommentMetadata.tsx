@@ -28,7 +28,23 @@ export const CommentMetadata: React.FC<CommentMetadataProps> = ({ metadata, mode
   const rangeLabel = useMemo(() => {
     if (!metadata.range) return '';
     try {
-      return formatTimeRangeForDisplay(metadata.range);
+      // Convert to CommentTimeRange format
+      const commentTimeRange = {
+        startTime: metadata.range.start,
+        endTime: metadata.range.end
+      };
+      const formatted = formatTimeRangeForDisplay(commentTimeRange);
+      if (typeof formatted === 'string') {
+        return formatted;
+      }
+      if (typeof formatted === 'object' && formatted.label) {
+        return formatted.label;
+      }
+      if (typeof formatted === 'object' && formatted.start && formatted.end) {
+        return `${formatted.start} – ${formatted.end}`;
+      }
+      // Fallback to manual formatting
+      return `${new Date(metadata.range.start).toLocaleString()} – ${new Date(metadata.range.end).toLocaleString()}`;
     } catch {
       return `${new Date(metadata.range.start).toLocaleString()} – ${new Date(metadata.range.end).toLocaleString()}`;
     }

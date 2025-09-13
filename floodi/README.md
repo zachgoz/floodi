@@ -35,6 +35,25 @@ Required env vars (from Firebase Console > Project Settings > General > Your app
 - Optional route protection and redirect to intended page
 - User menu integrated into the Settings modal
 
+## Comments Tab (New)
+
+FloodCast now includes a dedicated Comments tab offering a full-screen interface for creating, browsing, and moderating comments across stations.
+
+- Dedicated tab in the bottom navigation (chatbubbles icon)
+- Station-specific browsing with integrated station selector
+- Advanced filters: search, author, date range, and data context (observed/predicted/adjusted)
+- Two views: List and Timeline, with quick tab switching and responsive layout
+- Real-time updates backed by Firestore listeners
+- Infinite scroll and pull‑to‑refresh
+- Role-based actions: create/edit/delete own comments; moderators/admins can manage all
+- Export current view (JSON) for admins and power users
+
+Tips:
+- Use the station selector on the Comments tab header to switch between stations
+- Use the search input to find comments by content, author, or station
+- Toggle data context chips to filter by observed/predicted/adjusted data references
+- The timeline view supports zoom levels (1h–30d)
+
 ## Roles and Permissions
 
 - anonymous: read-only, cannot create content

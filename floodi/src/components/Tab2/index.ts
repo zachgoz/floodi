@@ -19,6 +19,8 @@ export { useChartData } from './hooks/useChartData';
 export { useSettingsStorage } from './hooks/useSettingsStorage';
 export { useStationSearch } from './hooks/useStationSearch';
 export { useChartInteraction } from './hooks/useChartInteraction';
+export { useChartComments } from './hooks/useChartComments';
+export { ChartCommentModal } from './ChartCommentModal';
 
 // Type Definitions
 export type {

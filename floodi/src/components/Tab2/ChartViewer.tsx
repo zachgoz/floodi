@@ -1,6 +1,10 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import type { Point, ChartConfig } from './types';
 import { useChartInteraction, formatTooltipTime } from './hooks/useChartInteraction';
+import { isCommentTimeRange, type Comment, type CommentTimeRange } from 'src/types/comment';
+import { getTimeRangeFromChartSelection } from 'src/utils/timeRangeHelpers';
+import { IonBadge, IonButton, IonButtons, IonIcon } from '@ionic/react';
+import { addCircleOutline, chatbubbleOutline, eye, eyeOff } from 'ionicons/icons';
 
 /**
  * Props for the ChartViewer component
@@ -32,6 +36,23 @@ interface ChartViewerProps {
   config?: Partial<ChartConfig>;
   /** Callback for chart interactions */
   onChartInteraction?: (point: Point | null) => void;
+  /** Toggle comment overlay visibility */
+  showComments?: boolean;
+  /** Comments to render as markers on the timeline */
+  comments?: Comment[];
+  /** Fire when hovering a comment marker */
+  onCommentHover?: (comment: Comment | null) => void;
+  /** Fire when clicking a comment marker */
+  onCommentClick?: (comment: Comment) => void;
+  /** Fire when a time range is selected for comment creation */
+  onTimeRangeSelect?: (range: CommentTimeRange) => void;
+  /** Enable time range selection mode for comment creation */
+  commentCreationMode?: boolean;
+  /** Handlers for in-component controls (optional) */
+  onToggleComments?: () => void;
+  onToggleCreationMode?: () => void;
+  /** Count for display in the overlay controls */
+  commentCount?: number;
 }
 
 /**
@@ -114,12 +135,27 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   timezone,
   config = {},
   onChartInteraction,
+  // comment integration (optional)
+  showComments = false,
+  comments = [],
+  onCommentHover,
+  onCommentClick,
+  onTimeRangeSelect,
+  commentCreationMode = false,
+  onToggleComments,
+  onToggleCreationMode,
+  commentCount,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 900, h: 420 });
 
-  const { hoverT, setHoverT, calculateTooltipData } = useChartInteraction();
+  const { hoverT, setHoverT, calculateTooltipData, calculateCommentTooltipData } = useChartInteraction();
+
+  // Selection state for creating a comment time range
+  const [isSelecting, setIsSelecting] = useState<boolean>(false);
+  const [selectionStart, setSelectionStart] = useState<Date | null>(null);
+  const [selectionEnd, setSelectionEnd] = useState<Date | null>(null);
 
   // Handle responsive resizing
   useEffect(() => {
@@ -243,19 +279,27 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   }, [adjustedPoints, threshold, xOf, domainEnd]);
 
   // Mouse/pointer interaction
-  const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+  const computeTimeAtPointer = (event: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
-    if (!svg) return;
-
+    if (!svg) return null;
     const rect = svg.getBoundingClientRect();
     const pixelX = event.clientX - rect.left;
     const fraction = Math.max(0, Math.min(1, (pixelX - margins.l * (rect.width / size.w)) / (innerW * (rect.width / size.w))));
     const timeMs = t0 + fraction * (t1 - t0);
-    const hoverTime = new Date(timeMs);
+    return new Date(timeMs);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    const hoverTime = computeTimeAtPointer(event);
+    if (!hoverTime) return;
 
     setHoverT(hoverTime);
+    if (commentCreationMode && isSelecting) {
+      setSelectionEnd(hoverTime);
+    }
     if (onChartInteraction) {
       // Find nearest point for callback
+      const timeMs = hoverTime.getTime();
       const nearestObs = observedPoints.reduce((best, point) => {
         const dt = Math.abs(point.t.getTime() - timeMs);
         const bestDt = best ? Math.abs(best.t.getTime() - timeMs) : Infinity;
@@ -270,6 +314,36 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     if (onChartInteraction) {
       onChartInteraction(null);
     }
+    if (isSelecting) {
+      setIsSelecting(false);
+      setSelectionStart(null);
+      setSelectionEnd(null);
+    }
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!commentCreationMode) return;
+    const t = computeTimeAtPointer(event);
+    if (!t) return;
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch {}
+    setIsSelecting(true);
+    setSelectionStart(t);
+    setSelectionEnd(t);
+  };
+
+  const handlePointerUp = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!commentCreationMode || !isSelecting) return;
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch {}
+    const t = computeTimeAtPointer(event);
+    if (!t || !selectionStart) {
+      setIsSelecting(false);
+      return;
+    }
+    const range = getTimeRangeFromChartSelection({ start: selectionStart, end: t });
+    onTimeRangeSelect?.(range);
+    setIsSelecting(false);
+    setSelectionStart(null);
+    setSelectionEnd(null);
   };
 
   // Tooltip data calculation
@@ -278,8 +352,14 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     return calculateTooltipData(hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, threshold, showDelta);
   }, [hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, threshold, showDelta, calculateTooltipData]);
 
+  const handleContainerKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const k = e.key.toLowerCase();
+    if (k === 'c') onToggleComments?.();
+    if (k === 'n') onToggleCreationMode?.();
+  };
+
   return (
-    <div className="chart-viewer" ref={containerRef}>
+    <div className="chart-viewer" ref={containerRef} onKeyDown={handleContainerKeyDown} tabIndex={0} aria-keyshortcuts="C N">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${size.w} ${size.h}`}
@@ -289,6 +369,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         aria-label="Water level chart showing observed, predicted, and adjusted predictions over time"
         onPointerMove={handlePointerMove}
         onPointerLeave={handlePointerLeave}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
         // Allow vertical page scroll while interacting with the chart on mobile
         style={{ touchAction: 'pan-y pinch-zoom', cursor: 'crosshair' }}
       >
@@ -374,6 +456,101 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             opacity={0.9}
             points={buildPolyline(predictedPoints, xOf, yOf)} 
           />
+        )}
+
+        {/* Selection overlay for comment creation */}
+        {commentCreationMode && isSelecting && selectionStart && selectionEnd && (
+          (() => {
+            const x0 = xOf(selectionStart);
+            const x1p = xOf(selectionEnd);
+            const x = Math.min(x0, x1p);
+            const w = Math.max(1, Math.abs(x1p - x0));
+            return (
+              <rect
+                className="chart-selection-rect"
+                x={x}
+                y={margins.t}
+                width={w}
+                height={innerH}
+                fill="rgba(25,118,210,0.15)"
+                stroke="#1976d2"
+                strokeDasharray="4 3"
+              />
+            );
+          })()
+        )}
+
+        {/* Comment markers */}
+        {showComments && comments.length > 0 && (
+          <g aria-label="Comment markers" className="chart-comment-markers">
+            {(() => {
+              // cluster by x position (bins)
+              const bins = new Map<number, Comment[]>();
+              const binSize = 14; // px
+              for (const c of comments) {
+                const tr = c.metadata?.timeRange;
+                if (!isCommentTimeRange(tr)) continue;
+                const s = Date.parse(tr.startTime);
+                const e = Date.parse(tr.endTime);
+                if (!Number.isFinite(s) || !Number.isFinite(e) || s > e) continue;
+                const mid = new Date((s + e) / 2);
+                const x = xOf(mid);
+                const bin = Math.round(x / binSize);
+                const arr = bins.get(bin) || [];
+                arr.push(c);
+                bins.set(bin, arr);
+              }
+
+              const colorFor = (evt?: string) => evt === 'threshold-crossing' ? '#e74c3c' : evt === 'surge-event' ? '#f39c12' : '#3498db';
+              const y = margins.t + 6; // top area
+
+              const els: JSX.Element[] = [];
+              let idx = 0;
+              bins.forEach((arr, bin) => {
+                const x = bin * binSize;
+                if (arr.length === 1) {
+                  const c = arr[0];
+                  const tr = c.metadata?.timeRange;
+                  if (!isCommentTimeRange(tr)) return;
+                  const s = Date.parse(tr.startTime);
+                  const e = Date.parse(tr.endTime);
+                  if (!Number.isFinite(s) || !Number.isFinite(e) || s > e) return;
+                  const mid = new Date((s + e) / 2);
+                  const cx = xOf(mid);
+                  const color = colorFor(tr.eventType);
+                  els.push(
+                    <g key={`cm-${c.id}-${idx++}`} transform={`translate(${cx}, ${y})`}>
+                      <circle
+                        className="comment-marker"
+                        r={5}
+                        fill={color}
+                        stroke="#000"
+                        role="button"
+                        aria-label={`Comment ${c.authorDisplayName || 'unknown'}: ${c.content?.replace(/<[^>]+>/g,'').slice(0,40)}...`}
+                        tabIndex={0}
+                        onMouseEnter={() => onCommentHover?.(c)}
+                        onMouseLeave={() => onCommentHover?.(null)}
+                        onClick={() => onCommentClick?.(c)}
+                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onCommentClick?.(c)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </g>
+                  );
+                } else {
+                  // cluster badge
+                  const cx = Math.max(margins.l + 6, Math.min(margins.l + innerW - 6, x));
+                  els.push(
+                    <g key={`cluster-${bin}-${idx++}`} transform={`translate(${cx}, ${y})`}>
+                      <circle r={8} fill="#7f8c8d" stroke="#000" />
+                      <text x={-3.5} y={4} fontSize="10" fill="#fff">{arr.length}</text>
+                    </g>
+                  );
+                }
+              });
+
+              return els;
+            })()}
+          </g>
         )}
 
         {/* Adjusted predictions (segmented by threshold, dashed) */}
@@ -488,7 +665,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         )}
 
         {/* Interactive tooltip */}
-        {tooltipData && hoverT && (
+        {(tooltipData || (showComments && comments.length > 0)) && hoverT && (
           <g>
             {/* Crosshair */}
             <line 
@@ -501,7 +678,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             />
 
             {/* Data point markers */}
-            {tooltipData.rows.map((row, i) => (
+            {tooltipData?.rows?.map((row, i) => (
               row.point && (
                 <circle 
                   key={`marker-${i}`}
@@ -518,9 +695,12 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             {(() => {
               const baseX = xOf(hoverT) + 8;
               const baseY = margins.t + 8;
-              const boxWidth = 170;
+              const boxWidth = 220;
               const lineHeight = 14;
-              const boxHeight = (tooltipData.rows.length + 1) * lineHeight + 8;
+              const rowsCount = tooltipData ? tooltipData.rows.length : 0;
+              const commentTip = showComments ? calculateCommentTooltipData(hoverT, comments, { max: 3 }) : null;
+              const commentRows = commentTip ? Math.min(3, commentTip.preview.length) + 1 : 0;
+              const boxHeight = (rowsCount + 1 + commentRows) * lineHeight + 12;
               const adjustedX = Math.min(baseX, margins.l + innerW - boxWidth - 4);
 
               return (
@@ -543,7 +723,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                   >
                     {formatTooltipTime(hoverT, timezone)} {timezone === 'gmt' ? 'GMT' : ''}
                   </text>
-                  {tooltipData.rows.map((row, i) => (
+                  {tooltipData && tooltipData.rows.map((row, i) => (
                     <g key={`tooltip-row-${i}`}>
                       <line
                         x1={adjustedX + 6}
@@ -564,12 +744,40 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                       </text>
                     </g>
                   ))}
+                  {commentTip && (
+                    <>
+                      <line x1={adjustedX + 6} x2={adjustedX + boxWidth - 6} y1={baseY + 30 + rowsCount * lineHeight - 8} y2={baseY + 30 + rowsCount * lineHeight - 8} stroke="var(--chart-grid)" />
+                      <text x={adjustedX + 8} y={baseY + 30 + rowsCount * lineHeight} fill="var(--chart-label-text)" fontSize="12">
+                        Comments: {commentTip.total}
+                      </text>
+                      {commentTip.preview.map((c, j) => (
+                        <text key={`ctip-${c.id}`} x={adjustedX + 8} y={baseY + 30 + (rowsCount + 1 + j) * lineHeight} fill="var(--chart-axis-text)" fontSize="11">
+                          {c.author}: {c.contentPreview}
+                        </text>
+                      ))}
+                    </>
+                  )}
                 </g>
               );
             })()}
           </g>
         )}
       </svg>
+      {/* Floating controls */}
+      <div className="chart-comment-controls" role="group" aria-label="Comment overlay controls">
+        <IonButtons>
+          <IonButton onClick={onToggleComments} aria-label={showComments ? 'Hide comments (C)' : 'Show comments (C)'}>
+            <IonIcon icon={showComments ? eye : eyeOff} />
+            {typeof commentCount === 'number' && <IonBadge color="medium" style={{ marginLeft: 6 }}>{commentCount}</IonBadge>}
+          </IonButton>
+          <IonButton onClick={onToggleCreationMode} aria-label={commentCreationMode ? 'Disable creation mode (N)' : 'Enable creation mode (N)'} color={commentCreationMode ? 'primary' : undefined}>
+            <IonIcon icon={addCircleOutline} />
+          </IonButton>
+          <IonButton disabled aria-label="Comments">
+            <IonIcon icon={chatbubbleOutline} />
+          </IonButton>
+        </IonButtons>
+      </div>
     </div>
   );
 };

@@ -87,6 +87,31 @@
   box-shadow: var(--floodcast-shadow-sm);
 }
 
+/* Comment overlay controls */
+.chart-comment-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+
+/* Comment markers */
+.chart-comment-markers .comment-marker {
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.chart-comment-markers .comment-marker:hover,
+.chart-comment-markers .comment-marker:focus {
+  transform: scale(1.2);
+  outline: none;
+}
+
+/* Selection overlay */
+.chart-selection-rect {
+  pointer-events: none;
+}
+
+/* Tooltip comment section styles are inline via CSS variables for consistency */
+
 /* ==========================================================================
    Loading and Error States
    ========================================================================== */

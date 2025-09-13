@@ -72,9 +72,16 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         setUser(u);
         if (u) {
           try {
-            // Touch lastLogin and ensure profile exists
+            // Ensure user profile exists for all authenticated users
+            const profile = await ensureUserProfile(u.uid, {
+              email: u.email ?? null,
+              displayName: u.displayName ?? null,
+              photoURL: u.photoURL ?? null,
+            }, { isAnonymous: !!u.isAnonymous });
+            
+            // Touch lastLogin
             await touchLastLogin(u.uid).catch(() => undefined);
-            const profile = await fetchProfile(u.uid);
+            
             setUserProfile(profile);
             const perms = await fetchPermissions(u.uid);
             setUserPermissions(perms);

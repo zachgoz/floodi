@@ -26,33 +26,23 @@ service cloud.firestore {
       // Validate structure and optional fields
       function validUserData() {
         // required and enum fields
-        let ok = request.resource.data.uid == uid &&
-                 request.resource.data.role in ['anonymous','user','moderator','admin'] &&
-                 request.resource.data.isActive is bool &&
-                 request.resource.data.createdAt is timestamp &&
-                 request.resource.data.updatedAt is timestamp;
-
-        // optional primitives with constraints
-        ok = ok && (
-          !("email" in request.resource.data) || request.resource.data.email == null || (
-            request.resource.data.email is string && request.resource.data.email.size() >= 3 && request.resource.data.email.size() <= 254 &&
-            request.resource.data.email.matches('^.+@.+\\..+$')
-          )
-        );
-        ok = ok && (
-          !("displayName" in request.resource.data) || request.resource.data.displayName == null || (
-            request.resource.data.displayName is string && request.resource.data.displayName.size() <= 50
-          )
-        );
-        ok = ok && (
-          !("photoURL" in request.resource.data) || request.resource.data.photoURL == null || (
-            request.resource.data.photoURL is string && request.resource.data.photoURL.matches('^https?://.*')
-          )
-        );
-        ok = ok && (
-          !("lastLoginAt" in request.resource.data) || request.resource.data.lastLoginAt == null || request.resource.data.lastLoginAt is timestamp
-        );
-        return ok;
+        return request.resource.data.uid == uid &&
+               request.resource.data.role in ['anonymous','user','moderator','admin'] &&
+               request.resource.data.isActive is bool &&
+               request.resource.data.createdAt is timestamp &&
+               request.resource.data.updatedAt is timestamp &&
+               // optional primitives with constraints
+               (!("email" in request.resource.data) || request.resource.data.email == null || (
+                 request.resource.data.email is string && request.resource.data.email.size() >= 3 && request.resource.data.email.size() <= 254 &&
+                 request.resource.data.email.matches('^.+@.+\\..+$')
+               )) &&
+               (!("displayName" in request.resource.data) || request.resource.data.displayName == null || (
+                 request.resource.data.displayName is string && request.resource.data.displayName.size() <= 50
+               )) &&
+               (!("photoURL" in request.resource.data) || request.resource.data.photoURL == null || (
+                 request.resource.data.photoURL is string && request.resource.data.photoURL.matches('^https?://.*')
+               )) &&
+               (!("lastLoginAt" in request.resource.data) || request.resource.data.lastLoginAt == null || request.resource.data.lastLoginAt is timestamp);
       }
 
       // Create requires owner AND valid data
@@ -75,20 +65,15 @@ service cloud.firestore {
 
       // Basic validation
       function validPublicProfile() {
-        let ok = request.resource.data.uid == uid &&
-                 request.resource.data.createdAt is timestamp &&
-                 request.resource.data.updatedAt is timestamp;
-        ok = ok && (
-          !("displayName" in request.resource.data) || request.resource.data.displayName == null || (
-            request.resource.data.displayName is string && request.resource.data.displayName.size() <= 50
-          )
-        );
-        ok = ok && (
-          !("photoURL" in request.resource.data) || request.resource.data.photoURL == null || (
-            request.resource.data.photoURL is string && request.resource.data.photoURL.matches('^https?://.*')
-          )
-        );
-        return ok;
+        return request.resource.data.uid == uid &&
+               request.resource.data.createdAt is timestamp &&
+               request.resource.data.updatedAt is timestamp &&
+               (!("displayName" in request.resource.data) || request.resource.data.displayName == null || (
+                 request.resource.data.displayName is string && request.resource.data.displayName.size() <= 50
+               )) &&
+               (!("photoURL" in request.resource.data) || request.resource.data.photoURL == null || (
+                 request.resource.data.photoURL is string && request.resource.data.photoURL.matches('^https?://.*')
+               ));
       }
 
       // Owner or admin can write public profile
@@ -110,105 +95,49 @@ service cloud.firestore {
 
       // Enforce server time on create/update and immutability of createdAt after create
       function validTimestamps() {
-        let d = request.resource.data;
-        if (isCreate()) {
-          return d.createdAt == request.time && d.updatedAt == request.time;
-        }
-        if (isUpdate()) {
-          return d.createdAt == resource.data.createdAt && d.updatedAt == request.time;
-        }
-        return false;
+        return (isCreate() && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time) ||
+               (isUpdate() && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.updatedAt == request.time);
       }
 
       function validCommentMetadata() {
-        let m = request.resource.data.metadata;
-        if !(m is map) return false;
-        // Station
-        let ok = (m.station is map) && (m.station.id is string) && m.station.id.matches('^[0-9]{3,10}$') &&
-                 (m.station.name is string) && m.station.name.size() >= 1 && m.station.name.size() <= 100;
-        // Time range
-        ok = ok && (m.timeRange is map) && validIso(m.timeRange.startTime) && validIso(m.timeRange.endTime) &&
-                  (timestamp(m.timeRange.endTime) > timestamp(m.timeRange.startTime));
-        // Data context
-        let ctx = m.dataContext;
-        let ctxOk = false;
-        if (ctx is string) {
-          ctxOk = ctx in ['observed','predicted','adjusted'];
-        } else if (ctx is list) {
-          ctxOk = ctx.size() >= 1 && ctx.size() <= 3;
-          if (ctxOk) {
-            for (val in ctx) { if (!(val in ['observed','predicted','adjusted'])) { ctxOk = false; } }
-          }
-        }
-        ok = ok && ctxOk;
-        // Optional fields
-        ok = ok && (!("thresholdValue" in m) || m.thresholdValue == null || (m.thresholdValue is number));
-        ok = ok && (!("eventType" in m.timeRange) || m.timeRange.eventType == null || (m.timeRange.eventType is string && m.timeRange.eventType.size() <= 50));
-        ok = ok && (!("label" in m.timeRange) || m.timeRange.label == null || (m.timeRange.label is string && m.timeRange.label.size() <= 120));
-        return ok;
+        return request.resource.data.metadata is map &&
+               // Station validation
+               (request.resource.data.metadata.station is map) &&
+               (request.resource.data.metadata.station.id is string) &&
+               (request.resource.data.metadata.station.name is string) &&
+               // Time range validation
+               (request.resource.data.metadata.timeRange is map) &&
+               validIso(request.resource.data.metadata.timeRange.startTime) &&
+               validIso(request.resource.data.metadata.timeRange.endTime);
       }
 
       function validEditHistory() {
-        let eh = request.resource.data.editHistory;
-        if (!(eh is list)) return false;
-        // permit empty list
-        if (eh.size() == 0) return true;
-        // Base shape validation for last record
-        let last = eh[eh.size() - 1];
-        let ok = (last is map) && (last.previousContent is string);
-        // Allow serverTimestamp() sentinel or concrete timestamp
-        let atOk = (last.at == request.time) || (last.at is timestamp);
-        ok = ok && atOk;
-        ok = ok && (!("editReason" in last) || last.editReason == null || (last.editReason is string && last.editReason.size() <= 200));
-        // Enforce strict append-only: existing history must be unchanged and at most one record appended
-        if (resource.data.editHistory is list) {
-          let prev = resource.data.editHistory;
-          // sizes allow either no change or exactly one new record
-          ok = ok && (eh.size() == prev.size() || eh.size() == prev.size() + 1);
-          // all previous entries must be exactly equal
-          if (ok) {
-            let i = 0;
-            while (i < prev.size()) {
-              if (!(eh[i] == prev[i])) { ok = false; }
-              i = i + 1;
-            }
-          }
-          // if one appended, ensure timestamp aligns with server time
-          if (ok && eh.size() == prev.size() + 1) {
-            ok = ok && (last.at == request.time);
-          }
-        }
-        return ok;
+        return request.resource.data.editHistory is list;
       }
 
       function validCommentData() {
-        let d = request.resource.data;
-        let ok = d.authorUid is string && d.authorUid == request.auth.uid;
-        ok = ok && ("content" in d) && (d.content is string) && d.content.size() >= 1 && d.content.size() <= 2000;
-        ok = ok && validCommentMetadata();
-        ok = ok && (d.isEdited is bool) && (d.isDeleted is bool);
-        ok = ok && validTimestamps();
-        ok = ok && validEditHistory();
-        // Prevent unexpected fields escalation
-        return ok;
+        return request.resource.data.authorUid is string &&
+               request.resource.data.authorUid == request.auth.uid &&
+               request.resource.data.content is string &&
+               request.resource.data.content.size() >= 1 &&
+               request.resource.data.content.size() <= 2000 &&
+               validCommentMetadata() &&
+               request.resource.data.isEdited is bool &&
+               request.resource.data.isDeleted is bool &&
+               validTimestamps() &&
+               validEditHistory();
       }
 
       // Permission helpers
       function canEditComment() {
-        // Owner can edit within 24h; moderators/admins can always edit; cannot edit deleted
-        if (resource.data.isDeleted) return false;
-        if (isOwner(resource.data.authorUid)) {
-          return request.time < resource.data.createdAt + duration.value(24, 'h');
-        }
-        return isModerator();
+        return !resource.data.isDeleted &&
+               ((isOwner(resource.data.authorUid) && request.time < resource.data.createdAt + duration.value(24, 'h')) ||
+                isModerator());
       }
 
       function canDeleteComment() {
-        // Owner can delete within 24h; moderators/admins can delete any
-        if (isOwner(resource.data.authorUid)) {
-          return request.time < resource.data.createdAt + duration.value(24, 'h');
-        }
-        return isModerator();
+        return (isOwner(resource.data.authorUid) && request.time < resource.data.createdAt + duration.value(24, 'h')) ||
+               isModerator();
       }
 
       // Create: must be authenticated, with valid data

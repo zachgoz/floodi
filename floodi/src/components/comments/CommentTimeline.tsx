@@ -6,6 +6,8 @@ import 'src/components/comments/styles/Comments.css';
 export interface CommentTimelineProps {
   timeDomain?: { start: string; end: string };
   comments: CommentModel[];
+  fullScreen?: boolean;
+  stationId?: string;
 }
 
 /**
@@ -14,13 +16,17 @@ export interface CommentTimelineProps {
  * Visual timeline showing comment ranges positioned over a time axis.
  * This is a simplified, accessible layout with responsive behavior.
  */
-export const CommentTimeline: React.FC<CommentTimelineProps> = ({ timeDomain, comments }) => {
-  const [zoom, setZoom] = useState<'1h' | '6h' | '24h' | '7d'>('24h');
+export const CommentTimeline: React.FC<CommentTimelineProps> = ({ timeDomain, comments, fullScreen, stationId }) => {
+  const [zoom, setZoom] = useState<'1h' | '6h' | '24h' | '7d' | '30d'>('24h');
 
   const domain = useMemo(() => {
     if (timeDomain) return timeDomain;
     if (comments.length === 0) return undefined;
-    const times = comments.flatMap((c) => [new Date(c.createdAt).getTime()]);
+    const times = comments.flatMap((c) => {
+      const rs = c.meta?.range?.start ? Date.parse(c.meta.range.start) : Date.parse(c.createdAt);
+      const re = c.meta?.range?.end ? Date.parse(c.meta.range.end) : Date.parse(c.createdAt);
+      return [rs, re];
+    });
     const min = new Date(Math.min(...times)).toISOString();
     const max = new Date(Math.max(...times)).toISOString();
     return { start: min, end: max };
@@ -29,7 +35,7 @@ export const CommentTimeline: React.FC<CommentTimelineProps> = ({ timeDomain, co
   return (
     <IonCard className="comments-card comments-timeline">
       <IonCardHeader>
-        <IonCardTitle>Timeline</IonCardTitle>
+        <IonCardTitle>Timeline{stationId ? ` · ${stationId}` : ''}</IonCardTitle>
       </IonCardHeader>
       <IonCardContent>
         <div className="timeline-controls">
@@ -40,8 +46,16 @@ export const CommentTimeline: React.FC<CommentTimelineProps> = ({ timeDomain, co
               <IonSelectOption value="6h">6 hr</IonSelectOption>
               <IonSelectOption value="24h">24 hr</IonSelectOption>
               <IonSelectOption value="7d">7 days</IonSelectOption>
+              <IonSelectOption value="30d">30 days</IonSelectOption>
             </IonSelect>
           </IonItem>
+          {fullScreen && (
+            <div className="timeline-nav">
+              <button className="ion-button ion-button-clear" aria-label="Previous period">◀</button>
+              <button className="ion-button ion-button-clear" aria-label="Go to now">Now</button>
+              <button className="ion-button ion-button-clear" aria-label="Next period">▶</button>
+            </div>
+          )}
         </div>
         <div className="timeline-axis" aria-hidden="true" />
         <div className="timeline-rows" role="list">
@@ -84,4 +98,3 @@ const TimelineRow: React.FC<{ domain: { start: string; end: string }; comment: C
 };
 
 export default CommentTimeline;
-

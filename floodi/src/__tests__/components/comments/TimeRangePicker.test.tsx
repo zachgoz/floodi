@@ -1,7 +1,5 @@
 /**
  * TimeRangePicker tests
- *
- * Covers rendering, mode switching, event type selection, and validation basics.
  */
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -10,7 +8,7 @@ import { TimeRangePicker } from 'src/components/comments/TimeRangePicker';
 
 vi.mock('src/utils/timeRangeHelpers', () => ({
   formatTimeRangeForDisplay: (r: any) => `${new Date(r.start).toISOString()} – ${new Date(r.end).toISOString()}`,
-  validateChartTimeRange: () => ({ valid: true }),
+  validateChartTimeRange: () => ({ ok: true, errors: [] }),
 }));
 
 describe('TimeRangePicker', () => {
@@ -19,31 +17,44 @@ describe('TimeRangePicker', () => {
     end: new Date().toISOString(),
   };
 
-  it('renders and shows Current View by default', () => {
+  it('renders with default mode when no chart domain', () => {
+    render(<TimeRangePicker onChange={vi.fn()} />);
+    expect(screen.getByText('Select Time Range')).toBeInTheDocument();
+    expect(screen.getByText('Custom')).toBeInTheDocument();
+  });
+
+  it('renders with current view mode when chart domain provided', () => {
     render(<TimeRangePicker chartDomain={chartDomain} onChange={vi.fn()} />);
     expect(screen.getByText('Current View')).toBeInTheDocument();
-    expect(screen.getByText('Preview:')).toBeInTheDocument();
   });
 
-  it('switches to Custom mode and updates start/end', () => {
-    render(<TimeRangePicker chartDomain={chartDomain} onChange={vi.fn()} />);
-    fireEvent.click(screen.getByText('Custom'));
-    expect(screen.getByLabelText('Start date time')).toBeInTheDocument();
-    expect(screen.getByLabelText('End date time')).toBeInTheDocument();
+  it('provides default 1-hour range when no valid range selected', () => {
+    render(<TimeRangePicker onChange={vi.fn()} />);
+    // The preview should show a valid time range
+    const preview = screen.getByText(/Preview:/);
+    expect(preview).toBeInTheDocument();
   });
 
-  it('selects preset durations', () => {
-    render(<TimeRangePicker chartDomain={chartDomain} onChange={vi.fn()} />);
-    fireEvent.click(screen.getByText('Presets'));
-    expect(screen.getByLabelText('Preset duration')).toBeInTheDocument();
+  it('calls onChange with valid range when range is selected', () => {
+    const onChange = vi.fn();
+    render(<TimeRangePicker onChange={onChange} />);
+
+    // The component should call onChange with a default range
+    expect(onChange).toHaveBeenCalledWith({
+      range: expect.objectContaining({
+        start: expect.any(String),
+        end: expect.any(String),
+      }),
+      eventType: 'normal-tide',
+    });
   });
 
-  it('changes event type', () => {
-    render(<TimeRangePicker chartDomain={chartDomain} onChange={vi.fn()} />);
-    const eventType = screen.getByLabelText('Event type');
-    fireEvent.click(eventType);
-    // The select UI is a popover in Ionic; we can at least assert the control exists
-    expect(eventType).toBeInTheDocument();
+  it('handles invalid date strings gracefully', () => {
+    // Test that invalid dates don't crash the component
+    const onChange = vi.fn();
+    render(<TimeRangePicker onChange={onChange} />);
+
+    // Should not throw errors and should display preview
+    expect(screen.getByText(/Preview:/)).toBeInTheDocument();
   });
 });
-

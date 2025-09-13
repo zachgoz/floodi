@@ -114,5 +114,9 @@ export default defineConfig({
      * - Test environment initialization
      */
     setupFiles: './src/setupTests.ts',
+    // Ensure hung tests fail fast instead of stalling the run
+    testTimeout: 10000,
+    hookTimeout: 10000,
+    teardownTimeout: 10000,
   }
 })

@@ -197,13 +197,55 @@ export const useStationComments = (config: AppConfiguration, opts?: { realtime?:
 
 /** Permission helpers bound to current user. */
 export const useCommentPermissions = () => {
-  const { role } = useUserPermissions();
-  const { user } = useAuth();
-  return useMemo(() => ({
-    canCreate: () => !!user && role !== UserRole.Anonymous,
-    canEdit: (c: Comment) => !!user && validateCommentPermissions({ action: 'edit', role: role as UserRole, currentUserUid: user.uid, comment: { authorUid: c.authorUid, isDeleted: c.isDeleted, createdAt: c.createdAt } }),
-    canDelete: (c: Comment) => !!user && validateCommentPermissions({ action: 'delete', role: role as UserRole, currentUserUid: user.uid, comment: { authorUid: c.authorUid, isDeleted: c.isDeleted, createdAt: c.createdAt } }),
-  }), [user, role]);
+  const userPerms = useUserPermissions();
+  const { user, userProfile, loading } = useAuth();
+  
+  return useMemo(() => {
+    // If still loading, return permissive functions that will be updated when loading completes
+    if (loading || !user) {
+      return {
+        canCreate: () => false,
+        canEdit: (c: Comment) => false,
+        canDelete: (c: Comment) => false,
+        loading: true,
+      };
+    }
+
+    // If user is authenticated but profile hasn't loaded, allow basic operations for now
+    // The actual permissions will be enforced server-side by Firestore rules
+    const effectiveRole = userProfile?.role ?? (user.isAnonymous ? UserRole.Anonymous : UserRole.User);
+    
+    return {
+      canCreate: () => !user.isAnonymous && effectiveRole !== UserRole.Anonymous,
+      canEdit: (c: Comment) => {
+        if (!user || user.isAnonymous) return false;
+        return validateCommentPermissions({
+          action: 'edit',
+          role: effectiveRole,
+          currentUserUid: user.uid,
+          comment: {
+            authorUid: c.authorUid,
+            isDeleted: c.isDeleted,
+            createdAt: c.createdAt
+          }
+        });
+      },
+      canDelete: (c: Comment) => {
+        if (!user || user.isAnonymous) return false;
+        return validateCommentPermissions({
+          action: 'delete',
+          role: effectiveRole,
+          currentUserUid: user.uid,
+          comment: {
+            authorUid: c.authorUid,
+            isDeleted: c.isDeleted,
+            createdAt: c.createdAt
+          }
+        });
+      },
+      loading: false,
+    };
+  }, [user, userProfile, loading, userPerms.role]);
 };
 
 /** Simple form management for creating/updating a comment. */

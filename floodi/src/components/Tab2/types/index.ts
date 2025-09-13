@@ -73,6 +73,55 @@ export interface ChartInteraction {
   setHoverT: (date: Date | null) => void;
 }
 
+/**
+ * Comment overlay configuration and state for Tab2 chart.
+ */
+export interface CommentOverlayConfig {
+  /** Enable comment markers and tooltip augmentation */
+  enabled?: boolean;
+  /** Marker size in px */
+  markerSize?: number;
+  /** Tooltip: max comments to preview */
+  maxTooltipItems?: number;
+}
+
+/**
+ * Selection state for click/drag time range creation on the chart.
+ */
+export interface TimeRangeSelection {
+  selecting: boolean;
+  start: Date | null;
+  end: Date | null;
+}
+
+/**
+ * High-level comment state for the chart overlay.
+ */
+export interface ChartCommentState {
+  visible: boolean;
+  creationMode: boolean;
+  hoveredCommentId?: string | null;
+  selectedRange?: { start: Date; end: Date } | null;
+}
+
+/**
+ * Handlers for comment overlay interactions.
+ */
+export interface ChartCommentHandlers {
+  onToggleOverlay?: () => void;
+  onToggleCreationMode?: () => void;
+  onHoverComment?: (id: string | null) => void;
+  onClickComment?: (id: string) => void;
+  onSelectTimeRange?: (start: Date, end: Date) => void;
+}
+
+/**
+ * Extend ChartConfig to optionally include comment overlay preferences.
+ */
+export interface ChartConfigWithComments extends ChartConfig {
+  comments?: CommentOverlayConfig;
+}
+
 /** Data loading and error state */
 export interface DataState {
   loading: boolean;

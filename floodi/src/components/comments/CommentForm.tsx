@@ -58,8 +58,8 @@ export const CommentForm: React.FC<CommentFormProps> = ({
   onSubmit,
   onCancel,
 }) => {
-  const { user, isAnonymous } = useAuth?.() ?? { user: undefined, isAnonymous: true };
-  const perms = useCommentPermissions?.(user) ?? { canCreate: false };
+  const { user, isAnonymous, userProfile } = useAuth?.() ?? { user: undefined, isAnonymous: true, userProfile: null };
+  const perms = useCommentPermissions();
 
   const [content, setContent] = useState<string>(initialContent);
   const [range, setRange] = useState<TimeRange | undefined>(initialRange);
@@ -76,7 +76,7 @@ export const CommentForm: React.FC<CommentFormProps> = ({
 
   const canSubmit = useMemo(() => {
     if (loading || submitting) return false;
-    if (!perms?.canCreate) return false;
+    if (!perms?.canCreate()) return false;
     if (!range) return false;
     if (characterCount === 0 || characterCount > characterLimit) return false;
     return true;
@@ -90,9 +90,9 @@ export const CommentForm: React.FC<CommentFormProps> = ({
 
   const validate = useCallback(() => {
     try {
-      if (commentValidation?.validateCommentContent) {
-        const res = (commentValidation as any).validateCommentContent(content);
-        if (res && typeof res === 'object' && res.valid === false) return res.message ?? 'Invalid content.';
+      if (commentValidation.validateCommentContent) {
+        const res = commentValidation.validateCommentContent(content);
+        if (res && typeof res === 'object' && !res.ok) return res.errors?.join(', ') ?? 'Invalid content.';
       }
     } catch {}
     if (characterCount === 0) return 'Please enter a comment.';
@@ -126,9 +126,14 @@ export const CommentForm: React.FC<CommentFormProps> = ({
         <IonCardTitle>Create Comment</IonCardTitle>
       </IonCardHeader>
       <IonCardContent>
-        {!perms?.canCreate && (
+        {!perms?.canCreate() && (
           <IonNote color="warning">
-            You do not have permission to create comments.
+            {isAnonymous
+              ? "Please sign in to create comments."
+              : userProfile
+                ? `Your account role (${userProfile.role}) does not allow creating comments. Contact an administrator if you believe this is an error.`
+                : "Loading user permissions... If this persists, please refresh the page."
+            }
           </IonNote>
         )}
         {isAnonymous && (

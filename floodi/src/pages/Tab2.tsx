@@ -23,6 +23,8 @@ import { useSettingsStorage } from '../components/Tab2/hooks/useSettingsStorage'
 import { useChartData } from '../components/Tab2/hooks/useChartData';
 import { formatTooltipTime } from '../components/Tab2/hooks/useChartInteraction';
 import type { Station } from '../components/Tab2/types';
+import { useChartComments } from '../components/Tab2/hooks/useChartComments';
+import { ChartCommentModal } from '../components/Tab2/ChartCommentModal';
 import '../components/Tab2/styles/Tab2.css';
 import './Tab2.css';
 
@@ -126,6 +128,17 @@ const Tab2: React.FC = () => {
     timezone: config.display.timezone,
   }), [config.threshold, config.display.showDelta, config.display.timezone]);
 
+  // Comments integration tied to current config
+  const chartComments = useChartComments(config);
+  const [commentModalOpen, setCommentModalOpen] = useState(false);
+
+  // Open comment modal when a selection range becomes available
+  React.useEffect(() => {
+    if (chartComments.selectedTimeRange) {
+      setCommentModalOpen(true);
+    }
+  }, [chartComments.selectedTimeRange]);
+
   return (
     <IonPage className="floodcast-page">
       <IonHeader>
@@ -191,6 +204,16 @@ const Tab2: React.FC = () => {
             showDelta={config.display.showDelta}
             timezone={config.display.timezone}
             config={chartConfig}
+            // comments overlay
+            showComments={chartComments.showComments}
+            comments={chartComments.comments}
+            onCommentHover={(c) => chartComments.handleCommentHover(c)}
+            onCommentClick={(c) => chartComments.handleCommentClick(c)}
+            onTimeRangeSelect={(range) => chartComments.handleTimeRangeSelect({ start: new Date(range.startTime), end: new Date(range.endTime) })}
+            commentCreationMode={chartComments.commentCreationMode}
+            onToggleComments={chartComments.toggleCommentOverlay}
+            onToggleCreationMode={chartComments.toggleCreationMode}
+            commentCount={chartComments.commentCount}
           />
         )}
 
@@ -228,6 +251,14 @@ const Tab2: React.FC = () => {
           successMessage={messages.success}
           errorMessage={messages.error}
           onClearMessages={clearMessages}
+        />
+
+        {/* Chart comment creation modal */}
+        <ChartCommentModal
+          isOpen={commentModalOpen}
+          onDismiss={() => { setCommentModalOpen(false); chartComments.clearSelectedRange(); }}
+          range={chartComments.selectedTimeRange}
+          config={config}
         />
       </IonContent>
     </IonPage>

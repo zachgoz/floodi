@@ -1,0 +1,65 @@
+/**
+ * Comments Tab (Tab4) styles
+ * Uses existing CSS variables and patterns for consistency.
+ */
+
+.tab4-toolbar-secondary {
+  --background: var(--ion-background-color);
+}
+
+.tab4-station-and-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+}
+
+.tab4-station {
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+.tab4-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tab4-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ion-text-color);
+}
+
+.tab4-stat .tab4-stat-count {
+  font-weight: 600;
+}
+
+.tab4-stats .sep {
+  width: 1px;
+  height: 20px;
+  background: var(--ion-color-step-150);
+}
+
+@media (max-width: 640px) {
+  .tab4-station-and-stats {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .tab4-stats {
+    justify-content: flex-end;
+  }
+}
+
+:root.ion-palette-dark .tab4-stats .sep {
+  background: var(--ion-color-step-250);
+}
+
+/* Focus outlines for accessibility */
+.tab4-station-and-stats :focus-visible {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 2px;
+}
+

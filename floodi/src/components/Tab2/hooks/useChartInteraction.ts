@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { Point, ChartInteraction } from '../types';
+import type { Comment } from 'src/types/comment';
+import { isCommentTimeRange } from 'src/types/comment';
 
 /**
  * Find the nearest point in a series to a given timestamp
@@ -92,8 +94,22 @@ export function useChartInteraction(): ChartInteraction & {
   ) => TooltipData | null;
   calculateTooltipPosition: typeof calculateTooltipPosition;
   formatTooltipTime: typeof formatTooltipTime;
+  /**
+   * Find comments that overlap a given time instant.
+   */
+  findCommentsAtTime: (time: Date, comments: Comment[]) => Comment[];
+  /**
+   * Compute comment-specific tooltip data for a hover time.
+   */
+  calculateCommentTooltipData: (time: Date, comments: Comment[], opts?: { max?: number }) => CommentTooltipData | null;
+  /**
+   * Track which comment is currently hovered (via marker hover).
+   */
+  hoveredComment: Comment | null;
+  setHoveredComment: (c: Comment | null) => void;
 } {
   const [hoverT, setHoverT] = useState<Date | null>(null);
+  const [hoveredComment, setHoveredComment] = useState<Comment | null>(null);
 
   /**
    * Calculate tooltip data for the current hover time
@@ -178,6 +194,39 @@ export function useChartInteraction(): ChartInteraction & {
     calculateTooltipData,
     calculateTooltipPosition,
     formatTooltipTime,
+    findCommentsAtTime: (time: Date, comments: Comment[]) => {
+      const t = time.getTime();
+      return (comments || []).filter((c) => {
+        const tr = c?.metadata?.timeRange;
+        if (!isCommentTimeRange(tr)) return false;
+        const s = Date.parse(tr.startTime);
+        const e = Date.parse(tr.endTime);
+        return s <= t && t <= e;
+      });
+    },
+    calculateCommentTooltipData: (time: Date, comments: Comment[], opts?: { max?: number }): CommentTooltipData | null => {
+      if (!time) return null;
+      const items = (comments || []).filter((c) => {
+        const r = c.metadata?.timeRange;
+        if (!isCommentTimeRange(r)) return false;
+        const t = time.getTime();
+        const s = Date.parse(r.startTime);
+        const e = Date.parse(r.endTime);
+        return s <= t && t <= e;
+      });
+      if (items.length === 0) return null;
+      const max = opts?.max ?? 3;
+      const preview = items.slice(0, max).map((c) => ({
+        id: c.id,
+        author: c.authorDisplayName || 'Unknown',
+        photoURL: c.authorPhotoURL || undefined,
+        contentPreview: (c.content || '').replace(/<[^>]+>/g, '').slice(0, 120),
+        eventType: c.metadata?.timeRange?.eventType,
+      }));
+      return { time, total: items.length, preview };
+    },
+    hoveredComment,
+    setHoveredComment,
   };
 }
 
@@ -198,4 +247,17 @@ export interface TooltipRow {
   color: string;
   point?: Point;
   dashed?: boolean;
+}
+
+/** Comment section for enhanced tooltip */
+export interface CommentTooltipData {
+  time: Date;
+  total: number;
+  preview: Array<{
+    id: string;
+    author: string;
+    photoURL?: string;
+    contentPreview: string;
+    eventType?: string;
+  }>;
 }
