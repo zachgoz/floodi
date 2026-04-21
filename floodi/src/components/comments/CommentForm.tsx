@@ -101,8 +101,7 @@ export const CommentForm: React.FC<CommentFormProps> = ({
   };
 
   return (
-    <IonCard className="comments-card comments-form" aria-label="Create comment form">
-      <IonCardContent>
+    <div className="premium-form-container" aria-label="Create comment form">
         {!perms?.canCreate() && (
           <IonNote color="warning">
             {!user || isAnonymous
@@ -119,56 +118,45 @@ export const CommentForm: React.FC<CommentFormProps> = ({
           </IonNote>
         )}
 
-        <IonGrid>
-          <IonRow>
-            <IonCol size="12">
-              <IonItem>
-                <IonLabel position="stacked">Add a note or observation...</IonLabel>
-                <IonTextarea
-                  value={content}
-                  onIonInput={(e) => setContent((e.detail.value as string) ?? '')}
-                  autoGrow
-                  aria-label="Comment content"
-                  placeholder="E.g. The water is cresting over the sidewalk here."
-                />
-                <IonNote slot="helper">{characterCount}/{characterLimit}</IonNote>
-              </IonItem>
-            </IonCol>
-          </IonRow>
+        <div className="input-group">
+          <IonLabel position="stacked" className="premium-label">Add a note or observation...</IonLabel>
+          <IonTextarea
+            className="premium-textarea"
+            value={content}
+            onIonInput={(e) => setContent((e.detail.value as string) ?? '')}
+            autoGrow
+            aria-label="Comment content"
+            placeholder="E.g. The water is cresting over the sidewalk here."
+            rows={4}
+          />
+          <div className="char-count">
+            <IonNote>{characterCount}/{characterLimit}</IonNote>
+          </div>
+        </div>
 
-          {!!error && (
-            <IonRow>
-              <IonCol size="12">
-                <IonNote color="danger" role="alert">
-                  {error}
-                </IonNote>
-              </IonCol>
-            </IonRow>
+        {!!error && (
+          <div className="error-alert" role="alert">
+            <IonNote color="danger">{error}</IonNote>
+          </div>
+        )}
+
+        <div className="form-actions">
+          {onCancel && (
+            <IonButton className="ghost-btn" fill="clear" onClick={onCancel} disabled={loading || submitting}>
+              Cancel
+            </IonButton>
           )}
-
-          <IonRow className="comments-form-actions">
-            <IonCol size="12">
-              <IonButtons style={{justifyContent: 'flex-end'}}>
-                {onCancel && (
-                  <IonButton fill="clear" onClick={onCancel} disabled={loading || submitting}>
-                    Cancel
-                  </IonButton>
-                )}
-                <IonButton
-                  onClick={handleSubmit}
-                  disabled={!canSubmit}
-                  color="primary"
-                  fill="solid"
-                  aria-label="Submit comment"
-                >
-                  {loading || submitting ? <IonSpinner name="dots" /> : 'Drop Pin'}
-                </IonButton>
-              </IonButtons>
-            </IonCol>
-          </IonRow>
-        </IonGrid>
-      </IonCardContent>
-    </IonCard>
+          <IonButton
+            className="gradient-btn"
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            fill="solid"
+            aria-label="Submit comment"
+          >
+            {loading || submitting ? <IonSpinner name="dots" /> : 'Drop Pin'}
+          </IonButton>
+        </div>
+    </div>
   );
 };
 

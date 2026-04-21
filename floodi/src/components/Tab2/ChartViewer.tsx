@@ -42,8 +42,8 @@ interface ChartViewerProps {
   comments?: Comment[];
   /** Fire when hovering a comment marker */
   onCommentHover?: (comment: Comment | null) => void;
-  /** Fire when clicking a comment marker */
-  onCommentClick?: (comment: Comment) => void;
+  /** Fire when clicking a comment marker or cluster */
+  onCommentClick?: (comments: Comment[]) => void;
   /** Fire when a time point is selected for comment creation */
   onTimePointSelect?: (time: Date) => void;
   /** Handlers for in-component controls (optional) */
@@ -422,6 +422,25 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         </text>
 
         {/* Data series */}
+
+        {/* Surge Fill (Area between observed and predicted) */}
+        {observedPoints.length > 1 && predictedPoints.length > 1 && (() => {
+          const maxObsT = observedPoints[observedPoints.length - 1].t.getTime();
+          const matchingPredicted = predictedPoints.filter(p => p.t.getTime() <= maxObsT);
+          
+          if (matchingPredicted.length < 2) return null;
+          
+          const obsPath = observedPoints.map(p => `${xOf(p.t)},${yOf(p.v)}`).join(' ');
+          const predPath = [...matchingPredicted].reverse().map(p => `${xOf(p.t)},${yOf(p.v)}`).join(' ');
+          
+          return (
+            <polygon 
+              points={`${obsPath} ${predPath}`}
+              fill="rgba(25, 118, 210, 0.15)"
+            />
+          );
+        })()}
+
         {/* Observed data (segmented by threshold) */}
         {observedPoints.length > 1 && segmentByThreshold(observedPoints, threshold).map((segment, i) => (
           <polyline
@@ -506,8 +525,13 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                         tabIndex={0}
                         onMouseEnter={() => onCommentHover?.(c)}
                         onMouseLeave={() => onCommentHover?.(null)}
-                        onClick={() => onCommentClick?.(c)}
-                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onCommentClick?.(c)}
+                        onClick={(e) => { e.stopPropagation(); onCommentClick?.([c]); }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.stopPropagation();
+                            onCommentClick?.([c]);
+                          }
+                        }}
                         style={{ cursor: 'pointer' }}
                       />
                     </g>
@@ -520,7 +544,21 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                   const cy = getNearestObservedY(timeMs);
                   
                   els.push(
-                    <g key={`cluster-${bin}-${idx++}`} transform={`translate(${cx}, ${cy})`}>
+                    <g 
+                      key={`cluster-${bin}-${idx++}`} 
+                      transform={`translate(${cx}, ${cy})`}
+                      onClick={(e) => { e.stopPropagation(); onCommentClick?.(arr); }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.stopPropagation();
+                          onCommentClick?.(arr);
+                        }
+                      }}
+                      style={{ cursor: 'pointer' }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`View thread of ${arr.length} comments`}
+                    >
                       <circle r={8} fill="#7f8c8d" stroke="#000" />
                       <text x={-3.5} y={4} fontSize="10" fill="#fff">{arr.length}</text>
                     </g>

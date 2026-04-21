@@ -132,12 +132,12 @@ const Tab2: React.FC = () => {
   const chartComments = useChartComments(config);
   const [commentModalOpen, setCommentModalOpen] = useState(false);
 
-  // Open comment modal when a selection range becomes available
+  // Open comment modal when a selection range or comment is clicked
   React.useEffect(() => {
-    if (chartComments.selectedTimeRange) {
+    if (chartComments.selectedTimeRange || chartComments.selectedComments) {
       setCommentModalOpen(true);
     }
-  }, [chartComments.selectedTimeRange]);
+  }, [chartComments.selectedTimeRange, chartComments.selectedComments]);
 
   return (
     <IonPage className="floodcast-page">
@@ -254,8 +254,9 @@ const Tab2: React.FC = () => {
         {/* Chart comment creation modal */}
         <ChartCommentModal
           isOpen={commentModalOpen}
-          onDismiss={() => { setCommentModalOpen(false); chartComments.clearSelectedRange(); }}
-          range={chartComments.selectedTimeRange}
+          onDismiss={() => { setCommentModalOpen(false); chartComments.clearSelected(); }}
+          range={chartComments.selectedTimeRange || (chartComments.selectedComments?.[0]?.metadata.timeRange ?? null)}
+          existingComments={chartComments.selectedComments || []}
           config={config}
         />
       </IonContent>

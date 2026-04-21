@@ -16,6 +16,7 @@ export const useChartComments = (config: AppConfiguration) => {
   const [showComments, setShowComments] = useState<boolean>(true);
   const [hoveredComment, setHoveredComment] = useState<Comment | null>(null);
   const [selectedTimeRange, setSelectedTimeRange] = useState<CommentTimeRange | null>(null);
+  const [selectedComments, setSelectedComments] = useState<Comment[] | null>(null);
 
   // Filter comments by current chart domain
   const domainRange: CommentTimeRange = useMemo(() => ({
@@ -33,7 +34,7 @@ export const useChartComments = (config: AppConfiguration) => {
   const toggleCommentOverlay = useCallback(() => setShowComments((v) => !v), []);
 
   const handleCommentHover = useCallback((c: Comment | null) => setHoveredComment(c), []);
-  const handleCommentClick = useCallback((c: Comment) => setHoveredComment(c), []);
+  const handleCommentClick = useCallback((c: Comment[]) => setSelectedComments(c), []);
 
   const handleTimeRangeSelect = useCallback((sel: { start?: Date; end?: Date; at?: Date }) => {
     const range = getTimeRangeFromChartSelection(sel);
@@ -57,13 +58,17 @@ export const useChartComments = (config: AppConfiguration) => {
     showComments,
     hoveredComment,
     selectedTimeRange,
+    selectedComments,
 
     // handlers
     toggleCommentOverlay,
     handleCommentHover,
     handleCommentClick,
     handleTimeRangeSelect,
-    clearSelectedRange: () => setSelectedTimeRange(null),
+    clearSelected: () => {
+      setSelectedTimeRange(null);
+      setSelectedComments(null);
+    },
   } as const;
 };
 
