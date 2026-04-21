@@ -70,9 +70,16 @@ export const createComment = async (
   const payload = {
     content: contentRes.sanitized,
     authorUid: data.authorUid,
-    authorDisplayName: data.authorDisplayName ?? null,
-    authorPhotoURL: data.authorPhotoURL ?? null,
-    metadata: data.metadata,
+    metadata: {
+      station: {
+        id: data.metadata.station.id,
+        name: data.metadata.station.name
+      },
+      timeRange: {
+        startTime: data.metadata.timeRange.startTime,
+        endTime: data.metadata.timeRange.endTime
+      }
+    },
     createdAt: now,
     updatedAt: now,
     isEdited: false,
@@ -81,8 +88,22 @@ export const createComment = async (
   } as unknown as Comment;
 
   const col = collection(db, COMMENTS_COLLECTION);
-  const added = await addDoc(col, payload);
-  const snap = await getDoc(added);
+  let added;
+  try {
+    added = await addDoc(col, payload);
+  } catch (err: any) {
+    console.error('addDoc failed with permission denied. Payload:', payload, 'Auth:', ctx);
+    throw new Error(`Write rejected by database permissions: ${err.message}`);
+  }
+
+  let snap;
+  try {
+    snap = await getDoc(added);
+  } catch (err: any) {
+    console.error('getDoc immediately after addDoc failed:', err);
+    throw new Error(`Read rejected by database permissions: ${err.message}`);
+  }
+  
   if (!snap.exists()) throw new Error('Failed to create comment');
   return { id: snap.id, ...(snap.data() as Omit<Comment, 'id'>) } as Comment;
 };
@@ -218,6 +239,33 @@ export const getCommentsForChartTimeRange = async (
   stationId: string,
   range: CommentTimeRange
 ): Promise<Comment[]> => getCommentsByTimeRange(stationId, range, { includeDeleted: false });
+
+/** Real-time subscription to comments overlapping range for chart usage. */
+export const subscribeToCommentsByTimeRange = (
+  stationId: string,
+  range: CommentTimeRange,
+  opts: { includeDeleted?: boolean; pageSize?: number },
+  cb: (comments: Comment[]) => void
+): Unsubscribe => {
+  const endIso = range.endTime;
+  const parts: any[] = [
+    where('metadata.station.id', '==', stationId),
+    where('metadata.timeRange.startTime', '<=', endIso),
+    orderBy('metadata.timeRange.startTime', 'asc'),
+    limit(opts?.pageSize ?? 100),
+  ];
+  if (!opts?.includeDeleted) parts.unshift(where('isDeleted', '==', false));
+  const q = query(collection(db, COMMENTS_COLLECTION), ...parts);
+  return onSnapshot(q, (snap) => {
+    const start = Date.parse(range.startTime);
+    const items = snap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as Omit<Comment, 'id'>) } as Comment))
+      .filter((c) => Date.parse(c.metadata.timeRange.endTime) >= start);
+    cb(items);
+  }, (err) => {
+    console.warn('Realtime subscription error:', err);
+  });
+};
 
 /** Real-time subscription to comments (generic). */
 export const subscribeToComments = (

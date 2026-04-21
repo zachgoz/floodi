@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { IonBadge, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonModal, IonTitle, IonToolbar } from '@ionic/react';
+import { IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonModal, IonTitle, IonToolbar } from '@ionic/react';
 import { closeOutline } from 'ionicons/icons';
 import { CommentForm, type CommentFormValues } from 'src/components/comments/CommentForm';
 import type { CommentTimeRange } from 'src/types/comment';
@@ -17,11 +17,6 @@ export interface ChartCommentModalProps {
   config: AppConfiguration;
 }
 
-/**
- * ChartCommentModal
- *
- * Modal wrapper to create a comment for a selected chart time range.
- */
 export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, onDismiss, range, config }) => {
   const { create, loading } = useComments({ stationId: config.station.id, realtime: false });
   const { user } = useAuth();
@@ -33,7 +28,7 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
     await create({
       content: values.content,
       metadata: {
-        station: { id: config.station.id, name: config.station.name },
+        station: { id: config.station.id, name: config.station.name || `Station ${config.station.id}` },
         timeRange: { ...range, eventType: values.eventType },
         dataContext: values.dataContexts,
         thresholdValue: values.threshold ?? null,
@@ -43,19 +38,18 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
   };
 
   return (
-    <IonModal isOpen={isOpen} onDidDismiss={onDismiss} className="chart-comment-modal" aria-label="Add Comment for Selected Time Range">
-      <IonHeader>
+    <IonModal 
+      isOpen={isOpen} 
+      onDidDismiss={onDismiss} 
+      className="chart-comment-modal" 
+      aria-label="Drop Pin Modal"
+      initialBreakpoint={0.5}
+      breakpoints={[0, 0.5, 0.8]}
+    >
+      <IonHeader className="ion-no-border">
         <IonToolbar>
           <IonTitle>
-            Add Comment
-            {rangeDisplay && (
-              <>
-                {' '}
-                <IonBadge color="medium" aria-label={`Selected range ${rangeDisplay.label}`}>
-                  {rangeDisplay.label}
-                </IonBadge>
-              </>
-            )}
+            Drop Pin {rangeDisplay ? `at ${rangeDisplay.label.split(' - ')[0]}` : ''}
           </IonTitle>
           <IonButtons slot="end">
             <IonButton onClick={onDismiss} aria-label="Close">
@@ -67,7 +61,6 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
       <IonContent className="ion-padding">
         <CommentForm
           stationId={config.station.id}
-          chartDomain={range ? { start: new Date(range.startTime), end: new Date(range.endTime) } : undefined}
           initialRange={range ? { start: new Date(range.startTime), end: new Date(range.endTime) } : undefined}
           loading={loading}
           onSubmit={handleSubmit}

@@ -1,41 +1,141 @@
-/* For information on how to create your own theme, please see:
-http://ionicframework.com/docs/theming/ */
+/* Ionic Variables and Custom Palette for FloodCast */
 
-/*
-  iOS safe-area header fill
-  -------------------------
-  On Mobile Safari, Ionic adds top padding to `ion-header` using the iOS
-  safe-area inset. Without an explicit background on `ion-header`, that
-  padded region can appear as a white strip above the toolbar.
+:root {
+  /* Oceanic Vibe - Primary (Deep Aqua/Ocean Blue) */
+  --ion-color-primary: #0077b6;
+  --ion-color-primary-rgb: 0, 119, 182;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #0069a0;
+  --ion-color-primary-tint: #1a85bd;
 
-  These rules ensure the safe-area above the toolbar uses the same background
-  as the toolbar, eliminating the perceived "white space above the header".
-*/
-.ios ion-header {
-  /* Fill the safe-area above the toolbar inside the header */
-  --background: var(--ion-toolbar-background, var(--ion-background-color));
-  background: var(--ion-toolbar-background, var(--ion-background-color));
+  /* Secondary (Teal/Seafoam) */
+  --ion-color-secondary: #00b4d8;
+  --ion-color-secondary-rgb: 0, 180, 216;
+  --ion-color-secondary-contrast: #000000;
+  --ion-color-secondary-contrast-rgb: 0, 0, 0;
+  --ion-color-secondary-shade: #009ec1;
+  --ion-color-secondary-tint: #1abfdb;
+
+  /* Tertiary (Sand/Coral accent) */
+  --ion-color-tertiary: #f4a261;
+  --ion-color-tertiary-rgb: 244, 162, 97;
+  --ion-color-tertiary-contrast: #000000;
+  --ion-color-tertiary-contrast-rgb: 0, 0, 0;
+  --ion-color-tertiary-shade: #d78f55;
+  --ion-color-tertiary-tint: #f5ab71;
+
+  --ion-color-success: #2dd36f;
+  --ion-color-success-rgb: 45, 211, 111;
+  --ion-color-success-contrast: #ffffff;
+  --ion-color-success-contrast-rgb: 255, 255, 255;
+  --ion-color-success-shade: #28ba62;
+  --ion-color-success-tint: #42d77d;
+
+  --ion-color-warning: #ffc409;
+  --ion-color-warning-rgb: 255, 196, 9;
+  --ion-color-warning-contrast: #000000;
+  --ion-color-warning-contrast-rgb: 0, 0, 0;
+  --ion-color-warning-shade: #e0ac08;
+  --ion-color-warning-tint: #ffca22;
+
+  --ion-color-danger: #eb445a;
+  --ion-color-danger-rgb: 235, 68, 90;
+  --ion-color-danger-contrast: #ffffff;
+  --ion-color-danger-contrast-rgb: 255, 255, 255;
+  --ion-color-danger-shade: #cf3c4f;
+  --ion-color-danger-tint: #ed576b;
+
+  --ion-color-dark: #222428;
+  --ion-color-dark-rgb: 34, 36, 40;
+  --ion-color-dark-contrast: #ffffff;
+  --ion-color-dark-contrast-rgb: 255, 255, 255;
+  --ion-color-dark-shade: #1e2023;
+  --ion-color-dark-tint: #383a3e;
+
+  --ion-color-medium: #92949c;
+  --ion-color-medium-rgb: 146, 148, 156;
+  --ion-color-medium-contrast: #ffffff;
+  --ion-color-medium-contrast-rgb: 255, 255, 255;
+  --ion-color-medium-shade: #808289;
+  --ion-color-medium-tint: #9d9fa6;
+
+  --ion-color-light: #f4f5f8;
+  --ion-color-light-rgb: 244, 245, 248;
+  --ion-color-light-contrast: #000000;
+  --ion-color-light-contrast-rgb: 0, 0, 0;
+  --ion-color-light-shade: #d7d8da;
+  --ion-color-light-tint: #f5f6f9;
+  
+  /* Additional Custom App Variables */
+  --chart-bg: transparent;
+  --chart-plot-bg: rgba(255,255,255,0.02);
+  --chart-plot-stroke: rgba(0,0,0,0.1);
+  --chart-tooltip-bg: rgba(255, 255, 255, 0.95);
+  --chart-tooltip-stroke: #ddd;
+  --chart-grid: rgba(0,0,0,0.05);
+  --chart-axis-text: #666;
+  --chart-label-text: #333;
 }
 
-.ios ion-header[collapse="condense"] {
-  /* Ensure condensed header matches too */
-  --background: var(--ion-toolbar-background, var(--ion-background-color));
+@media (prefers-color-scheme: dark) {
+  /*
+   * Dark Colors
+   * -------------------------------------------
+   */
+  body {
+    --ion-color-primary: #48b6f3;
+    --ion-color-primary-rgb: 72, 182, 243;
+    --ion-color-primary-contrast: #000000;
+    --ion-color-primary-contrast-rgb: 0, 0, 0;
+    --ion-color-primary-shade: #3fa0d6;
+    --ion-color-primary-tint: #5abef4;
+
+    --ion-color-secondary: #00b4d8;
+    --ion-color-secondary-rgb: 0, 180, 216;
+    --ion-color-secondary-contrast: #000000;
+    --ion-color-secondary-contrast-rgb: 0, 0, 0;
+    --ion-color-secondary-shade: #009ec1;
+    --ion-color-secondary-tint: #1abfdb;
+
+    --ion-color-tertiary: #f4a261;
+    --ion-color-tertiary-rgb: 244, 162, 97;
+    --ion-color-tertiary-contrast: #000000;
+    --ion-color-tertiary-contrast-rgb: 0, 0, 0;
+    --ion-color-tertiary-shade: #d78f55;
+    --ion-color-tertiary-tint: #f5ab71;
+
+    --chart-bg: transparent;
+    --chart-plot-bg: rgba(0,0,0,0.08);
+    --chart-plot-stroke: rgba(255,255,255,0.1);
+    --chart-tooltip-bg: rgba(30, 30, 30, 0.95);
+    --chart-tooltip-stroke: #444;
+    --chart-grid: rgba(255,255,255,0.05);
+    --chart-axis-text: #999;
+    --chart-label-text: #ddd;
+  }
 }
 
-.ios ion-toolbar {
-  /* Ensure toolbar background is explicitly set */
-  --background: var(--ion-toolbar-background, var(--ion-background-color));
-  background: var(--ion-toolbar-background, var(--ion-background-color));
+/* Glassmorphism overrides */
+ion-toolbar {
+  --background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.ion-palette-dark ion-toolbar {
+  --background: rgba(18, 18, 18, 0.85);
 }
 
-/* Ensure the base document background matches the app theme */
-html, body {
-  background-color: var(--ion-background-color, #ffffff);
+/* Pill-shaped UI elements */
+ion-button {
+  --border-radius: 20px;
 }
-
-/* Make root Ionic containers inherit the app background */
-.ios ion-app, .ios ion-page {
-  background: var(--ion-background-color, #ffffff);
+ion-card {
+  --border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+.ion-palette-dark ion-card {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
 
 /* Removed global safe-area overlay to avoid clipping modals under the notch. */

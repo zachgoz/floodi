@@ -44,13 +44,10 @@ interface ChartViewerProps {
   onCommentHover?: (comment: Comment | null) => void;
   /** Fire when clicking a comment marker */
   onCommentClick?: (comment: Comment) => void;
-  /** Fire when a time range is selected for comment creation */
-  onTimeRangeSelect?: (range: CommentTimeRange) => void;
-  /** Enable time range selection mode for comment creation */
-  commentCreationMode?: boolean;
+  /** Fire when a time point is selected for comment creation */
+  onTimePointSelect?: (time: Date) => void;
   /** Handlers for in-component controls (optional) */
   onToggleComments?: () => void;
-  onToggleCreationMode?: () => void;
   /** Count for display in the overlay controls */
   commentCount?: number;
 }
@@ -140,10 +137,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   comments = [],
   onCommentHover,
   onCommentClick,
-  onTimeRangeSelect,
-  commentCreationMode = false,
+  onTimePointSelect,
   onToggleComments,
-  onToggleCreationMode,
   commentCount,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -152,10 +147,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
   const { hoverT, setHoverT, calculateTooltipData, calculateCommentTooltipData } = useChartInteraction();
 
-  // Selection state for creating a comment time range
-  const [isSelecting, setIsSelecting] = useState<boolean>(false);
-  const [selectionStart, setSelectionStart] = useState<Date | null>(null);
-  const [selectionEnd, setSelectionEnd] = useState<Date | null>(null);
+  // Touch interaction state for tap detection
+  const [pointerDownPos, setPointerDownPos] = useState<{x: number, y: number, t: Date} | null>(null);
 
   // Handle responsive resizing
   useEffect(() => {
@@ -294,8 +287,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     if (!hoverTime) return;
 
     setHoverT(hoverTime);
-    if (commentCreationMode && isSelecting) {
-      setSelectionEnd(hoverTime);
+    if (pointerDownPos) {
+      // Intentionally empty, we are handling drag internally
     }
     if (onChartInteraction) {
       // Find nearest point for callback
@@ -314,36 +307,30 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     if (onChartInteraction) {
       onChartInteraction(null);
     }
-    if (isSelecting) {
-      setIsSelecting(false);
-      setSelectionStart(null);
-      setSelectionEnd(null);
-    }
+    setPointerDownPos(null);
   };
 
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
-    if (!commentCreationMode) return;
     const t = computeTimeAtPointer(event);
     if (!t) return;
-    try { event.currentTarget.setPointerCapture(event.pointerId); } catch {}
-    setIsSelecting(true);
-    setSelectionStart(t);
-    setSelectionEnd(t);
+    setPointerDownPos({ x: event.clientX, y: event.clientY, t });
   };
 
   const handlePointerUp = (event: React.PointerEvent<SVGSVGElement>) => {
-    if (!commentCreationMode || !isSelecting) return;
-    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch {}
-    const t = computeTimeAtPointer(event);
-    if (!t || !selectionStart) {
-      setIsSelecting(false);
-      return;
+    if (!pointerDownPos) return;
+    
+    // Calculate drag distance
+    const dx = event.clientX - pointerDownPos.x;
+    const dy = event.clientY - pointerDownPos.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // If it was a tap (not a drag), trigger comment creation
+    if (distance < 10) {
+      const t = computeTimeAtPointer(event) || pointerDownPos.t;
+      onTimePointSelect?.(t);
     }
-    const range = getTimeRangeFromChartSelection({ start: selectionStart, end: t });
-    onTimeRangeSelect?.(range);
-    setIsSelecting(false);
-    setSelectionStart(null);
-    setSelectionEnd(null);
+    
+    setPointerDownPos(null);
   };
 
   // Tooltip data calculation
@@ -355,7 +342,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   const handleContainerKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const k = e.key.toLowerCase();
     if (k === 'c') onToggleComments?.();
-    if (k === 'n') onToggleCreationMode?.();
   };
 
   return (
@@ -458,27 +444,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           />
         )}
 
-        {/* Selection overlay for comment creation */}
-        {commentCreationMode && isSelecting && selectionStart && selectionEnd && (
-          (() => {
-            const x0 = xOf(selectionStart);
-            const x1p = xOf(selectionEnd);
-            const x = Math.min(x0, x1p);
-            const w = Math.max(1, Math.abs(x1p - x0));
-            return (
-              <rect
-                className="chart-selection-rect"
-                x={x}
-                y={margins.t}
-                width={w}
-                height={innerH}
-                fill="rgba(25,118,210,0.15)"
-                stroke="#1976d2"
-                strokeDasharray="4 3"
-              />
-            );
-          })()
-        )}
+        {/* Removed selection overlay, we only use point-in-time taps now */}
 
         {/* Comment markers */}
         {showComments && comments.length > 0 && (
@@ -502,7 +468,16 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
               }
 
               const colorFor = (evt?: string) => evt === 'threshold-crossing' ? '#e74c3c' : evt === 'surge-event' ? '#f39c12' : '#3498db';
-              const y = margins.t + 6; // top area
+
+              const getNearestObservedY = (timeMs: number) => {
+                if (observedPoints.length === 0) return margins.t + 6;
+                const nearestObs = observedPoints.reduce((best, point) => {
+                  const dt = Math.abs(point.t.getTime() - timeMs);
+                  const bestDt = best ? Math.abs(best.t.getTime() - timeMs) : Infinity;
+                  return dt < bestDt ? point : best;
+                }, null as Point | null);
+                return nearestObs ? yOf(nearestObs.v) : margins.t + 6;
+              };
 
               const els: JSX.Element[] = [];
               let idx = 0;
@@ -517,9 +492,10 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                   if (!Number.isFinite(s) || !Number.isFinite(e) || s > e) return;
                   const mid = new Date((s + e) / 2);
                   const cx = xOf(mid);
+                  const cy = getNearestObservedY(mid.getTime());
                   const color = colorFor(tr.eventType);
                   els.push(
-                    <g key={`cm-${c.id}-${idx++}`} transform={`translate(${cx}, ${y})`}>
+                    <g key={`cm-${c.id}-${idx++}`} transform={`translate(${cx}, ${cy})`}>
                       <circle
                         className="comment-marker"
                         r={5}
@@ -539,8 +515,12 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 } else {
                   // cluster badge
                   const cx = Math.max(margins.l + 6, Math.min(margins.l + innerW - 6, x));
+                  const fraction = (cx - margins.l) / innerW;
+                  const timeMs = t0 + fraction * (t1 - t0);
+                  const cy = getNearestObservedY(timeMs);
+                  
                   els.push(
-                    <g key={`cluster-${bin}-${idx++}`} transform={`translate(${cx}, ${y})`}>
+                    <g key={`cluster-${bin}-${idx++}`} transform={`translate(${cx}, ${cy})`}>
                       <circle r={8} fill="#7f8c8d" stroke="#000" />
                       <text x={-3.5} y={4} fontSize="10" fill="#fff">{arr.length}</text>
                     </g>
@@ -763,18 +743,15 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           </g>
         )}
       </svg>
-      {/* Floating controls */}
       <div className="chart-comment-controls" role="group" aria-label="Comment overlay controls">
         <IonButtons>
-          <IonButton onClick={onToggleComments} aria-label={showComments ? 'Hide comments (C)' : 'Show comments (C)'}>
+          <IonButton onClick={onToggleComments} aria-label={showComments ? 'Hide pins (C)' : 'Show pins (C)'}>
             <IonIcon icon={showComments ? eye : eyeOff} />
-            {typeof commentCount === 'number' && <IonBadge color="medium" style={{ marginLeft: 6 }}>{commentCount}</IonBadge>}
-          </IonButton>
-          <IonButton onClick={onToggleCreationMode} aria-label={commentCreationMode ? 'Disable creation mode (N)' : 'Enable creation mode (N)'} color={commentCreationMode ? 'primary' : undefined}>
-            <IonIcon icon={addCircleOutline} />
+            {typeof commentCount === 'number' && <IonBadge color="primary" style={{ marginLeft: 6 }}>{commentCount}</IonBadge>}
           </IonButton>
           <IonButton disabled aria-label="Comments">
             <IonIcon icon={chatbubbleOutline} />
+            <span style={{marginLeft: 6, fontSize: '0.8rem', textTransform: 'none'}}>Tap chart to pin</span>
           </IonButton>
         </IonButtons>
       </div>

@@ -7,6 +7,7 @@ import {
   getCommentsByStation,
   getCommentsByTimeRange,
   subscribeToComments,
+  subscribeToCommentsByTimeRange,
   updateComment as svcUpdate,
 } from 'src/lib/commentService';
 import { useAuth } from 'src/contexts/AuthContext';
@@ -70,24 +71,19 @@ export const useComments = (opts: UseCommentsOptions = {}) => {
     if (!opts.realtime) return;
     if (!opts.stationId && !opts.authorUid) return;
     if (unsubRef.current) unsubRef.current();
-    unsubRef.current = subscribeToComments(
-      { stationId: opts.stationId, authorUid: opts.authorUid, includeDeleted, pageSize },
-      (items) => {
-        // If timeRange filter provided, filter client-side to reflect UI state
-        if (opts.timeRange) {
-          const start = Date.parse(opts.timeRange.startTime);
-          const end = Date.parse(opts.timeRange.endTime);
-          const filtered = items.filter((c) => {
-            const cStart = Date.parse(c.metadata.timeRange.startTime);
-            const cEnd = Date.parse(c.metadata.timeRange.endTime);
-            return cStart <= end && cEnd >= start;
-          });
-          setComments(filtered);
-        } else {
-          setComments(items);
-        }
-      }
-    );
+    if (opts.stationId && opts.timeRange) {
+      unsubRef.current = subscribeToCommentsByTimeRange(
+        opts.stationId,
+        opts.timeRange,
+        { includeDeleted, pageSize },
+        (items) => setComments(items)
+      );
+    } else {
+      unsubRef.current = subscribeToComments(
+        { stationId: opts.stationId, authorUid: opts.authorUid, includeDeleted, pageSize },
+        (items) => setComments(items)
+      );
+    }
     return () => {
       if (unsubRef.current) unsubRef.current();
       unsubRef.current = null;

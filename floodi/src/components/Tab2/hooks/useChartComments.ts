@@ -14,7 +14,6 @@ export const useChartComments = (config: AppConfiguration) => {
 
   // Overlay state
   const [showComments, setShowComments] = useState<boolean>(true);
-  const [commentCreationMode, setCommentCreationMode] = useState<boolean>(false);
   const [hoveredComment, setHoveredComment] = useState<Comment | null>(null);
   const [selectedTimeRange, setSelectedTimeRange] = useState<CommentTimeRange | null>(null);
 
@@ -32,7 +31,6 @@ export const useChartComments = (config: AppConfiguration) => {
 
   // Handlers
   const toggleCommentOverlay = useCallback(() => setShowComments((v) => !v), []);
-  const toggleCreationMode = useCallback(() => setCommentCreationMode((v) => !v), []);
 
   const handleCommentHover = useCallback((c: Comment | null) => setHoveredComment(c), []);
   const handleCommentClick = useCallback((c: Comment) => setHoveredComment(c), []);
@@ -57,13 +55,11 @@ export const useChartComments = (config: AppConfiguration) => {
 
     // overlay state
     showComments,
-    commentCreationMode,
     hoveredComment,
     selectedTimeRange,
 
     // handlers
     toggleCommentOverlay,
-    toggleCreationMode,
     handleCommentHover,
     handleCommentClick,
     handleTimeRangeSelect,

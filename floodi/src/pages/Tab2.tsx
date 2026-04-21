@@ -209,10 +209,8 @@ const Tab2: React.FC = () => {
             comments={chartComments.comments}
             onCommentHover={(c) => chartComments.handleCommentHover(c)}
             onCommentClick={(c) => chartComments.handleCommentClick(c)}
-            onTimeRangeSelect={(range) => chartComments.handleTimeRangeSelect({ start: new Date(range.startTime), end: new Date(range.endTime) })}
-            commentCreationMode={chartComments.commentCreationMode}
+            onTimePointSelect={(time: Date) => chartComments.handleTimeRangeSelect({ at: time })}
             onToggleComments={chartComments.toggleCommentOverlay}
-            onToggleCreationMode={chartComments.toggleCreationMode}
             commentCount={chartComments.commentCount}
           />
         )}

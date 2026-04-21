@@ -6,10 +6,8 @@ import {
   IonCardContent,
   IonCardHeader,
   IonCardTitle,
-  IonCheckbox,
   IonCol,
   IonGrid,
-  IonInput,
   IonItem,
   IonLabel,
   IonNote,
@@ -17,19 +15,11 @@ import {
   IonSpinner,
   IonTextarea,
 } from '@ionic/react';
-import { TimeRange, TimeRangePicker, CommentEventType } from 'src/components/comments/TimeRangePicker';
+import type { TimeRange, CommentEventType } from 'src/components/comments/TimeRangePicker';
 import { useAuth } from 'src/contexts/AuthContext';
 import { useCommentPermissions } from 'src/hooks/useComments';
 import * as commentValidation from 'src/utils/commentValidation';
 import 'src/components/comments/styles/Comments.css';
-
-/**
- * CommentForm
- *
- * Professional comment input form with integrated time range picker,
- * content textarea, data context selection, optional threshold value,
- * and robust validation and accessibility.
- */
 
 export interface CommentFormValues {
   content: string;
@@ -51,7 +41,6 @@ export interface CommentFormProps {
 
 export const CommentForm: React.FC<CommentFormProps> = ({
   stationId,
-  chartDomain,
   initialContent = '',
   initialRange,
   loading = false,
@@ -62,12 +51,6 @@ export const CommentForm: React.FC<CommentFormProps> = ({
   const perms = useCommentPermissions();
 
   const [content, setContent] = useState<string>(initialContent);
-  const [range, setRange] = useState<TimeRange | undefined>(initialRange);
-  const [eventType, setEventType] = useState<CommentEventType>('normal-tide');
-  const [dataContexts, setDataContexts] = useState<Array<'observed' | 'predicted' | 'adjusted'>>([
-    'observed',
-  ]);
-  const [threshold, setThreshold] = useState<number | undefined>(undefined);
   const [error, setError] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
 
@@ -77,16 +60,10 @@ export const CommentForm: React.FC<CommentFormProps> = ({
   const canSubmit = useMemo(() => {
     if (loading || submitting) return false;
     if (!perms?.canCreate()) return false;
-    if (!range) return false;
+    if (!initialRange) return false;
     if (characterCount === 0 || characterCount > characterLimit) return false;
     return true;
-  }, [loading, submitting, perms?.canCreate, range, characterCount]);
-
-  const toggleContext = (key: 'observed' | 'predicted' | 'adjusted') => {
-    setDataContexts((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
-  };
+  }, [loading, submitting, perms?.canCreate, initialRange, characterCount]);
 
   const validate = useCallback(() => {
     try {
@@ -97,10 +74,9 @@ export const CommentForm: React.FC<CommentFormProps> = ({
     } catch {}
     if (characterCount === 0) return 'Please enter a comment.';
     if (characterCount > characterLimit) return 'Comment is too long (max 2000 characters).';
-    if (!range) return 'Please select a time range.';
-    if (threshold != null && Number.isNaN(threshold)) return 'Threshold must be a valid number.';
+    if (!initialRange) return 'A specific point on the chart must be selected.';
     return '';
-  }, [content, characterCount, characterLimit, range, threshold]);
+  }, [content, characterCount, characterLimit, initialRange]);
 
   const handleSubmit = async () => {
     const msg = validate();
@@ -108,11 +84,15 @@ export const CommentForm: React.FC<CommentFormProps> = ({
     if (msg) return;
     setSubmitting(true);
     try {
-      await onSubmit({ content, range, eventType, dataContexts, threshold });
-      // clear form on success
+      // Data context defaults, since we removed the manual choices
+      await onSubmit({ 
+        content, 
+        range: initialRange, 
+        eventType: 'normal-tide', 
+        dataContexts: ['observed'], 
+        threshold: undefined 
+      });
       setContent('');
-      setThreshold(undefined);
-      setDataContexts(['observed']);
     } catch (e: any) {
       setError(e?.message || 'Failed to submit comment.');
     } finally {
@@ -122,95 +102,36 @@ export const CommentForm: React.FC<CommentFormProps> = ({
 
   return (
     <IonCard className="comments-card comments-form" aria-label="Create comment form">
-      <IonCardHeader>
-        <IonCardTitle>Create Comment</IonCardTitle>
-      </IonCardHeader>
       <IonCardContent>
         {!perms?.canCreate() && (
           <IonNote color="warning">
-            {isAnonymous
-              ? "Please sign in to create comments."
+            {!user || isAnonymous
+              ? "Please sign in to drop a pin."
               : userProfile
-                ? `Your account role (${userProfile.role}) does not allow creating comments. Contact an administrator if you believe this is an error.`
+                ? `Your account role (${userProfile.role}) does not allow dropping pins. Contact an administrator if you believe this is an error.`
                 : "Loading user permissions... If this persists, please refresh the page."
             }
           </IonNote>
         )}
-        {isAnonymous && (
-          <IonNote color="medium" className="comments-upgrade-note">
-            Create an account to unlock comment history, editing, and notifications.
+        {(!user || isAnonymous) && (
+          <IonNote color="medium" className="comments-upgrade-note" style={{display: 'block', marginTop: '8px', marginBottom: '8px'}}>
+            Create an account to drop pins natively onto the chart!
           </IonNote>
         )}
-
-        <TimeRangePicker
-          initialRange={initialRange}
-          chartDomain={chartDomain}
-          onChange={({ range: r, eventType: t }) => {
-            setRange(r);
-            setEventType(t);
-          }}
-        />
 
         <IonGrid>
           <IonRow>
             <IonCol size="12">
               <IonItem>
-                <IonLabel position="stacked">Comment</IonLabel>
+                <IonLabel position="stacked">Add a note or observation...</IonLabel>
                 <IonTextarea
                   value={content}
                   onIonInput={(e) => setContent((e.detail.value as string) ?? '')}
                   autoGrow
                   aria-label="Comment content"
+                  placeholder="E.g. The water is cresting over the sidewalk here."
                 />
                 <IonNote slot="helper">{characterCount}/{characterLimit}</IonNote>
-              </IonItem>
-            </IonCol>
-          </IonRow>
-          <IonRow>
-            <IonCol size="12" sizeMd="8">
-              <IonItem lines="none">
-                <IonLabel>Observed</IonLabel>
-                <IonCheckbox
-                  checked={dataContexts.includes('observed')}
-                  onIonChange={() => toggleContext('observed')}
-                  aria-label="Observed data context"
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel>Predicted</IonLabel>
-                <IonCheckbox
-                  checked={dataContexts.includes('predicted')}
-                  onIonChange={() => toggleContext('predicted')}
-                  aria-label="Predicted data context"
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel>Adjusted</IonLabel>
-                <IonCheckbox
-                  checked={dataContexts.includes('adjusted')}
-                  onIonChange={() => toggleContext('adjusted')}
-                  aria-label="Adjusted data context"
-                />
-              </IonItem>
-            </IonCol>
-            <IonCol size="12" sizeMd="4">
-              <IonItem>
-                <IonLabel position="stacked">Threshold (optional)</IonLabel>
-                <IonInput
-                  type="number"
-                  inputmode="decimal"
-                  value={threshold as any}
-                  onIonInput={(e) => {
-                    const raw = (e.detail.value as string) ?? '';
-                    if (raw.trim() === '') {
-                      setThreshold(undefined);
-                      return;
-                    }
-                    const parsed = Number(raw);
-                    setThreshold(Number.isFinite(parsed) ? parsed : undefined);
-                  }}
-                  aria-label="Threshold value"
-                />
               </IonItem>
             </IonCol>
           </IonRow>
@@ -227,9 +148,9 @@ export const CommentForm: React.FC<CommentFormProps> = ({
 
           <IonRow className="comments-form-actions">
             <IonCol size="12">
-              <IonButtons>
+              <IonButtons style={{justifyContent: 'flex-end'}}>
                 {onCancel && (
-                  <IonButton fill="outline" onClick={onCancel} disabled={loading || submitting}>
+                  <IonButton fill="clear" onClick={onCancel} disabled={loading || submitting}>
                     Cancel
                   </IonButton>
                 )}
@@ -237,9 +158,10 @@ export const CommentForm: React.FC<CommentFormProps> = ({
                   onClick={handleSubmit}
                   disabled={!canSubmit}
                   color="primary"
+                  fill="solid"
                   aria-label="Submit comment"
                 >
-                  {loading || submitting ? <IonSpinner name="dots" /> : 'Submit Comment'}
+                  {loading || submitting ? <IonSpinner name="dots" /> : 'Drop Pin'}
                 </IonButton>
               </IonButtons>
             </IonCol>

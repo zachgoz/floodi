@@ -26,7 +26,6 @@ import Intro from './pages/Intro';
 import React from 'react';
 import Tab2 from './pages/Tab2';
 import Tab3 from './pages/Tab3';
-import Tab4 from './pages/Tab4';
 import { Login, Register, ResetPassword, Profile } from 'src/pages/auth';
 import { PrivateRoute, AdminRoute } from 'src/components/routing';
 import { UserRoleManager } from 'src/components/admin';
@@ -161,10 +160,6 @@ const App: React.FC = () => (
           <Route exact path="/tab2">
             <Tab2 />
           </Route>
-          {/* Dedicated Comments tab */}
-          <Route path="/tab4">
-            <Tab4 />
-          </Route>
           {/* App information and about page */}
           <Route path="/tab3">
             <Tab3 />
@@ -193,11 +188,6 @@ const App: React.FC = () => (
           <IonTabButton tab="tab2" href="/tab2">
             <IonIcon aria-hidden="true" icon={ellipse} />
             <IonLabel>FloodCast</IonLabel>
-          </IonTabButton>
-          {/* Comments tab - standalone comment management */}
-          <IonTabButton tab="tab4" href="/tab4" aria-label="Comments">
-            <IonIcon aria-hidden="true" icon={chatbubblesOutline} />
-            <IonLabel>Comments</IonLabel>
           </IonTabButton>
           {/* About tab - app information and help */}
           <IonTabButton tab="tab3" href="/tab3">

@@ -57,7 +57,7 @@ export const validateChartTimeRange = (
   const errors: string[] = [];
   const s = Date.parse(range.startTime);
   const e = Date.parse(range.endTime);
-  if (!(e > s)) errors.push('Invalid chart time range.');
+  if (!(e >= s)) errors.push('Invalid chart time range.');
   const MAX = 7 * 24 * 60 * 60 * 1000;
   if (e - s > MAX) errors.push('Range too large for chart.');
   return { ok: errors.length === 0, errors };
