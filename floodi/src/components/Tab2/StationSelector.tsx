@@ -74,7 +74,7 @@ export const StationSelector: React.FC<StationSelectorProps> = ({
   /**
    * Handle search input changes
    */
-  const handleSearchChange = (event: CustomEvent<{ value?: string }>) => {
+  const handleSearchChange = (event: any) => {
     const query = event.detail.value || '';
     setSearchQuery(query);
   };

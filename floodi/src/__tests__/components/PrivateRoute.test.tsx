@@ -4,19 +4,15 @@ import { MemoryRouter, Route } from 'react-router-dom';
 import { vi } from 'vitest';
 import { PrivateRoute } from 'src/components/routing/PrivateRoute';
 
-vi.mock('src/contexts/AuthContext', () => {
-  type MockAuthState = { user: { uid: string } | null; loading: boolean; isAnonymous: boolean };
-  let state: MockAuthState = { user: null, loading: false, isAnonymous: false };
-  return {
-    useAuth: () => state,
-    __setAuthState: (s: MockAuthState) => (state = s),
-  };
-});
-import { __setAuthState } from 'src/contexts/AuthContext';
+vi.mock('src/contexts/AuthContext', () => ({
+  useAuth: vi.fn(),
+}));
+
+import { useAuth } from 'src/contexts/AuthContext';
 
 describe('PrivateRoute', () => {
   it('renders when unauthenticated for public route', () => {
-    __setAuthState({ user: null, loading: false, isAnonymous: false });
+    vi.mocked(useAuth).mockReturnValue({ user: null, loading: false, isAnonymous: false } as any);
     render(
       <MemoryRouter initialEntries={['/public']}>
         <PrivateRoute path="/public">
@@ -28,7 +24,7 @@ describe('PrivateRoute', () => {
   });
 
   it('redirects when unauthenticated and requireAuth=true', () => {
-    __setAuthState({ user: null, loading: false, isAnonymous: false });
+    vi.mocked(useAuth).mockReturnValue({ user: null, loading: false, isAnonymous: false } as any);
     render(
       <MemoryRouter initialEntries={['/profile']}>
         <PrivateRoute path="/profile" requireAuth>
@@ -43,7 +39,7 @@ describe('PrivateRoute', () => {
   });
 
   it('renders when authenticated', () => {
-    __setAuthState({ user: { uid: '1' }, loading: false, isAnonymous: false });
+    vi.mocked(useAuth).mockReturnValue({ user: { uid: '1' }, loading: false, isAnonymous: false } as any);
     render(
       <MemoryRouter initialEntries={['/profile']}>
         <PrivateRoute path="/profile" requireAuth>
@@ -55,7 +51,7 @@ describe('PrivateRoute', () => {
   });
 
   it('preserves redirect with path, query and hash', () => {
-    __setAuthState({ user: null, loading: false, isAnonymous: false });
+    vi.mocked(useAuth).mockReturnValue({ user: null, loading: false, isAnonymous: false } as any);
     const TestLogin = () => {
       return (
         <Route
@@ -79,7 +75,7 @@ describe('PrivateRoute', () => {
   });
 
   it('renders a loading spinner when loading', () => {
-    __setAuthState({ user: null, loading: true, isAnonymous: false });
+    vi.mocked(useAuth).mockReturnValue({ user: null, loading: true, isAnonymous: false } as any);
     const { container } = render(
       <MemoryRouter initialEntries={['/profile']}>
         <PrivateRoute path="/profile" requireAuth>
@@ -91,7 +87,7 @@ describe('PrivateRoute', () => {
   });
 
   it('honors a custom redirectTo prop', () => {
-    __setAuthState({ user: null, loading: false, isAnonymous: false });
+    vi.mocked(useAuth).mockReturnValue({ user: null, loading: false, isAnonymous: false } as any);
     const TestTarget = () => (
       <Route
         path="/welcome"
@@ -111,7 +107,7 @@ describe('PrivateRoute', () => {
   });
 
   it('allows anonymous users for public routes', () => {
-    __setAuthState({ user: { uid: 'anon' }, loading: false, isAnonymous: true });
+    vi.mocked(useAuth).mockReturnValue({ user: { uid: 'anon' }, loading: false, isAnonymous: true } as any);
     render(
       <MemoryRouter initialEntries={['/public']}>
         <PrivateRoute path="/public">

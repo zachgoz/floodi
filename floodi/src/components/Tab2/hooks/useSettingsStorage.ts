@@ -6,7 +6,7 @@ import type { AppConfiguration, TimeRange, OffsetConfig } from '../types';
  */
 const STORAGE_KEYS = {
   STATION: 'floodi.station',
-  THRESHOLD: 'floodi.threshold',
+  THRESHOLDS: 'floodi.thresholds',
   OFFSET_MODE: 'floodi.offset.mode',
   OFFSET_VALUE: 'floodi.offset.value',
   LOOKBACK_H: 'floodi.hist.lookbackH',
@@ -28,7 +28,12 @@ const DEFAULT_CONFIG: AppConfiguration = {
     name: '',
     state: undefined,
   },
-  threshold: 6.1, // MLLW feet
+  thresholds: {
+    minor: 6.1,
+    moderate: 7.0,
+    major: 7.7,
+    extreme: 8.5,
+  },
   offset: {
     mode: 'auto',
     value: '',
@@ -85,8 +90,16 @@ function safeSetStorageItem(key: string, value: string): void {
 export function useSettingsStorage() {
   // Initialize configuration from localStorage or defaults
   const [config, setConfig] = useState<AppConfiguration>(() => {
-    const storedThreshold = safeGetStorageItem(STORAGE_KEYS.THRESHOLD, String(DEFAULT_CONFIG.threshold));
-    const threshold = parseFloat(storedThreshold);
+    const storedThresholds = safeGetStorageItem(STORAGE_KEYS.THRESHOLDS, '');
+    let thresholds = DEFAULT_CONFIG.thresholds;
+    try {
+      if (storedThresholds) {
+        const parsed = JSON.parse(storedThresholds);
+        if (parsed && typeof parsed.minor === 'number') {
+          thresholds = { ...DEFAULT_CONFIG.thresholds, ...parsed };
+        }
+      }
+    } catch { /* ignore */ }
     
     const storedLookback = safeGetStorageItem(STORAGE_KEYS.LOOKBACK_H, String(DEFAULT_CONFIG.timeRange.lookbackH));
     const lookbackH = parseInt(storedLookback, 10);
@@ -100,7 +113,7 @@ export function useSettingsStorage() {
         name: DEFAULT_CONFIG.station.name,
         state: DEFAULT_CONFIG.station.state,
       },
-      threshold: Number.isFinite(threshold) && threshold > 0 ? threshold : DEFAULT_CONFIG.threshold,
+      thresholds,
       offset: {
         mode: safeGetStorageItem(STORAGE_KEYS.OFFSET_MODE, DEFAULT_CONFIG.offset.mode) as 'auto' | 'manual',
         value: safeGetStorageItem(STORAGE_KEYS.OFFSET_VALUE, DEFAULT_CONFIG.offset.value),
@@ -126,56 +139,30 @@ export function useSettingsStorage() {
   // Persist changes to localStorage when config updates
   useEffect(() => {
     safeSetStorageItem(STORAGE_KEYS.STATION, config.station.id);
-  }, [config.station.id]);
-
-  useEffect(() => {
-    safeSetStorageItem(STORAGE_KEYS.THRESHOLD, String(config.threshold));
-  }, [config.threshold]);
-
-  useEffect(() => {
+    safeSetStorageItem(STORAGE_KEYS.THRESHOLDS, JSON.stringify(config.thresholds));
     safeSetStorageItem(STORAGE_KEYS.OFFSET_MODE, config.offset.mode);
-  }, [config.offset.mode]);
-
-  useEffect(() => {
     safeSetStorageItem(STORAGE_KEYS.OFFSET_VALUE, config.offset.value);
-  }, [config.offset.value]);
-
-  useEffect(() => {
     safeSetStorageItem(STORAGE_KEYS.LOOKBACK_H, String(config.timeRange.lookbackH));
-  }, [config.timeRange.lookbackH]);
-
-  useEffect(() => {
     safeSetStorageItem(STORAGE_KEYS.LOOKAHEAD_H, String(config.timeRange.lookaheadH));
-  }, [config.timeRange.lookaheadH]);
-
-  useEffect(() => {
     safeSetStorageItem(STORAGE_KEYS.RANGE_MODE, config.timeRange.mode);
-  }, [config.timeRange.mode]);
-
-  useEffect(() => {
     safeSetStorageItem(STORAGE_KEYS.ABS_START, config.timeRange.absStart);
-  }, [config.timeRange.absStart]);
-
-  useEffect(() => {
     safeSetStorageItem(STORAGE_KEYS.ABS_END, config.timeRange.absEnd);
-  }, [config.timeRange.absEnd]);
-
-  useEffect(() => {
     safeSetStorageItem(STORAGE_KEYS.TIMEZONE, config.display.timezone);
-  }, [config.display.timezone]);
-
-  useEffect(() => {
     safeSetStorageItem(STORAGE_KEYS.SHOW_DELTA, config.display.showDelta ? '1' : '0');
-  }, [config.display.showDelta]);
+    if (config.display.theme) {
+      safeSetStorageItem(STORAGE_KEYS.THEME, config.display.theme);
+    }
+  }, [config]);
 
   useEffect(() => {
     const theme = config.display.theme ?? 'auto';
-    safeSetStorageItem(STORAGE_KEYS.THEME, theme);
     try {
       const root = document.documentElement;
       const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       const shouldDark = theme === 'dark' || (theme === 'auto' && prefersDark);
+      const forceLight = theme === 'light';
       root.classList.toggle('ion-palette-dark', shouldDark);
+      root.classList.toggle('ion-palette-light', forceLight);
     } catch { void 0; }
   }, [config.display.theme]);
 
@@ -187,8 +174,8 @@ export function useSettingsStorage() {
     }));
   }, []);
 
-  const updateThreshold = useCallback((threshold: number) => {
-    setConfig(prev => ({ ...prev, threshold }));
+  const updateThresholds = useCallback((thresholds: Partial<AppConfiguration['thresholds']>) => {
+    setConfig(prev => ({ ...prev, thresholds: { ...prev.thresholds, ...thresholds } }));
   }, []);
 
   const updateOffset = useCallback((offset: Partial<OffsetConfig>) => {
@@ -212,12 +199,23 @@ export function useSettingsStorage() {
     }));
   }, []);
 
+  const resetToLive = useCallback(() => {
+    setConfig(prev => ({
+      ...prev,
+      timeRange: {
+        ...prev.timeRange,
+        mode: 'relative'
+      }
+    }));
+  }, []);
+
   return {
     config,
     updateStation,
-    updateThreshold,
+    updateThresholds,
     updateOffset,
     updateTimeRange,
     updateDisplay,
+    resetToLive,
   };
 }

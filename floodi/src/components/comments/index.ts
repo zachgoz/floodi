@@ -21,5 +21,4 @@ export { CommentList } from 'src/components/comments/CommentList';
 export { CommentTimeline } from 'src/components/comments/CommentTimeline';
 export { CommentMetadata } from 'src/components/comments/CommentMetadata';
 
-export { CommentManager } from 'src/components/comments/CommentManager';
 

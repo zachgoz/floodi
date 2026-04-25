@@ -36,15 +36,13 @@ describe('ChartViewer with comments', () => {
         domainStart={start}
         domainEnd={end}
         now={now}
-        threshold={2}
+        thresholds={{ minor: 2, moderate: 3, major: 4, extreme: 5 }}
         showDelta={false}
         timezone={'local'}
         config={{} as any}
         showComments={true}
         comments={comments as any}
         onToggleComments={() => {}}
-        onToggleCreationMode={() => {}}
-        commentCreationMode={false}
       />
     );
     expect(screen.getByRole('group', { name: /Comment overlay controls/i })).toBeInTheDocument();

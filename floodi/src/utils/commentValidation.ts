@@ -3,7 +3,6 @@ import type {
   Comment,
   CommentMetadata,
   CommentTimeRange,
-  CreateCommentData,
 } from 'src/types/comment';
 import { canCreateComments, canDeleteComment, canEditComment } from 'src/utils/permissions';
 
@@ -60,7 +59,7 @@ export const sanitizeCommentContent = (html: string): string => {
         const u = new URL(href, 'https://example.com');
         if (u.protocol !== 'http:' && u.protocol !== 'https:') return '<a rel="noopener noreferrer">';
       } catch {
-        return '<a rel=\"noopener noreferrer\">';
+        return '<a rel="noopener noreferrer">';
       }
       return `<a href="${href}" rel="noopener noreferrer">`;
     }
@@ -136,11 +135,13 @@ export interface PermissionContext {
   comment?: Pick<Comment, 'authorUid' | 'isDeleted' | 'createdAt'> | null;
 }
 
-const msFromTimestampLike = (v: any): number | null => {
+const msFromTimestampLike = (v: unknown): number | null => {
   if (!v) return null;
   if (typeof v === 'number') return v;
-  if (typeof v?.toMillis === 'function') return v.toMillis();
-  if (typeof v?.seconds === 'number') return Math.floor(v.seconds * 1000);
+  if (typeof v === 'object' && v !== null) {
+    if ('toMillis' in v && typeof (v as { toMillis: () => number }).toMillis === 'function') return (v as { toMillis: () => number }).toMillis();
+    if ('seconds' in v && typeof (v as { seconds: number }).seconds === 'number') return Math.floor((v as { seconds: number }).seconds * 1000);
+  }
   if (v instanceof Date) return v.getTime();
   return null;
 };
@@ -152,7 +153,7 @@ export const validateCommentPermissions = (ctx: PermissionContext): boolean => {
   if (action === 'edit') {
     if (!comment || comment.isDeleted) return false;
     const isOwner = comment.authorUid === currentUserUid;
-    const createdMs = msFromTimestampLike((comment as any).createdAt);
+    const createdMs = msFromTimestampLike((comment as Record<string, unknown>).createdAt);
     // If createdAt is unavailable (e.g., in tests or legacy docs), default to allowing owner edits.
     const within24h = createdMs == null ? true : Date.now() < createdMs + 24 * 60 * 60 * 1000;
     return (isOwner && within24h && canEditComment(role, comment.authorUid, currentUserUid)) || role === UserRole.Admin || role === UserRole.Moderator;
@@ -160,7 +161,7 @@ export const validateCommentPermissions = (ctx: PermissionContext): boolean => {
   if (action === 'delete') {
     if (!comment) return false;
     const isOwner = comment.authorUid === currentUserUid;
-    const createdMs = msFromTimestampLike((comment as any).createdAt);
+    const createdMs = msFromTimestampLike((comment as Record<string, unknown>).createdAt);
     // If createdAt is unavailable (e.g., in tests or legacy docs), default to allowing owner deletes.
     const within24h = createdMs == null ? true : Date.now() < createdMs + 24 * 60 * 60 * 1000;
     return (isOwner && within24h && canDeleteComment(role, comment.authorUid, currentUserUid)) || role === UserRole.Admin || role === UserRole.Moderator;

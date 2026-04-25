@@ -9,14 +9,18 @@ import { useAuth } from 'src/contexts/AuthContext';
 import { useUserPermissions } from 'src/hooks/useUserPermissions';
 
 vi.mock('src/contexts/AuthContext', () => ({
-  useAuth: () => ({
+  useAuth: vi.fn(() => ({
     user: { uid: 'u1', email: 'u@e.com' },
     isAnonymous: false,
-  }),
+    loading: false,
+    userProfile: null,
+    userPermissions: null,
+    error: null,
+  })),
 }));
 
 vi.mock('src/hooks/useUserPermissions', () => ({
-  useUserPermissions: () => ({
+  useUserPermissions: vi.fn(() => ({
     role: UserRole.User,
     permissions: {
       canCreateComments: true,
@@ -37,7 +41,7 @@ vi.mock('src/hooks/useUserPermissions', () => ({
     isAdmin: () => false,
     isModerator: () => false,
     isAnonymous: () => false,
-  }),
+  })),
 }));
 
 describe('useCommentPermissions', () => {
@@ -84,7 +88,11 @@ describe('useCommentPermissions', () => {
     vi.mocked(useAuth).mockReturnValue({
       user: null,
       isAnonymous: true,
-    });
+      loading: false,
+      userProfile: null,
+      userPermissions: null,
+      error: null,
+    } as any);
 
     vi.mocked(useUserPermissions).mockReturnValue({
       role: UserRole.Anonymous,

@@ -44,26 +44,27 @@ describe('commentValidation', () => {
     const meta = {
       station: { id: '8720218', name: 'Key West' },
       timeRange: { startTime: new Date(Date.now() - 1000).toISOString(), endTime: new Date(Date.now() + 1000).toISOString() },
-      dataContext: ['observed', 'predicted'] as const,
+      dataContext: ['observed', 'predicted'] as any,
     };
-    expect(validateCommentMetadata(meta).ok).toBe(true);
+    expect(validateCommentMetadata(meta as any).ok).toBe(true);
   });
 
   it('checks edit reason', () => {
     expect(isValidEditReason(undefined)).toBe(true);
     expect(isValidEditReason('Fix')).toBe(true);
-    expect(isValidEditReason('').toString()).toBe('false');
+    expect(isValidEditReason('')).toBe(false);
   });
 
   it('evaluates permissions', () => {
+    const now = { seconds: Math.floor(Date.now() / 1000) } as any;
     // create
     expect(validateCommentPermissions({ action: 'create', role: UserRole.User, currentUserUid: 'u1' })).toBe(true);
     // edit own
-    expect(validateCommentPermissions({ action: 'edit', role: UserRole.User, currentUserUid: 'u1', comment: { authorUid: 'u1', isDeleted: false } })).toBe(true);
+    expect(validateCommentPermissions({ action: 'edit', role: UserRole.User, currentUserUid: 'u1', comment: { authorUid: 'u1', isDeleted: false, createdAt: now } })).toBe(true);
     // edit others denied for user
-    expect(validateCommentPermissions({ action: 'edit', role: UserRole.User, currentUserUid: 'u1', comment: { authorUid: 'u2', isDeleted: false } })).toBe(false);
+    expect(validateCommentPermissions({ action: 'edit', role: UserRole.User, currentUserUid: 'u1', comment: { authorUid: 'u2', isDeleted: false, createdAt: now } })).toBe(false);
     // moderator can edit others
-    expect(validateCommentPermissions({ action: 'edit', role: UserRole.Moderator, currentUserUid: 'u1', comment: { authorUid: 'u2', isDeleted: false } })).toBe(true);
+    expect(validateCommentPermissions({ action: 'edit', role: UserRole.Moderator, currentUserUid: 'u1', comment: { authorUid: 'u2', isDeleted: false, createdAt: now } })).toBe(true);
   });
 });
 

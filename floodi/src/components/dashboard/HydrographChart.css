@@ -1,0 +1,174 @@
+.hydrograph-container {
+  background: var(--dash-card-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 28px;
+  padding: 20px 24px;
+  box-shadow: var(--dash-card-shadow);
+  margin-bottom: 24px;
+  border: var(--dash-card-border, none);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hydrograph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding-bottom: 4px;
+}
+
+.title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hydrograph-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: 'Inter', sans-serif;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.hydrograph-subtitle.is-live {
+  color: var(--ion-color-success, #2ecc71);
+}
+
+.hydrograph-subtitle.is-historical {
+  color: var(--ion-color-primary, #3880ff);
+}
+
+.viewing-time-pill {
+  background: rgba(var(--ion-color-primary-rgb), 0.1);
+  color: var(--ion-color-primary);
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.2);
+  margin-left: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.reset-to-live-btn {
+  background: var(--ion-color-primary);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 4px 10px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: pointer;
+  margin-left: 4px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(var(--ion-color-primary-rgb), 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.reset-to-live-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(var(--ion-color-primary-rgb), 0.4);
+  background: var(--ion-color-primary-tint, #508dff);
+}
+
+.reset-to-live-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 3px rgba(var(--ion-color-primary-rgb), 0.2);
+}
+
+.subtitle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.is-live .subtitle-dot {
+  box-shadow: 0 0 8px var(--ion-color-success);
+  animation: subtitle-pulse 2s infinite;
+}
+
+@keyframes subtitle-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.hydrograph-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--dash-title-color);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  background: linear-gradient(135deg, var(--dash-title-color), var(--ion-color-primary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hydrograph-chart-wrapper {
+  position: relative;
+  width: 100%;
+  height: 480px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.chart-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--ion-color-light-rgb), 0.1);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  border-radius: 12px;
+  pointer-events: none; /* Crucial: Allow interactions to pass through to the chart while loading */
+}
+
+
+/* Add a subtle indicator for live status in the header if needed */
+.hydrograph-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 24px;
+  right: 24px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--dash-header-divider), transparent);
+}
+
+@media (max-width: 680px) {
+  .hydrograph-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .hydrograph-title {
+    font-size: 1.2rem;
+  }
+
+  .hydrograph-chart-wrapper {
+    height: 380px; /* Slightly shorter on mobile */
+  }
+}

@@ -64,8 +64,8 @@ export const CommentEditModal: React.FC<CommentEditModalProps> = ({
   const validate = () => {
     try {
       if (commentValidation?.validateCommentContent) {
-        const res = (commentValidation as any).validateCommentContent(content);
-        if (res && typeof res === 'object' && res.valid === false) return res.message ?? 'Invalid content.';
+        const res = commentValidation.validateCommentContent(content);
+        if (!res.ok) return res.errors.join(' ') || 'Invalid content.';
       }
     } catch {}
     if (characterCount === 0) return 'Please enter content.';

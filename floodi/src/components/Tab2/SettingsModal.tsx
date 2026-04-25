@@ -31,8 +31,8 @@ interface SettingsModalProps {
   config: AppConfiguration;
   /** Callback when station changes */
   onStationChange: (station: Station) => void;
-  /** Callback when threshold changes */
-  onThresholdChange: (threshold: number) => void;
+  /** Callback when thresholds change */
+  onThresholdsChange: (thresholds: Partial<AppConfiguration['thresholds']>) => void;
   /** Callback when offset configuration changes */
   onOffsetConfigChange: (config: Partial<AppConfiguration['offset']>) => void;
   /** Callback when time range changes */
@@ -65,7 +65,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onDismiss,
   config,
   onStationChange,
-  onThresholdChange,
+  onThresholdsChange,
   onOffsetConfigChange,
   onTimeRangeChange,
   onDisplayChange,
@@ -125,8 +125,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Flood Settings */}
           <FloodSettings
-            threshold={config.threshold}
-            onThresholdChange={onThresholdChange}
+            thresholds={config.thresholds}
+            onThresholdsChange={onThresholdsChange}
             offsetConfig={config.offset}
             onOffsetConfigChange={onOffsetConfigChange}
             computedOffset={computedOffset}

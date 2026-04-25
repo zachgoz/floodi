@@ -67,14 +67,12 @@
    ========================================================================== */
 
 .chart-viewer {
-  padding: var(--floodcast-spacing-sm);
+  padding: 0;
   width: 100%;
   /* Account for header height when IonContent is fullscreen */
-  height: calc(100vh - 176px); /* 56px header + 57px tabs + padding */
+  height: 100%;
   min-height: 300px;
   max-height: 600px;
-  /* Add top margin to push below the header */
-  margin-top: 56px; /* Standard Ionic header height */
   position: relative;
   z-index: 1;
 }
@@ -327,9 +325,8 @@
 /* Mobile optimizations */
 @media (max-width: 576px) {
   .chart-viewer {
-    height: calc(100vh - 196px); /* Account for header + tabs + extra mobile padding */
-    padding: var(--floodcast-spacing-xs);
-    margin-top: 56px; /* Header height */
+    height: 100%;
+    padding: 0;
   }
   
   .settings-modal {
@@ -350,8 +347,7 @@
 /* Tablet optimizations */
 @media (min-width: 577px) and (max-width: 992px) {
   .chart-viewer {
-    height: calc(100vh - 186px); /* Account for header + tabs + padding */
-    margin-top: 56px; /* Header height */
+    height: 100%;
   }
   
   .settings-modal {
@@ -363,9 +359,8 @@
 /* Desktop optimizations */
 @media (min-width: 993px) {
   .chart-viewer {
-    height: calc(100vh - 176px); /* Account for header + tabs + padding */
+    height: 100%;
     max-height: 600px;
-    margin-top: 56px; /* Header height */
   }
   
   .settings-modal {

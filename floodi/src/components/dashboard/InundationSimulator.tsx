@@ -1,0 +1,103 @@
+import React, { useMemo } from 'react';
+import { IonIcon } from '@ionic/react';
+import { waterOutline, timeOutline, flagOutline } from 'ionicons/icons';
+import type { AppConfiguration } from '../Tab2/types';
+import './InundationSimulator.css';
+
+interface InundationSimulatorProps {
+  waterLevelFt: number;
+  minLevelFt?: number;
+  maxLevelFt?: number;
+  onLevelChange: (level: number) => void;
+  thresholds: AppConfiguration['thresholds'];
+  simulationContext?: {
+    time: Date;
+    wind?: { speed: number; dir: number };
+    precip?: number;
+    source?: string;
+  };
+}
+
+
+
+export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
+  waterLevelFt,
+  minLevelFt = 0.0,
+  maxLevelFt = 10.0,
+  onLevelChange,
+  thresholds,
+  simulationContext,
+}) => {
+  const ticks = useMemo(() => [
+    { label: 'Minor', ft: thresholds.minor, cls: 'sim-tick-minor' },
+    { label: 'Moderate', ft: thresholds.moderate, cls: 'sim-tick-moderate' },
+    { label: 'Major', ft: thresholds.major, cls: 'sim-tick-major' },
+    { label: 'Extreme', ft: thresholds.extreme, cls: 'sim-tick-extreme' },
+  ], [thresholds]);
+  const pct = (ft: number) =>
+    Math.max(0, Math.min(100, Math.round(((ft - minLevelFt) / (maxLevelFt - minLevelFt)) * 100)));
+
+  return (
+    <div className="simulator-container">
+      <div className="simulator-header">
+        <div className="simulator-title-group">
+          <h3 className="simulator-title">Water Level Simulation</h3>
+          {simulationContext && (
+            <div className="simulator-context">
+              <span className="context-item time">
+                <IonIcon icon={timeOutline} />
+                {simulationContext.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' })}
+              </span>
+              {simulationContext.source && (
+                <span className="context-source">({simulationContext.source})</span>
+              )}
+              {simulationContext.wind && (
+                <span className="context-item wind">
+                  <IonIcon icon={flagOutline} />
+                  {simulationContext.wind.speed.toFixed(0)} mph
+                </span>
+              )}
+              {simulationContext.precip !== undefined && simulationContext.precip > 0 && (
+                <span className="context-item precip">
+                  <IonIcon icon={waterOutline} />
+                  {simulationContext.precip.toFixed(2)} in
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="simulator-readout">{waterLevelFt.toFixed(2)} ft MLLW</div>
+      </div>
+
+      <div className="simulator-slider-wrapper">
+        <input
+          type="range"
+          min={minLevelFt}
+          max={maxLevelFt}
+          step={0.05}
+          value={waterLevelFt}
+          onChange={(e) => onLevelChange(parseFloat(e.target.value))}
+          className="simulator-slider"
+          aria-label="Adjust flood simulation water level (ft MLLW)"
+        />
+
+        {/* Reference ticks aligned to NOAA datums */}
+        <div className="simulator-ticks">
+          {ticks.map(({ label, ft, cls }) => (
+            <span key={label} style={{ left: `${pct(ft)}%` }} className={`sim-tick ${cls}`} title={`${label}: ${ft} ft MLLW`}>
+              {label}
+            </span>
+          ))}
+        </div>
+
+        <div className="simulator-labels">
+          <span>{minLevelFt.toFixed(1)} ft</span>
+          <span className="simulator-label-datum">ft MLLW</span>
+          <span>{maxLevelFt.toFixed(1)} ft</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default InundationSimulator;

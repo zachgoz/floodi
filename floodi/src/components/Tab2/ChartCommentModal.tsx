@@ -222,7 +222,7 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
                   </span>
                 </div>
                 <p className="thread-content-text">{c.content}</p>
-                {c.metadata.dataContext && c.metadata.dataContext.map((ctx) => (
+                {(Array.isArray(c.metadata.dataContext) ? c.metadata.dataContext : [c.metadata.dataContext]).map((ctx) => (
                   <span key={ctx} className="thread-pill">{ctx}</span>
                 ))}
               </div>
@@ -231,7 +231,7 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
         )}
         <CommentForm
           stationId={config.station.id}
-          initialRange={range ? { start: new Date(range.startTime), end: new Date(range.endTime) } : undefined}
+          initialRange={range ? { start: new Date(range.startTime).toISOString(), end: new Date(range.endTime).toISOString() } : undefined}
           loading={loading}
           onSubmit={handleSubmit}
           onCancel={onDismiss}

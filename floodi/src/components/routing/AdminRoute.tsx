@@ -5,9 +5,10 @@ import { useAuth } from 'src/contexts/AuthContext';
 import { useUserPermissions } from 'src/hooks/useUserPermissions';
 import type { Location as HistoryLocation } from 'history';
 
-export type AdminRouteProps = RouteProps & {
+export type AdminRouteProps = Omit<RouteProps, 'children'> & {
   /** Where to redirect non-admin authenticated users (default '/profile'). */
   redirectTo?: string;
+  children?: React.ReactNode;
 };
 
 /**
@@ -16,7 +17,7 @@ export type AdminRouteProps = RouteProps & {
  * - Authenticated non-admin users are redirected to `redirectTo` (default '/profile') with `error=forbidden`.
  * - While auth/permissions load, shows an Ionic spinner.
  */
-const Guard: React.FC<{ location: HistoryLocation; redirectTo: string }> = ({ location, redirectTo, children }) => {
+const Guard: React.FC<React.PropsWithChildren<{ location: HistoryLocation; redirectTo: string }>> = ({ location, redirectTo, children }) => {
   const { user, loading } = useAuth();
   const perms = useUserPermissions();
 

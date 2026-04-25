@@ -73,7 +73,7 @@ describe('commentService', () => {
     doc.mockReturnValue({});
     collection.mockReturnValue({});
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => { vi.restoreAllMocks(); });
 
   it('creates a comment with validation', async () => {
     const addRes = { id: 'c1' } as any;

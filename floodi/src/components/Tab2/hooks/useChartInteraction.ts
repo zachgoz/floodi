@@ -4,18 +4,22 @@ import type { Comment } from 'src/types/comment';
 import { isCommentTimeRange } from 'src/types/comment';
 
 /**
- * Find the nearest point in a series to a given timestamp
- * 
- * @param points Array of data points
+ * Find the nearest point in a typed time-series to a given timestamp.
+ *
+ * The function is generic over any object that has a `t: Date` field, so it
+ * works equally with `Point[]`, `WindPoint[]`, `PrecipPoint[]`, etc. without
+ * requiring `as any` casts at the call site.
+ *
+ * @param points Array of data points (must have a `t: Date` field)
  * @param targetTime Target timestamp to find nearest point for
  * @returns Nearest point and time difference in minutes, or null if no points
  */
-function findNearestPoint(points: Point[], targetTime: Date): { point: Point; dtMin: number } | null {
+export function findNearestPoint<T extends { t: Date }>(points: T[], targetTime: Date): { point: T; dtMin: number } | null {
   if (points.length === 0) return null;
-  
+
   let nearest = points[0];
   let minDiff = Math.abs(nearest.t.getTime() - targetTime.getTime());
-  
+
   for (let i = 1; i < points.length; i++) {
     const diff = Math.abs(points[i].t.getTime() - targetTime.getTime());
     if (diff < minDiff) {
@@ -23,7 +27,7 @@ function findNearestPoint(points: Point[], targetTime: Date): { point: Point; dt
       minDiff = diff;
     }
   }
-  
+
   return { point: nearest, dtMin: minDiff / 60000 }; // Convert ms to minutes
 }
 
@@ -89,6 +93,7 @@ export function useChartInteraction(): ChartInteraction & {
     predictedPoints: Point[],
     adjustedPoints: Point[],
     deltaPoints: Point[],
+    now: Date,
     threshold: number,
     showDelta: boolean
   ) => TooltipData | null;
@@ -120,6 +125,7 @@ export function useChartInteraction(): ChartInteraction & {
     predictedPoints: Point[],
     adjustedPoints: Point[],
     deltaPoints: Point[],
+    now: Date,
     threshold: number,
     showDelta: boolean
   ): TooltipData | null => {
@@ -131,9 +137,10 @@ export function useChartInteraction(): ChartInteraction & {
     const nearestDelta = findNearestPoint(deltaPoints, hoverTime);
 
     const rows: TooltipRow[] = [];
+    const isPast = hoverTime.getTime() < now.getTime() - 180000; // 3 min buffer for "now"
 
-    // Observed data (only show if within 9 minutes)
-    if (nearestObs && nearestObs.dtMin <= 9) {
+    // Observed data (only show in the past and if within 9 minutes)
+    if (isPast && nearestObs && nearestObs.dtMin <= 9) {
       const color = nearestObs.point.v >= threshold ? '#e74c3c' : '#2ecc71';
       rows.push({
         label: 'Observed',
@@ -141,29 +148,24 @@ export function useChartInteraction(): ChartInteraction & {
         color,
         point: nearestObs.point,
       });
-    } else {
-      rows.push({
-        label: 'Observed',
-        value: '—',
-        color: '#2ecc71',
-      });
     }
 
-    // Predicted data
-    if (nearestPred) {
+    // Predicted data (always show if available)
+    // NOAA Prediction
+    if (nearestPred && nearestPred.dtMin <= 9) {
       rows.push({
-        label: 'Prediction',
+        label: 'NOAA Prediction',
         value: `${nearestPred.point.v.toFixed(2)} ft`,
         color: '#95a5a6',
         point: nearestPred.point,
       });
     }
 
-    // Adjusted prediction data
-    if (nearestAdj) {
+    // Adjusted prediction data (only show in the future/present)
+    if (!isPast && nearestAdj && nearestAdj.dtMin <= 9) {
       const color = nearestAdj.point.v >= threshold ? '#e74c3c' : '#2ecc71';
-      rows.push({
-        label: 'Adjusted prediction',
+      rows.unshift({
+        label: 'FloodCast Prediction',
         value: `${nearestAdj.point.v.toFixed(2)} ft`,
         color,
         point: nearestAdj.point,

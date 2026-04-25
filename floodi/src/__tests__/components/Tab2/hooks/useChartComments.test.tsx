@@ -43,19 +43,19 @@ describe('useChartComments', () => {
     expect(result.current.showComments).toBe(true);
   });
 
-  it('toggles overlay and creation mode', () => {
+  it('toggles overlay and clears selection', () => {
     const { result } = renderHook(() => useChartComments(config));
-    act(() => result.current.toggleCommentOverlay());
+    act(() => { (result.current as any).toggleCommentOverlay(); });
     expect(result.current.showComments).toBe(false);
-    act(() => result.current.toggleCreationMode());
-    expect(result.current.commentCreationMode).toBe(true);
+    act(() => { result.current.clearSelected(); });
+    expect(result.current.selectedTimeRange).toBeNull();
   });
 
   it('captures a selected time range', () => {
     const { result } = renderHook(() => useChartComments(config));
     act(() => result.current.handleTimeRangeSelect({ start: new Date(), end: new Date(Date.now()+60000) }));
     expect(result.current.selectedTimeRange).toBeTruthy();
-    act(() => result.current.clearSelectedRange());
+    act(() => { result.current.clearSelected(); });
     expect(result.current.selectedTimeRange).toBeNull();
   });
 });

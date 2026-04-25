@@ -8,6 +8,19 @@ export interface Point {
   v: number;
 }
 
+/** Wind vector data point (hourly) */
+export interface WindPoint {
+  t: Date;
+  speed: number; // Mph
+  dir: number; // Degrees
+}
+
+/** Precipitation accumulation data point (hourly) */
+export interface PrecipPoint {
+  t: Date;
+  value: number; // Inches
+}
+
 /** Station information from NOAA API */
 export interface Station {
   id: string;
@@ -24,13 +37,20 @@ export interface ChartData {
   adjusted: Record<string, number>;
   offset: number | null;
   nPoints: number;
+  wind?: Record<string, { speed: number; dir: number }>;
+  precip?: Record<string, number>;
 }
 
 /** Chart configuration and dimensions */
 export interface ChartConfig {
   size: { w: number; h: number };
   margins: { l: number; r: number; t: number; b: number };
-  threshold: number;
+  thresholds: {
+    minor: number;
+    moderate: number;
+    major: number;
+    extreme: number;
+  };
   showDelta: boolean;
   timezone: 'local' | 'gmt';
 }
@@ -57,7 +77,12 @@ export interface AppConfiguration {
     name: string;
     state?: string;
   };
-  threshold: number;
+  thresholds: {
+    minor: number;
+    moderate: number;
+    major: number;
+    extreme: number;
+  };
   offset: OffsetConfig;
   timeRange: TimeRange;
   display: {

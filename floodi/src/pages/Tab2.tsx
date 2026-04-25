@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   IonContent,
   IonHeader,
@@ -7,7 +7,6 @@ import {
   IonList,
   IonNote,
   IonPage,
-  IonSpinner,
   IonTitle,
   IonToolbar,
   IonRefresher,
@@ -15,18 +14,27 @@ import {
   IonButtons,
   IonButton,
   IonIcon,
+  IonActionSheet,
 } from '@ionic/react';
 import { settingsOutline } from 'ionicons/icons';
-import { ChartViewer } from '../components/Tab2/ChartViewer';
+// import { ChartViewer } from '../components/Tab2/ChartViewer'; // Removed to avoid confusion with default import in HydrographChart
 import { SettingsModal } from '../components/Tab2/SettingsModal';
 import { useSettingsStorage } from '../components/Tab2/hooks/useSettingsStorage';
 import { useChartData } from '../components/Tab2/hooks/useChartData';
-import { formatTooltipTime } from '../components/Tab2/hooks/useChartInteraction';
+import { formatTooltipTime, findNearestPoint } from '../components/Tab2/hooks/useChartInteraction';
 import type { Station } from '../components/Tab2/types';
 import { useChartComments } from '../components/Tab2/hooks/useChartComments';
 import { ChartCommentModal } from '../components/Tab2/ChartCommentModal';
 import '../components/Tab2/styles/Tab2.css';
 import './Tab2.css';
+import '../components/dashboard/DashboardView.css';
+import HydrographChart from '../components/dashboard/HydrographChart';
+import AtmosphericOverlay from '../components/dashboard/AtmosphericOverlay';
+import InundationMap from '../components/dashboard/InundationMap';
+import InundationSimulator from '../components/dashboard/InundationSimulator';
+import WebcamFeedCard from '../components/dashboard/WebcamFeedCard';
+import { APIProvider } from '@vis.gl/react-google-maps';
+// Removed unused types
 
 /**
  * Professional FloodCast Tab2 Component
@@ -35,37 +43,46 @@ import './Tab2.css';
  * 1,037-line monolithic implementation with a clean, maintainable architecture
  * using professional Ionic patterns and decomposed components.
  * 
- * Key Improvements:
- * - Decomposed into focused, reusable components
- * - Professional state management with custom hooks
- * - Proper Ionic component usage instead of custom implementations
- * - Clean separation of concerns
- * - Comprehensive error handling and loading states
- * - Professional CSS architecture with Ionic design tokens
- * - Full accessibility support
- * - Extensive JSDoc documentation
- * 
  * @returns JSX.Element Professional FloodCast interface
  */
 const Tab2: React.FC = () => {
   // Settings modal state
   const [showSettings, setShowSettings] = useState(false);
-  
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
+
   // User feedback messages
   const [messages, setMessages] = useState<{
     success?: string | null;
     error?: string | null;
   }>({});
 
+
   // Professional configuration management
   const {
     config,
     updateStation,
-    updateThreshold,
+    updateThresholds,
     updateOffset,
     updateTimeRange,
     updateDisplay,
+    resetToLive: baseResetToLive,
   } = useSettingsStorage();
+
+  // State declarations (moved up to avoid TDZ)
+  const [resetCount, setResetCount] = useState(0);
+  const [currentViewport, setCurrentViewport] = React.useState<{ start: Date; end: Date; focusTime: Date } | null>(null);
+  const [manualFocusTime, setManualFocusTime] = useState<Date | null>(null);
+  const [chartActionTime, setChartActionTime] = useState<Date | null>(null);
+  const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
+  const [simulationLevel, setSimulationLevel] = useState<number>(2.5);
+  const [hoverTime, setHoverTime] = useState<Date | null>(null);
+
+  const resetToLive = useCallback(() => {
+    baseResetToLive();
+    setCurrentViewport(null);
+    setManualFocusTime(null);
+    setResetCount(c => c + 1);
+  }, [baseResetToLive]);
 
   // Professional data fetching and processing
   const {
@@ -76,6 +93,19 @@ const Tab2: React.FC = () => {
     thresholdCrossing,
     refresh,
   } = useChartData(config);
+
+  // Track the buffered data window so we only refetch when the user scrolls
+  // outside what we've already loaded (useChartData fetches ±5 days around
+  // the current domain, so minor pans should never trigger a new request).
+  const fetchedBufferRef = React.useRef<{ start: Date; end: Date } | null>(null);
+  React.useEffect(() => {
+    if (!processedData) return;
+    const FETCH_BUFFER_MS = 5 * 24 * 3600_000;
+    fetchedBufferRef.current = {
+      start: new Date(processedData.timeDomain.start.getTime() - FETCH_BUFFER_MS),
+      end: new Date(processedData.timeDomain.end.getTime() + FETCH_BUFFER_MS),
+    };
+  }, [processedData]);
 
   /**
    * Handle station selection changes
@@ -120,13 +150,60 @@ const Tab2: React.FC = () => {
   };
 
   /**
+   * Helper to build a context string for the action sheet
+   */
+  const getActionSheetSubheader = (time: Date | null) => {
+    if (!time || !processedData) return undefined;
+
+    const obs = findNearestPoint(processedData.observedPoints, time);
+    const pred = findNearestPoint(processedData.predictedPoints, time);
+    const adj = findNearestPoint(processedData.adjustedPoints, time);
+    const wind = findNearestPoint(processedData.windPoints, time);
+    const precip = findNearestPoint(processedData.precipPoints, time);
+
+    const parts: string[] = [];
+
+    if (obs && obs.dtMin < 10) parts.push(`Obs: ${obs.point.v.toFixed(2)}ft`);
+    if (adj && adj.dtMin < 10) parts.push(`FloodCast: ${adj.point.v.toFixed(2)}ft`);
+    if (pred && pred.dtMin < 10) parts.push(`NOAA: ${pred.point.v.toFixed(2)}ft`);
+
+    if (wind && wind.dtMin < 60) {
+      const COMPASS_DIRS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+      const compass = COMPASS_DIRS[Math.round(((wind.point.dir % 360) + 360) % 360 / 22.5) % 16];
+      parts.push(`${wind.point.speed.toFixed(0)}mph ${compass}`);
+    }
+
+    if (precip && precip.dtMin < 60 && precip.point.value > 0.005) {
+      parts.push(`Precip: ${precip.point.value.toFixed(2)}in`);
+    }
+
+    return parts.length > 0 ? parts.join(' | ') : formatTime(time);
+  };
+
+  /**
    * Memoized chart configuration
    */
   const chartConfig = useMemo(() => ({
-    threshold: config.threshold,
+    thresholds: config.thresholds,
     showDelta: config.display.showDelta,
     timezone: config.display.timezone,
-  }), [config.threshold, config.display.showDelta, config.display.timezone]);
+  }), [config.thresholds, config.display.showDelta, config.display.timezone]);
+
+  // Stable domain change request handler — only triggers a refetch when the
+  // user has scrolled outside the already-fetched ±5-day buffer window.
+  const handleDomainChangeRequest = useCallback((start: Date, end: Date) => {
+    const buf = fetchedBufferRef.current;
+    if (buf && start >= buf.start && end <= buf.end) {
+      // Still within the buffered window — no fetch needed, ChartViewer
+      // already has all the data it needs locally.
+      return;
+    }
+    updateTimeRange({
+      mode: 'absolute',
+      absStart: start.toISOString(),
+      absEnd: end.toISOString()
+    });
+  }, [updateTimeRange]);
 
   // Comments integration tied to current config
   const chartComments = useChartComments(config);
@@ -139,14 +216,101 @@ const Tab2: React.FC = () => {
     }
   }, [chartComments.selectedTimeRange, chartComments.selectedComments]);
 
+
+  // Road elevation GeoJSON — fetched from /public/data/
+  const [roadData, setRoadData] = useState<GeoJSON.FeatureCollection | undefined>(undefined);
+  React.useEffect(() => {
+    fetch('/data/carolinaBeachRoads.geojson?v=' + new Date().getTime())
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setRoadData(data); })
+      .catch(() => { /* file not yet generated — map shows notice */ });
+  }, []);
+
+  /**
+   * Focus helpers for specific data points
+   */
+  const handleFocusPoint = (time: Date) => {
+    setManualFocusTime(time);
+    setCenterRequest({ time, id: Date.now() });
+  };
+
+  // Derive atmospheric values for the overlay pill and map visualization
+  const activeAtmo = useMemo(() => {
+    if (!processedData) {
+      return { wl: 0, time: null, isLive: true, source: 'Live Conditions', wind: null, precip: null };
+    }
+
+    const now = processedData.timeDomain.now;
+
+    const targetT = manualFocusTime || (currentViewport?.focusTime) || now;
+    const isLive = !manualFocusTime && (!currentViewport || Math.abs(targetT.getTime() - now.getTime()) < 60000);
+    let source = 'Live Conditions';
+
+    if (manualFocusTime) {
+      source = 'Selection';
+    } else if (currentViewport) {
+      source = 'Scroll Context';
+    }
+
+    // Find nearest data points using shared utility
+    const obsRes = findNearestPoint(processedData.observedPoints, targetT);
+    const adjRes = findNearestPoint(processedData.adjustedPoints, targetT);
+    const predRes = findNearestPoint(processedData.predictedPoints, targetT);
+    const windRes = findNearestPoint(processedData.windPoints, targetT);
+    const precipRes = findNearestPoint(processedData.precipPoints, targetT);
+
+    // Prioritize observed water level if it's within a reasonable window (60m)
+    // Fall back to adjusted predictions if viewing the future or if observed is stale
+    const wl = (obsRes && obsRes.dtMin < 60) ? obsRes.point.v :
+               (adjRes && adjRes.dtMin < 60) ? adjRes.point.v :
+               (predRes && predRes.dtMin < 60) ? predRes.point.v : 0;
+
+    return { 
+      wl, 
+      time: targetT, 
+      isLive, 
+      source,
+      wind: windRes && windRes.dtMin < 60 ? { speed: windRes.point.speed, dir: windRes.point.dir } : null,
+      precip: precipRes && precipRes.dtMin < 60 ? { value: precipRes.point.value } : null,
+    };
+  }, [processedData, currentViewport, manualFocusTime, config?.timeRange]);
+
+  // Sync simulation level (for map)
+  React.useEffect(() => {
+    if (activeAtmo.wl !== null && activeAtmo.wl !== undefined) {
+      setSimulationLevel(activeAtmo.wl);
+    }
+  }, [activeAtmo.wl]);
+
+  /**
+   * Action handlers for simulators
+   */
+  const handleSimulateObserved = (time: Date) => {
+    if (!processedData) return;
+    const res = findNearestPoint(processedData.observedPoints, time);
+    if (res) {
+      setSimulationLevel(res.point.v);
+      handleFocusPoint(time);
+    }
+  };
+
+  const handleSimulatePredicted = (time: Date) => {
+    if (!processedData) return;
+    const res = findNearestPoint(processedData.adjustedPoints, time);
+    if (res) {
+      setSimulationLevel(res.point.v);
+      handleFocusPoint(time);
+    }
+  };
+
   return (
     <IonPage className="floodcast-page">
       <IonHeader>
         <IonToolbar>
           <IonTitle>FloodCast</IonTitle>
           <IonButtons slot="end">
-            <IonButton 
-              aria-label="Open settings" 
+            <IonButton
+              aria-label="Open settings"
               onClick={() => setShowSettings(true)}
             >
               <IonIcon icon={settingsOutline} />
@@ -155,64 +319,142 @@ const Tab2: React.FC = () => {
         </IonToolbar>
       </IonHeader>
 
-      <IonContent fullscreen className="floodcast-content">
+      <IonContent className="floodcast-content">
         {/* Pull-to-refresh functionality */}
         <IonRefresher slot="fixed" onIonRefresh={handleRefresh}>
-          <IonRefresherContent 
-            pullingText="Pull to refresh data" 
-            refreshingSpinner="crescent" 
+          <IonRefresherContent
+            pullingText="Pull to refresh data"
+            refreshingSpinner="crescent"
           />
         </IonRefresher>
 
-        {/* Loading state */}
-        {loading && (
-          <div className="loading-container">
-            <IonSpinner name="crescent" />
-            <IonLabel>Loading water level data...</IonLabel>
+        {/* Main dashboard — always render the shell once we have a station */}
+        {(processedData || error) && (
+          <div className="dashboard-scroll-container">
+            <div className="dashboard-grid">
+              <div className="dashboard-main-col">
+                {error ? (
+                  /* Error state — replaces chart area entirely */
+                  <div className="chart-error-state">
+                    <div className="chart-error-icon">⚠</div>
+                    <h3 className="chart-error-title">Unable to Load Data</h3>
+                    <p className="chart-error-message">NOAA API request failed. This can happen when the time range extends into the future or is invalid.</p>
+                    <button
+                      className="chart-error-details-toggle"
+                      onClick={() => setShowErrorDetails(v => !v)}
+                    >
+                      {showErrorDetails ? 'Hide details ▴' : 'Show details ▾'}
+                    </button>
+                    {showErrorDetails && (
+                      <div className="chart-error-details">
+                        {error.split('\n').map((line, i) => {
+                          const [label, value] = line.split('\t');
+                          if (value) {
+                            return (
+                              <div key={i} className="chart-error-row">
+                                <span className="chart-error-label">{label}:</span>
+                                <span className="chart-error-value">{value}</span>
+                              </div>
+                            );
+                          }
+                          return <div key={i} className="chart-error-line">{line}</div>;
+                        })}
+                      </div>
+                    )}
+                    <div className="chart-error-actions">
+                      <IonButton
+                        fill="outline"
+                        onClick={() => updateTimeRange({ mode: 'relative', lookbackH: 24, lookaheadH: 48 })}
+                      >
+                        Reset Time Window
+                      </IonButton>
+                      <IonButton fill="solid" onClick={() => refresh()}>
+                        Retry
+                      </IonButton>
+                    </div>
+                  </div>
+                ) : processedData ? (
+                  <>
+                    <HydrographChart
+                      locationName="Carolina Beach Tidal Flooding"
+                      sentinel={
+                        <AtmosphericOverlay
+                          precipitationAccumulation={activeAtmo.precip?.value ?? 0}
+                          windSpeed={activeAtmo.wind?.speed ?? 0}
+                          windDirection={activeAtmo.wind?.dir ?? 0}
+                          observedWaterLevel={activeAtmo.wl ?? 0}
+                          isLive={activeAtmo.isLive}
+                          source={activeAtmo.source}
+                        />
+                      }
+                      isLive={activeAtmo.isLive}
+                      time={activeAtmo.time}
+                      source={activeAtmo.source}
+                      observedPoints={processedData.observedPoints}
+                      predictedPoints={processedData.predictedPoints}
+                      adjustedPoints={processedData.adjustedPoints}
+                      deltaPoints={processedData.deltaPoints}
+                      surgeForecastPoints={processedData.surgeForecastPoints}
+                      windPoints={processedData.windPoints}
+                      precipPoints={processedData.precipPoints}
+                      domainStart={processedData.timeDomain.start}
+                      domainEnd={processedData.timeDomain.end}
+                      now={processedData.timeDomain.now}
+                      thresholds={config?.thresholds}
+                      showDelta={config?.display.showDelta}
+                      timezone={config?.display.timezone || 'local'}
+                      config={chartConfig}
+                      timeRange={config?.timeRange}
+                      selectedTime={manualFocusTime}
+                      showComments={chartComments.showComments}
+                      comments={chartComments.comments}
+                      onCommentHover={(c) => chartComments.handleCommentHover(c)}
+                      onCommentClick={(cs) => chartComments.handleCommentClick(cs)}
+                      onTimePointSelect={(time: Date) => setChartActionTime(time)}
+                      onToggleComments={chartComments.toggleCommentOverlay}
+                      commentCount={chartComments.commentCount}
+                      onHoverTimeChange={setHoverTime}
+                      onViewportChange={(start: Date, end: Date, focusTime: Date) => setCurrentViewport({ start, end, focusTime })}
+                      onDomainChangeRequest={handleDomainChangeRequest}
+                      loading={loading}
+                      mode={config.timeRange.mode}
+                      onResetToLive={resetToLive}
+                      centerRequest={centerRequest}
+                      resetKey={resetCount}
+                    />
+
+                    {/* Google Maps inundation map — FIMAN-style road coloring */}
+                    <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}>
+                      <InundationMap
+                        waterLevelFt={simulationLevel}
+                        // @ts-expect-error missing strict typing
+                        roadData={roadData}
+                        observedLevelFt={processedData?.observedPoints?.slice(-1)[0]?.v}
+                      />
+                    </APIProvider>
+
+                    <InundationSimulator
+                      waterLevelFt={simulationLevel}
+                      minLevelFt={0.0}
+                      maxLevelFt={10.0}
+                      onLevelChange={setSimulationLevel}
+                      thresholds={config.thresholds}
+                      // @ts-expect-error missing strict typing
+                      simulationContext={activeAtmo}
+                    />
+                  </>
+                ) : null}
+              </div>
+
+              <div className="dashboard-sidebar">
+                <WebcamFeedCard
+                  imageUrl="https://wl.secoora.org/webcam/SUNNYD_CB_02.2026-04-21T13:42Z.jpg"
+                  locationName={`${config.station.name} - Cam`}
+                  timestamp={new Date()}
+                />
+              </div>
+            </div>
           </div>
-        )}
-
-        {/* Error state */}
-        {error && (
-          <IonItem color="danger" className="error-item">
-            <IonLabel>
-              <h2>Failed to load data</h2>
-              <p>{error}</p>
-            </IonLabel>
-            <IonButton 
-              slot="end" 
-              fill="clear" 
-              onClick={() => refresh()}
-            >
-              Retry
-            </IonButton>
-          </IonItem>
-        )}
-
-        {/* Main chart display */}
-        {!error && processedData && (
-          <ChartViewer
-            observedPoints={processedData.observedPoints}
-            predictedPoints={processedData.predictedPoints}
-            adjustedPoints={processedData.adjustedPoints}
-            deltaPoints={processedData.deltaPoints}
-            surgeForecastPoints={processedData.surgeForecastPoints}
-            domainStart={processedData.timeDomain.start}
-            domainEnd={processedData.timeDomain.end}
-            now={processedData.timeDomain.now}
-            threshold={config.threshold}
-            showDelta={config.display.showDelta}
-            timezone={config.display.timezone}
-            config={chartConfig}
-            // comments overlay
-            showComments={chartComments.showComments}
-            comments={chartComments.comments}
-            onCommentHover={(c) => chartComments.handleCommentHover(c)}
-            onCommentClick={(c) => chartComments.handleCommentClick(c)}
-            onTimePointSelect={(time: Date) => chartComments.handleTimeRangeSelect({ at: time })}
-            onToggleComments={chartComments.toggleCommentOverlay}
-            commentCount={chartComments.commentCount}
-          />
         )}
 
         {/* Threshold crossing information */}
@@ -240,12 +482,12 @@ const Tab2: React.FC = () => {
           onDismiss={() => setShowSettings(false)}
           config={config}
           onStationChange={handleStationChange}
-          onThresholdChange={updateThreshold}
+          onThresholdsChange={updateThresholds}
           onOffsetConfigChange={updateOffset}
           onTimeRangeChange={updateTimeRange}
           onDisplayChange={updateDisplay}
-          computedOffset={data.offset}
-          offsetDataPoints={data.nPoints}
+          computedOffset={data?.offset || 0}
+          offsetDataPoints={data?.nPoints || 0}
           successMessage={messages.success}
           errorMessage={messages.error}
           onClearMessages={clearMessages}
@@ -258,6 +500,35 @@ const Tab2: React.FC = () => {
           range={chartComments.selectedTimeRange || (chartComments.selectedComments?.[0]?.metadata.timeRange ?? null)}
           existingComments={chartComments.selectedComments || []}
           config={config}
+        />
+        {/* Action sheet — shown when the user taps a point on the hydrograph */}
+        <IonActionSheet
+          isOpen={!!chartActionTime}
+          onDidDismiss={() => setChartActionTime(null)}
+          header={chartActionTime ? formatTime(chartActionTime) : 'Chart Options'}
+          subHeader={getActionSheetSubheader(chartActionTime)}
+          buttons={[
+            ...(chartActionTime && processedData ? [
+              ...(findNearestPoint(processedData.observedPoints, chartActionTime)?.dtMin ?? 99) < 15 ? [{
+                text: 'Simulate Observed Water Level',
+                handler: () => handleSimulateObserved(chartActionTime)
+              }] : [],
+              ...(findNearestPoint(processedData.adjustedPoints, chartActionTime)?.dtMin ?? 99) < 15 ? [{
+                text: 'Simulate FloodCast Predicted Level',
+                handler: () => handleSimulatePredicted(chartActionTime)
+              }] : []
+            ] : []),
+            {
+              text: 'Add Image / Comment',
+              handler: () => {
+                if (chartActionTime) chartComments.handleTimeRangeSelect({ at: chartActionTime });
+              }
+            },
+            {
+              text: 'Cancel',
+              role: 'cancel',
+            }
+          ]}
         />
       </IonContent>
     </IonPage>

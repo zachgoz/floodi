@@ -76,14 +76,41 @@
   --chart-grid: rgba(0,0,0,0.05);
   --chart-axis-text: #666;
   --chart-label-text: #333;
+  /* Dashboard card tokens */
+  --dash-card-bg: rgba(255, 255, 255, 0.80);
+  --dash-card-shadow: 0 4px 20px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.9);
+  --dash-card-border: 1px solid rgba(0,0,0,0.07);
+  --dash-header-divider: rgba(0,0,0,0.07);
+  --dash-title-color: #1a1a2e;
+  --dash-subtitle-color: rgba(30,30,50,0.55);
+  --dash-label-color: rgba(30,30,50,0.45);
+  --dash-page-bg: var(--ion-background-color, #f0f2f5);
+  --dash-slider-track: rgba(0,0,0,0.12);
+  --dash-map-overlay-bg: rgba(240,243,248,0.85);
+
+  /* Font Scaling Tokens */
+  --font-size-xs: 0.75rem;   /* 12px */
+  --font-size-sm: 0.875rem;  /* 14px */
+  --font-size-base: 1rem;    /* 16px */
+  --font-size-lg: 1.125rem;  /* 18px */
+  --font-size-xl: 1.25rem;   /* 20px */
+  --font-size-2xl: 1.5rem;   /* 24px */
+
+  /* Sentinel / Overlay Theming */
+  --sentinel-bg: rgba(255, 255, 255, 0.8);
+  --sentinel-border: rgba(0,0,0,0.1);
+  --sentinel-metrics-bg: rgba(0,0,0,0.05);
+  --sentinel-text-main: #1a1a2e;
+  --sentinel-text-dim: rgba(30,30,50,0.5);
+  --sentinel-pill-bg: #0077b6;
+  --sentinel-pill-text: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
   /*
-   * Dark Colors
-   * -------------------------------------------
+   * Dark Colors — only when user hasn't forced light mode
    */
-  body {
+  html:not(.ion-palette-light) body {
     --ion-color-primary: #48b6f3;
     --ion-color-primary-rgb: 72, 182, 243;
     --ion-color-primary-contrast: #000000;
@@ -113,7 +140,194 @@
     --chart-grid: rgba(255,255,255,0.05);
     --chart-axis-text: #999;
     --chart-label-text: #ddd;
+    /* Dashboard dark tokens */
+    --dash-card-bg: rgba(18, 25, 38, 0.65);
+    --dash-card-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+    --dash-card-border: none;
+    --dash-header-divider: rgba(255,255,255,0.06);
+    --dash-title-color: #ffffff;
+    .sim-tick-minor {
+  color: #ffdc1e;
+}
+.sim-tick-minor::before {
+  background: #ffdc1e;
+}
+
+.sim-tick-moderate {
+  color: #ffa500;
+}
+.sim-tick-moderate::before {
+  background: #ffa500;
+}
+
+.sim-tick-major {
+  color: #d22323;
+}
+.sim-tick-major::before {
+  background: #d22323;
+}
+
+.sim-tick-extreme {
+  color: #a020f0;
+}
+.sim-tick-extreme::before {
+  background: #a020f0;
+}
+    --sentinel-text-main: #ffffff;
+    --sentinel-text-dim: rgba(255,255,255,0.4);
+    --sentinel-pill-bg: #48b6f3;
+    --sentinel-pill-text: #000000;
   }
+}
+
+/* Explicit light mode override — beats OS dark preference */
+.ion-palette-light body,
+.ion-palette-light {
+  --ion-color-primary: #0077b6;
+  --ion-color-primary-rgb: 0, 119, 182;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #0069a0;
+  --ion-color-primary-tint: #1a85bd;
+
+  --ion-color-secondary: #00b4d8;
+  --ion-color-secondary-rgb: 0, 180, 216;
+  --ion-color-secondary-contrast: #000000;
+  --ion-color-secondary-contrast-rgb: 0, 0, 0;
+  --ion-color-secondary-shade: #009ec1;
+  --ion-color-secondary-tint: #1abfdb;
+
+  --chart-bg: transparent;
+  --chart-plot-bg: rgba(255,255,255,0.02);
+  --chart-plot-stroke: rgba(0,0,0,0.1);
+  --chart-tooltip-bg: rgba(255, 255, 255, 0.95);
+  --chart-tooltip-stroke: #ddd;
+  --chart-grid: rgba(0,0,0,0.05);
+  --chart-axis-text: #666;
+  --chart-label-text: #333;
+  /* Dashboard light tokens */
+  --dash-card-bg: rgba(255, 255, 255, 0.80);
+  --dash-card-shadow: 0 4px 20px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.9);
+  --dash-card-border: 1px solid rgba(0,0,0,0.07);
+  --dash-header-divider: rgba(0,0,0,0.07);
+  --dash-title-color: #1a1a2e;
+  --dash-subtitle-color: rgba(30,30,50,0.55);
+  --dash-label-color: rgba(30,30,50,0.45);
+  --dash-slider-track: rgba(0,0,0,0.12);
+  --dash-map-overlay-bg: rgba(240,243,248,0.85);
+
+  /* Sentinel / Metric overlays - Light Mode */
+  --sentinel-bg: rgba(255, 255, 255, 0.9);
+  --sentinel-text-main: #1a1a2e;
+  --sentinel-text-muted: rgba(30, 30, 50, 0.6);
+  --sentinel-border: rgba(0, 0, 0, 0.08);
+  --sentinel-pill-bg: #ff4d4d;
+  --sentinel-pill-text: #ffffff;
+  --sentinel-time-bg: rgba(0, 0, 0, 0.1);
+  --sentinel-time-text: #0077b6;
+
+  /* Font Scale Tokens */
+  --font-size-xs: 0.7rem;
+  --font-size-sm: 0.8rem;
+  --font-size-md: 0.9rem;
+  --font-size-lg: 1.1rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+
+  /* Force Ionic to render light backgrounds */
+  --ion-background-color: #f4f5f8;
+  --ion-background-color-rgb: 244, 245, 248;
+  --ion-text-color: #000000;
+  --ion-text-color-rgb: 0, 0, 0;
+  .context-item.time {
+  color: var(--sentinel-time-text);
+}
+
+.context-item.wind {
+  color: #ffa500;
+}
+
+.context-item.precip {
+  color: #00b4d8;
+}
+
+.context-source {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--sentinel-text-dim, rgba(127, 127, 127, 0.4));
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+  --ion-item-background: #ffffff;
+  --ion-toolbar-background: rgba(255,255,255,0.85);
+  --ion-card-background: #ffffff;
+}
+.time-pill {
+  font-size: 0.65rem;
+  font-weight: 900;
+  color: var(--sentinel-time-text);
+  white-space: nowrap;
+  background: var(--sentinel-time-bg);
+  padding: 4px 8px;
+  border-radius: 20px;
+  font-family: 'Inter', sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid var(--sentinel-border);
+}
+
+/* Class-based dark mode (in-app toggle via ion-palette-dark on <html>) */
+.ion-palette-dark body,
+.ion-palette-dark {
+  --ion-color-primary: #48b6f3;
+  --ion-color-primary-rgb: 72, 182, 243;
+  --ion-color-primary-contrast: #000000;
+  --ion-color-primary-contrast-rgb: 0, 0, 0;
+  --ion-color-primary-shade: #3fa0d6;
+  --ion-color-primary-tint: #5abef4;
+
+  --ion-color-secondary: #00b4d8;
+  --ion-color-secondary-rgb: 0, 180, 216;
+  --ion-color-secondary-contrast: #000000;
+  --ion-color-secondary-contrast-rgb: 0, 0, 0;
+  --ion-color-secondary-shade: #009ec1;
+  --ion-color-secondary-tint: #1abfdb;
+
+  --ion-color-tertiary: #f4a261;
+  --ion-color-tertiary-rgb: 244, 162, 97;
+  --ion-color-tertiary-contrast: #000000;
+  --ion-color-tertiary-contrast-rgb: 0, 0, 0;
+  --ion-color-tertiary-shade: #d78f55;
+  --ion-color-tertiary-tint: #f5ab71;
+
+  --chart-bg: transparent;
+  --chart-plot-bg: rgba(0,0,0,0.08);
+  --chart-plot-stroke: rgba(255,255,255,0.1);
+  --chart-tooltip-bg: rgba(30, 30, 30, 0.95);
+  --chart-tooltip-stroke: #444;
+  --chart-grid: rgba(255,255,255,0.05);
+  --chart-axis-text: #999;
+  --chart-label-text: #ddd;
+  /* Dashboard dark tokens */
+  --dash-card-bg: rgba(18, 25, 38, 0.65);
+  --dash-card-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+  --dash-card-border: none;
+  --dash-header-divider: rgba(255,255,255,0.06);
+  --dash-title-color: #ffffff;
+  --dash-subtitle-color: rgba(255,255,255,0.55);
+  --dash-label-color: rgba(255,255,255,0.35);
+  --dash-slider-track: rgba(255,255,255,0.12);
+  --dash-map-overlay-bg: rgba(18,25,38,0.80);
+
+  /* Sentinel / Metric overlays - Dark Mode */
+  --sentinel-bg: rgba(18, 25, 38, 0.8);
+  --sentinel-text-main: #ffffff;
+  --sentinel-text-muted: rgba(255, 255, 255, 0.6);
+  --sentinel-border: rgba(255, 255, 255, 0.1);
+  --sentinel-pill-bg: rgba(255, 77, 77, 0.2);
+  --sentinel-pill-text: #ff4d4d;
+  --sentinel-time-bg: rgba(0, 0, 0, 0.4);
+  --sentinel-time-text: #4cc9f0;
 }
 
 /* Glassmorphism overrides */

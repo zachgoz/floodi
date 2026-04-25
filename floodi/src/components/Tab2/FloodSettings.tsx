@@ -13,15 +13,16 @@ import {
 } from '@ionic/react';
 import { warningOutline } from 'ionicons/icons';
 import type { OffsetConfig } from './types';
+import type { AppConfiguration } from './types';
 
 /**
  * Props for the FloodSettings component
  */
 interface FloodSettingsProps {
-  /** Current flood threshold in feet (MLLW) */
-  threshold: number;
-  /** Callback when threshold changes */
-  onThresholdChange: (threshold: number) => void;
+  /** Current flood thresholds in feet (MLLW) */
+  thresholds: AppConfiguration['thresholds'];
+  /** Callback when thresholds change */
+  onThresholdsChange: (thresholds: Partial<AppConfiguration['thresholds']>) => void;
   /** Current offset configuration */
   offsetConfig: OffsetConfig;
   /** Callback when offset configuration changes */
@@ -46,8 +47,8 @@ interface FloodSettingsProps {
  * @returns JSX.Element
  */
 export const FloodSettings: React.FC<FloodSettingsProps> = ({
-  threshold,
-  onThresholdChange,
+  thresholds,
+  onThresholdsChange,
   offsetConfig,
   onOffsetConfigChange,
   computedOffset,
@@ -58,19 +59,19 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
   /**
    * Handle threshold input changes with validation
    */
-  const handleThresholdChange = (event: CustomEvent<{ value?: string }>) => {
+  const handleThresholdChange = (key: keyof AppConfiguration['thresholds']) => (event: any) => {
     const value = event.detail.value || '';
     const numericValue = parseFloat(value);
     
     if (!isNaN(numericValue) && numericValue > 0) {
-      onThresholdChange(numericValue);
+      onThresholdsChange({ [key]: numericValue });
     }
   };
 
   /**
    * Handle offset mode selection
    */
-  const handleOffsetModeChange = (event: CustomEvent<{ value?: 'auto' | 'manual' }>) => {
+  const handleOffsetModeChange = (event: any) => {
     const mode = (event.detail.value || 'auto');
     onOffsetConfigChange({ mode });
   };
@@ -78,7 +79,7 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
   /**
    * Handle manual offset value changes
    */
-  const handleManualOffsetChange = (event: CustomEvent<{ value?: string }>) => {
+  const handleManualOffsetChange = (event: any) => {
     const value = event.detail.value || '';
     onOffsetConfigChange({ value });
   };
@@ -107,11 +108,47 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
       </IonItem>
 
       <IonItem>
-        <IonLabel position="stacked">Flood Threshold (ft, MLLW)</IonLabel>
+        <IonLabel position="stacked">Minor Flood (ft, MLLW)</IonLabel>
         <IonInput
           type="number"
-          value={threshold.toString()}
-          onIonInput={handleThresholdChange}
+          value={thresholds.minor.toString()}
+          onIonInput={handleThresholdChange('minor')}
+          placeholder="Enter threshold in feet"
+          min="0"
+          step="0.1"
+          className="threshold-input"
+        />
+      </IonItem>
+      <IonItem>
+        <IonLabel position="stacked">Moderate Flood (ft, MLLW)</IonLabel>
+        <IonInput
+          type="number"
+          value={thresholds.moderate.toString()}
+          onIonInput={handleThresholdChange('moderate')}
+          placeholder="Enter threshold in feet"
+          min="0"
+          step="0.1"
+          className="threshold-input"
+        />
+      </IonItem>
+      <IonItem>
+        <IonLabel position="stacked">Major Flood (ft, MLLW)</IonLabel>
+        <IonInput
+          type="number"
+          value={thresholds.major.toString()}
+          onIonInput={handleThresholdChange('major')}
+          placeholder="Enter threshold in feet"
+          min="0"
+          step="0.1"
+          className="threshold-input"
+        />
+      </IonItem>
+      <IonItem>
+        <IonLabel position="stacked">Extreme Flood (ft, MLLW)</IonLabel>
+        <IonInput
+          type="number"
+          value={thresholds.extreme.toString()}
+          onIonInput={handleThresholdChange('extreme')}
           placeholder="Enter threshold in feet"
           min="0"
           step="0.1"

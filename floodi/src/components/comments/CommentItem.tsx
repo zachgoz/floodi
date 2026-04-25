@@ -101,7 +101,7 @@ export const CommentItem: React.FC<CommentItemProps> = ({
     const r = comment.meta?.range;
     if (!r) return '';
     try {
-      return formatTimeRangeForDisplay(r);
+      return formatTimeRangeForDisplay({ startTime: r.start, endTime: r.end }).label;
     } catch {
       const s = new Date(r.start).toLocaleString();
       const e = new Date(r.end).toLocaleString();

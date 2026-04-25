@@ -1,0 +1,195 @@
+.atmospheric-sentinel {
+  display: flex;
+  align-items: center;
+  background: var(--sentinel-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 16px;
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--sentinel-border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255,255,255,0.1);
+  gap: 16px;
+  height: 48px; /* Increased to prevent clipping */
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: visible; /* Ensure icons can pop slightly if needed */
+}
+
+@media (max-width: 600px) {
+  .atmospheric-sentinel {
+    gap: 8px;
+    padding: 4px 4px 4px 8px;
+    height: 44px;
+    border-radius: 12px;
+  }
+}
+
+.atmospheric-sentinel.is-historical {
+  background: rgba(var(--ion-color-primary-rgb), 0.12);
+  border-color: rgba(var(--ion-color-primary-rgb), 0.4);
+}
+
+.sentinel-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.sentinel-status:hover {
+  transform: scale(1.1);
+}
+
+.sentinel-status:active {
+  transform: scale(0.9);
+}
+
+.live-pill,
+.time-pill {
+  font-size: 16px !important; /* Force absolute size for consistency */
+  font-weight: 900;
+  white-space: nowrap;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-family: 'Inter', sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+}
+
+.live-pill {
+  font-size: 14px !important;
+  color: var(--sentinel-pill-text);
+  background: var(--sentinel-pill-bg);
+  box-shadow: 0 2px 8px rgba(255, 77, 77, 0.3);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #fff;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.time-pill {
+  color: var(--sentinel-time-text);
+  background: var(--sentinel-time-bg);
+  border: 1px solid var(--sentinel-border);
+}
+
+.sentinel-metrics {
+  display: flex;
+  align-items: center;
+  background: var(--sentinel-metrics-bg);
+  border-radius: 12px;
+  padding: 0 12px;
+  height: 100%;
+  gap: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+@media (max-width: 600px) {
+  .sentinel-metrics {
+    gap: 10px;
+    padding: 0 8px;
+  }
+  
+  .metric-label {
+    display: none; /* Hide 'Wind', 'Precip' text to save space; icons are enough */
+  }
+}
+
+.metric-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.metric-icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+.metric-icon {
+  font-size: 1rem;
+}
+
+.metric-icon.tide {
+  color: #4cc9f0;
+}
+
+.metric-icon.precip {
+  color: #4895ef;
+}
+
+.metric-details {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.metric-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--sentinel-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: -1px;
+}
+
+.metric-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.metric-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--sentinel-text-main);
+  font-family: 'Inter', sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.metric-unit {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--sentinel-text-muted);
+  text-transform: lowercase;
+}
+
+.metric-dir {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--sentinel-text-muted);
+  margin-left: 4px;
+  background: var(--sentinel-border);
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.metric-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--sentinel-border);
+}
+
+.wind-arrow-svg {
+  filter: drop-shadow(0 0 4px rgba(0,0,0,0.3));
+}
