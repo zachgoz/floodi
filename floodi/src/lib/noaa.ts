@@ -58,25 +58,7 @@ function fmtBeginEnd(d: Date): string {
   return `${y}${m}${day} ${hh}:${mm}`;
 }
 
-/**
- * Converts a Date object to an ISO minute string (UTC)
- * 
- * Creates standardized minute-precision timestamps for our TimeSeries data structure.
- * Seconds and milliseconds are zeroed out for consistency.
- * 
- * @param {Date} d - The date to convert
- * @returns {string} ISO string truncated to minute precision with Z suffix
- * 
- * @example
- * const date = new Date('2024-01-15T12:24:45.123Z');
- * console.log(isoMinute(date)); // "2024-01-15T12:24Z"
- */
-function isoMinute(d: Date): string {
-  // 2025-09-05 12:24 -> '2025-09-05T12:24Z'
-  const copy = new Date(d.getTime());
-  copy.setUTCSeconds(0, 0); // Zero out seconds and milliseconds
-  return copy.toISOString().slice(0, 16) + 'Z';
-}
+// (removed unused isoMinute helper)
 
 /**
  * Makes HTTP requests to the NOAA Tides and Currents API with error handling
@@ -97,24 +79,49 @@ function isoMinute(d: Date): string {
  * };
  * const data = await requestNOAA(params);
  */
-async function requestNOAA(params: Record<string, string | number>): Promise<any> {
+async function requestNOAA(params: Record<string, string | number>): Promise<unknown> {
   const usp = new URLSearchParams(params as Record<string, string>);
   const url = `${NOAA_BASE}?${usp.toString()}`;
   
   // Make request with CORS enabled for web browser compatibility
   const res = await fetch(url, { mode: 'cors' });
   
-  // Check for HTTP-level errors
+  // Check for HTTP-level errors — also try to read body for NOAA's own error message
   if (!res.ok) {
-    throw new Error(`NOAA request failed: ${res.status}`);
+    let reason = '';
+    try {
+      const body = await res.json() as { error?: { message?: string } };
+      if (body?.error?.message) {
+        reason = body.error.message.trim();
+      }
+    } catch { /* body wasn't JSON, ignore */ }
+    throw new Error(
+      `HTTP Status\t${res.status}\n` +
+      (reason ? `Reason\t${reason}\n` : '') +
+      `Request URL\t${url}`
+    );
   }
-  
-  const data = await res.json();
-  
-  // Check for NOAA API-specific errors in response body
-  if (data && data.error) {
-    throw new Error(`NOAA API error: ${data.error?.message || 'unknown'}`);
+
+  const data: unknown = await res.json();
+
+  // Check for NOAA API-specific errors in response body (HTTP 200 but error field present)
+  if (typeof data === 'object' && data && 'error' in data) {
+    const err = (data as { error?: { message?: string } }).error;
+    if (err) {
+      // Log more details for debugging
+      console.error('NOAA API Internal Error:', {
+        message: err.message,
+        url,
+        params
+      });
+      throw new Error(
+        `HTTP Status\t200\n` +
+        `Reason\t${err.message?.trim() || 'unknown'}\n` +
+        `Request URL\t${url}`
+      );
+    }
   }
+
   
   return data;
 }
@@ -170,7 +177,7 @@ export async function fetchObservedWaterLevels(opts: {
     end_date: fmtBeginEnd(end),       // Formatted end datetime
   };
   
-  const data = await requestNOAA(params);
+  const data = await requestNOAA(params) as { data?: Array<{ v: string; t: string }>; error?: { message?: string } };
   const out: TimeSeries = {};
   
   // Process response data into our TimeSeries format
@@ -239,7 +246,7 @@ export async function fetchPredictions(opts: {
     end_date: fmtBeginEnd(end),       // Formatted end datetime
   };
   
-  const data = await requestNOAA(params);
+  const data = await requestNOAA(params) as { predictions?: Array<{ v: string; t: string }>; error?: { message?: string } };
   const out: TimeSeries = {};
   
   // Process prediction data into our TimeSeries format
@@ -467,4 +474,303 @@ export async function buildAdjustedFuture(opts: {
   }
   
   return { adjusted, offset, n };
+}
+
+/**
+ * Fetches wind data and converts to format compatible with our TimeSeries logic.
+ * Combines NOAA CO-OPS (historical) with NWS (forecast).
+ */
+export async function fetchWind(opts: {
+  station: string;
+  start: Date;
+  end: Date;
+  units?: 'english' | 'metric';
+  lat?: number;
+  lng?: number;
+}): Promise<Record<string, { speed: number; dir: number }>> {
+  const now = new Date();
+  const out: Record<string, { speed: number; dir: number }> = {};
+  
+  // 1. Fetch historical/current wind from NOAA CO-OPS
+  if (opts.start < now) {
+    try {
+      const params = {
+        product: 'wind',
+        application: 'canal-dr-flood',
+        format: 'json',
+        time_zone: 'gmt',
+        units: opts.units || 'english',
+        station: opts.station,
+        begin_date: fmtBeginEnd(opts.start),
+        end_date: fmtBeginEnd(new Date(Math.min(opts.end.getTime(), now.getTime()))),
+      };
+      const data = await requestNOAA(params) as { data?: any[] };
+      for (const row of data?.data ?? []) {
+        const s = parseFloat(row.s);
+        const d = parseFloat(row.d);
+        const t = row.t as string;
+        if (!isFinite(s) || !isFinite(d) || !t) continue;
+        const iso = t.replace(' ', 'T') + 'Z';
+        out[iso] = { speed: s, dir: d };
+      }
+    } catch (e) {
+      console.warn('NOAA Wind fetch failed:', e);
+    }
+  }
+
+  // 2. Fetch forecast wind from NWS if needed
+  if (opts.end > now) {
+    try {
+      let { lat, lng } = opts;
+      if (!lat || !lng) {
+        if (opts.station === '8658163') {
+          lat = 34.2133; lng = -77.7850;
+        }
+      }
+      
+      if (lat && lng) {
+        const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+        let meta = nwsMetaCache[cacheKey];
+        if (!meta) {
+          const pointsData = await requestNWS(`https://api.weather.gov/points/${lat},${lng}`);
+          const stationsData = await requestNWS(pointsData.properties.observationStations);
+          meta = { 
+            gridId: pointsData.properties.gridId, 
+            gridX: pointsData.properties.gridX, 
+            gridY: pointsData.properties.gridY,
+            stationId: stationsData.features[0]?.properties?.stationIdentifier || 'KILM'
+          };
+          nwsMetaCache[cacheKey] = meta;
+        }
+
+        const gridData = await requestNWS(`https://api.weather.gov/gridpoints/${meta.gridId}/${meta.gridX},${meta.gridY}`);
+        const windSpeeds = gridData.properties.windSpeed?.values || [];
+        const windDirs = gridData.properties.windDirection?.values || [];
+        
+        // NWS provides these as separate series of intervals. We'll merge them.
+        for (const item of windSpeeds) {
+          const { start, durationMs } = parseNWSInterval(item.validTime);
+          if (start.getTime() + durationMs < now.getTime()) continue;
+          
+          // Speed is in km/h usually in gridpoints? No, check uom.
+          // properties.windSpeed.uom is usually "wmoUnit:km_h-1"
+          let speed = item.value || 0;
+          if (gridData.properties.windSpeed.uom === 'wmoUnit:km_h-1') {
+            speed = speed * 0.621371; // km/h to mph
+          }
+
+          const hours = Math.max(1, Math.floor(durationMs / 3600_000));
+          for (let i = 0; i < hours; i++) {
+            const t = new Date(start.getTime() + i * 3600_000);
+            if (t < now) continue;
+            const iso = t.toISOString();
+            out[iso] = { speed, dir: 0 }; // Direction added next
+          }
+        }
+
+        for (const item of windDirs) {
+          const { start, durationMs } = parseNWSInterval(item.validTime);
+          const hours = Math.max(1, Math.floor(durationMs / 3600_000));
+          for (let i = 0; i < hours; i++) {
+            const t = new Date(start.getTime() + i * 3600_000);
+            const iso = t.toISOString();
+            if (out[iso]) out[iso].dir = item.value || 0;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('NWS Wind forecast fetch failed:', e);
+    }
+  }
+  
+  return out;
+}
+
+/**
+ * Helper to fetch deep historical precipitation from Open-Meteo archive.
+ * Used for data older than ~7 days where NWS standard observations expire.
+ */
+async function fetchOpenMeteoPrecipitation(lat: number, lng: number, start: Date, end: Date): Promise<Record<string, number>> {
+  const startStr = start.toISOString().split('T')[0];
+  const endStr = end.toISOString().split('T')[0];
+  const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${startStr}&end_date=${endStr}&hourly=precipitation`;
+  
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    const out: Record<string, number> = {};
+    if (data.hourly) {
+      for (let i = 0; i < data.hourly.time.length; i++) {
+        const t = new Date(data.hourly.time[i] + 'Z').toISOString();
+        const v = data.hourly.precipitation[i] || 0;
+        out[t] = v / 25.4; // mm to inches
+      }
+    }
+    return out;
+  } catch (e) {
+    console.warn('Open-Meteo fetch failed:', e);
+    return {};
+  }
+}
+
+/**
+ * Makes a request to the National Weather Service (NWS) API.
+ * NWS strictly requires a custom User-Agent header.
+ */
+async function requestNWS(url: string): Promise<any> {
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'FloodCast (floodcast-dev@googlegroups.com)',
+      'Accept': 'application/geo+json'
+    }
+  });
+  
+  if (!res.ok) {
+    throw new Error(`NWS API error: ${res.status} ${res.statusText}`);
+  }
+  
+  return res.json();
+}
+
+/**
+ * Helper to parse NWS interval strings (e.g., "2026-04-25T00:00:00Z/PT6H")
+ */
+function parseNWSInterval(interval: string): { start: Date; durationMs: number } {
+  const [startStr, durationStr] = interval.split('/');
+  const start = new Date(startStr);
+  let durationMs = 3600_000; // Default 1h
+  const match = durationStr.match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?/);
+  if (match) {
+    const days = parseInt(match[1] || '0');
+    const hours = parseInt(match[2] || '0');
+    const mins = parseInt(match[3] || '0');
+    durationMs = (days * 86400 + hours * 3600 + mins * 60) * 1000;
+  }
+  return { start, durationMs };
+}
+
+// Simple in-memory cache for NWS metadata to avoid redundant point lookups
+const nwsMetaCache: Record<string, { gridId: string; gridX: number; gridY: number; stationId: string }> = {};
+
+/**
+ * Fetches precipitation data from the National Weather Service (NWS).
+ * Uses three stages:
+ * 1. Metadata lookup (points) to get grid coords and nearest station.
+ * 2. Observations fetch for historical data.
+ * 3. Gridpoints fetch for forecast data.
+ */
+export async function fetchNWSPrecipitation(opts: {
+  lat: number;
+  lng: number;
+  start: Date;
+  end: Date;
+}): Promise<Record<string, number>> {
+  const cacheKey = `${opts.lat.toFixed(4)},${opts.lng.toFixed(4)}`;
+  const out: Record<string, number> = {};
+  const now = new Date();
+
+  // Stage 0: Deep History (Open-Meteo)
+  // If start is more than 6 days ago, fetch archive data
+  const deepPastThreshold = new Date(now.getTime() - 6 * 24 * 3600_000);
+  if (opts.start < deepPastThreshold) {
+    try {
+      const omData = await fetchOpenMeteoPrecipitation(opts.lat, opts.lng, opts.start, new Date(Math.min(opts.end.getTime(), deepPastThreshold.getTime())));
+      Object.assign(out, omData);
+    } catch (e) {
+      console.warn('Deep history fetch failed:', e);
+    }
+  }
+
+  try {
+    // Stage 1: Metadata
+    let meta = nwsMetaCache[cacheKey];
+    if (!meta) {
+      const pointsData = await requestNWS(`https://api.weather.gov/points/${opts.lat},${opts.lng}`);
+      const gridId = pointsData.properties.gridId;
+      const gridX = pointsData.properties.gridX;
+      const gridY = pointsData.properties.gridY;
+      
+      // Get nearest station
+      const stationsData = await requestNWS(pointsData.properties.observationStations);
+      const stationId = stationsData.features[0]?.properties?.stationIdentifier || 'KILM'; // Fallback
+      
+      meta = { gridId, gridX, gridY, stationId };
+      nwsMetaCache[cacheKey] = meta;
+    }
+
+    // Stage 2: Historical Observations
+    try {
+      const obsData = await requestNWS(`https://api.weather.gov/stations/${meta.stationId}/observations?start=${opts.start.toISOString()}&end=${new Date().toISOString()}`);
+      for (const feature of obsData.features || []) {
+        const props = feature.properties;
+        const time = props.timestamp;
+        
+        // NWS observations provide several precipitation fields. 
+        // precipitationLastHour is the standard for hourly strips.
+        // If it's null, we look at the 'value' field of the precipitationLastHour object.
+        let valMeters = props.precipitationLastHour?.value || 0;
+        
+        // If last hour is missing, maybe we can interpolate from last 3 or 6
+        if (valMeters === 0) {
+          if (props.precipitationLast3Hours?.value) valMeters = props.precipitationLast3Hours.value / 3;
+          else if (props.precipitationLast6Hours?.value) valMeters = props.precipitationLast6Hours.value / 6;
+        }
+        
+        out[time] = valMeters * 39.3701; // meters to inches
+      }
+    } catch (e) {
+      console.warn('NWS Historical fetch failed:', e);
+    }
+
+    // Stage 3: Forecast Gridpoints
+    try {
+      const gridData = await requestNWS(`https://api.weather.gov/gridpoints/${meta.gridId}/${meta.gridX},${meta.gridY}`);
+      const precipValues = gridData.properties.quantitativePrecipitation?.values || [];
+      
+      for (const item of precipValues) {
+        const { start, durationMs } = parseNWSInterval(item.validTime);
+        const valueInches = (item.value || 0) / 25.4; // Gridpoints use mm
+        
+        // Distribute value over the duration in hourly increments
+        const hours = Math.max(1, Math.floor(durationMs / 3600_000));
+        const valPerHour = valueInches / hours;
+        
+        for (let i = 0; i < hours; i++) {
+          const t = new Date(start.getTime() + i * 3600_000).toISOString();
+          out[t] = valPerHour;
+        }
+      }
+    } catch (e) {
+      console.warn('NWS Forecast fetch failed:', e);
+    }
+
+    return out;
+  } catch (err) {
+    console.warn('Failed to fetch NWS precipitation metadata:', err);
+    return {};
+  }
+}
+
+/**
+ * Fetches precipitation data from NOAA (Legacy / Redirected to NWS)
+ */
+export async function fetchPrecipitation(opts: {
+  station: string;
+  start: Date;
+  end: Date;
+  units?: 'english' | 'metric';
+  lat?: number;
+  lng?: number;
+}): Promise<Record<string, number>> {
+  let { lat, lng } = opts;
+  if (!lat || !lng) {
+    if (opts.station === '8658163') {
+      lat = 34.2133;
+      lng = -77.7850;
+    } else {
+      return {};
+    }
+  }
+
+  return fetchNWSPrecipitation({ lat, lng, start: opts.start, end: opts.end });
 }

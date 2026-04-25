@@ -17,6 +17,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { AuthProvider } from 'src/contexts/AuthContext';
 
 /**
  * Initialize and mount the FloodCast React application
@@ -42,6 +43,8 @@ const root = createRoot(container!);
 // Render the application with StrictMode enabled for development benefits
 root.render(
   <React.StrictMode>
-    <App />
+    <AuthProvider>
+      <App />
+    </AuthProvider>
   </React.StrictMode>
 );

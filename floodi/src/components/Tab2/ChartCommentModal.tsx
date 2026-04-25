@@ -1,0 +1,245 @@
+import React, { useMemo } from 'react';
+import { IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonModal, IonTitle, IonToolbar } from '@ionic/react';
+import { closeOutline } from 'ionicons/icons';
+import { CommentForm, type CommentFormValues } from 'src/components/comments/CommentForm';
+import type { Comment, CommentTimeRange } from 'src/types/comment';
+import type { AppConfiguration } from './types';
+import { formatTimeRangeForDisplay } from 'src/utils/timeRangeHelpers';
+import { useComments } from 'src/hooks/useComments';
+import { useAuth } from 'src/contexts/AuthContext';
+
+export interface ChartCommentModalProps {
+  isOpen: boolean;
+  onDismiss: () => void;
+  /** Selected time range from chart */
+  range: CommentTimeRange | null;
+  /** Existing comments at this time/location */
+  existingComments?: Comment[];
+  /** Current app configuration for station/timezone */
+  config: AppConfiguration;
+}
+
+export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, onDismiss, range, existingComments = [], config }) => {
+  const { create, loading } = useComments({ stationId: config.station.id, realtime: false });
+  const { user } = useAuth();
+
+  const rangeDisplay = useMemo(() => (range ? formatTimeRangeForDisplay(range, config.display.timezone) : null), [range, config.display.timezone]);
+  const isThread = existingComments.length > 0;
+  const title = isThread 
+    ? `Thread${rangeDisplay ? ` at ${rangeDisplay.label.split(' - ')[0]}` : ''}`
+    : `Drop Pin${rangeDisplay ? ` at ${rangeDisplay.label.split(' - ')[0]}` : ''}`;
+
+  const handleSubmit = async (values: CommentFormValues) => {
+    if (!range || !user) return;
+    await create({
+      content: values.content,
+      metadata: {
+        station: { id: config.station.id, name: config.station.name || `Station ${config.station.id}` },
+        timeRange: { ...range, eventType: values.eventType },
+        dataContext: values.dataContexts,
+        thresholdValue: values.threshold ?? null,
+      },
+    });
+    onDismiss();
+  };
+
+  return (
+    <>
+      <style>
+        {`
+          /* The Atmospheric Sentinel Design System */
+          .glass-modal {
+            --background: rgba(247, 249, 251, 0.7);
+            --backdrop-opacity: 0.3;
+          }
+          .glass-modal::part(content) {
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-top-left-radius: 24px;
+            border-top-right-radius: 24px;
+            box-shadow: inset 1px 1px 0px rgba(255,255,255,0.2), 0 -8px 32px rgba(25, 28, 30, 0.15);
+          }
+          .glass-modal::part(handle) {
+            background: rgba(25, 28, 30, 0.15);
+            width: 48px;
+            height: 5px;
+            border-radius: 4px;
+          }
+          .glass-toolbar {
+            --background: transparent;
+            --border-width: 0;
+            padding-top: 12px;
+          }
+          .glass-title {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.125rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            color: #003358;
+          }
+          .premium-form-container {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            padding: 8px 16px 24px 16px;
+          }
+          .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 12px 16px;
+            box-shadow: 0 2px 8px rgba(25, 28, 30, 0.04);
+          }
+          .premium-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            color: #515f74;
+            font-weight: 500;
+            margin-bottom: 4px;
+          }
+          .premium-textarea {
+            --padding-start: 0;
+            --padding-end: 0;
+            --padding-top: 0;
+            --padding-bottom: 0;
+            --background: transparent;
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            color: #191c1e;
+            margin-top: 0;
+          }
+          .char-count {
+            display: flex;
+            justify-content: flex-end;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            color: #c1c7d0;
+          }
+          .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 8px;
+          }
+          .ghost-btn {
+            --color: #003358;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+          }
+          .gradient-btn {
+            --background: linear-gradient(135deg, #003358, #004a7c);
+            --background-activated: #002244;
+            --background-hover: #004a7c;
+            --border-radius: 24px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            margin: 0;
+          }
+          .thread-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 24px;
+          }
+          .thread-comment {
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 2px 8px rgba(25, 28, 30, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+          }
+          .thread-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+          }
+          .thread-author {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #003358;
+          }
+          .thread-time {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            color: #8c97a5;
+          }
+          .thread-content-text {
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            line-height: 1.5;
+            color: #191c1e;
+            margin: 0;
+            white-space: pre-wrap;
+          }
+          .thread-pill {
+            display: inline-block;
+            padding: 2px 8px;
+            background: rgba(0, 51, 88, 0.06);
+            color: #003358;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-family: 'Inter', sans-serif;
+            margin-top: 8px;
+            margin-right: 4px;
+            font-weight: 500;
+          }
+        `}
+      </style>
+      <IonModal 
+        isOpen={isOpen} 
+        onDidDismiss={onDismiss} 
+        className="chart-comment-modal glass-modal" 
+      aria-label="Drop Pin Modal"
+      initialBreakpoint={0.5}
+      breakpoints={[0, 0.5, 0.8]}
+    >
+      <IonHeader className="ion-no-border">
+        <IonToolbar className="glass-toolbar">
+          <IonTitle className="glass-title">
+            {title}
+          </IonTitle>
+          <IonButtons slot="end">
+            <IonButton onClick={onDismiss} aria-label="Close" color="dark">
+              <IonIcon icon={closeOutline} />
+            </IonButton>
+          </IonButtons>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        {existingComments.length > 0 && (
+          <div className="thread-container">
+            {existingComments.map((c) => (
+              <div key={c.id} className="thread-comment">
+                <div className="thread-header">
+                  <span className="thread-author">Station Watcher</span>
+                  <span className="thread-time">
+                    {(c.createdAt?.toDate?.() || (c.createdAt?.seconds ? new Date(c.createdAt.seconds * 1000) : new Date())).toLocaleDateString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  </span>
+                </div>
+                <p className="thread-content-text">{c.content}</p>
+                {(Array.isArray(c.metadata.dataContext) ? c.metadata.dataContext : [c.metadata.dataContext]).map((ctx) => (
+                  <span key={ctx} className="thread-pill">{ctx}</span>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+        <CommentForm
+          stationId={config.station.id}
+          initialRange={range ? { start: new Date(range.startTime).toISOString(), end: new Date(range.endTime).toISOString() } : undefined}
+          loading={loading}
+          onSubmit={handleSubmit}
+          onCancel={onDismiss}
+        />
+      </IonContent>
+    </IonModal>
+    </>
+  );
+};
+
+export default ChartCommentModal;

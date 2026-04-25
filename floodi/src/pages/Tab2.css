@@ -212,3 +212,156 @@
   padding: 10px 12px;
   color: var(--chart-axis-text);
 }
+
+/* Inline error banner — shown above the chart without hiding stale data */
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 12px;
+  padding: 10px 14px;
+  background: rgba(220, 38, 38, 0.12);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+}
+
+.error-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.error-banner-text strong {
+  font-size: 0.9rem;
+  color: #fca5a5;
+  font-weight: 700;
+}
+
+.error-banner-text span {
+  font-size: 0.75rem;
+  color: #fca5a5;
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.error-banner-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Fallback when there's no processedData at all (initial load failure) */
+.error-fullscreen {
+  padding: 24px 12px;
+}
+
+/* Error card that replaces the chart area when data cannot be loaded */
+.chart-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 52px 28px;
+  margin: 8px 0;
+  border-radius: 16px;
+  background: var(--chart-plot-bg);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  min-height: 320px;
+  text-align: center;
+}
+
+.chart-error-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.chart-error-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #dc2626;
+  margin: 0;
+}
+
+.chart-error-message {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--chart-label-text);
+  max-width: 400px;
+  margin: 0;
+}
+
+.chart-error-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.chart-error-details-toggle {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--chart-axis-text);
+  cursor: pointer;
+  padding: 4px 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s;
+}
+
+.chart-error-details-toggle:hover {
+  color: var(--chart-label-text);
+}
+
+.chart-error-details {
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: #e2e8f0;
+  text-align: left;
+  margin: 0;
+}
+
+.chart-error-row {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 12px;
+}
+
+.chart-error-row:last-child {
+  margin-bottom: 0;
+}
+
+.chart-error-label {
+  font-weight: 700;
+  color: #94a3b8;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.chart-error-value {
+  word-break: break-all;
+  color: #f1f5f9;
+}
+
+.chart-error-line {
+  margin-bottom: 8px;
+}

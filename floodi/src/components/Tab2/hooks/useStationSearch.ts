@@ -71,16 +71,21 @@ async function fetchAllStations(): Promise<Station[]> {
     throw new Error(`Failed to fetch stations: HTTP ${response.status}`);
   }
   
-  const data = await response.json();
-  const stations = (data?.stations || []) as any[];
+  const data: unknown = await response.json();
+  const stations = (typeof data === 'object' && data && 'stations' in data
+    ? (data as { stations?: unknown[] }).stations || []
+    : []) as unknown[];
   
-  return stations.map(station => ({
-    id: String(station.id),
-    name: String(station.name || ''),
-    state: station.state,
-    lat: station.lat,
-    lon: station.lon,
-  }));
+  return stations.map((station: unknown) => {
+    const s = station as { id?: unknown; name?: unknown; state?: string; lat?: number; lon?: number };
+    return {
+      id: String(s?.id ?? ''),
+      name: String(s?.name ?? ''),
+      state: s?.state,
+      lat: s?.lat,
+      lon: s?.lon,
+    } as Station;
+  });
 }
 
 /**
@@ -144,11 +149,11 @@ export function useStationSearch(initialStationId: string) {
         allStations: stations,
         loading: false,
       }));
-    } catch (error: any) {
+    } catch (error: unknown) {
       setSearchState(prev => ({
         ...prev,
         loading: false,
-        error: error?.message || 'Failed to load stations',
+        error: (error as { message?: string } | null)?.message || 'Failed to load stations',
       }));
     }
   }, [searchState.loading, searchState.allStations.length]);
@@ -239,13 +244,14 @@ export function useStationSearch(initialStationId: string) {
   useEffect(() => {
     if (searchState.allStations.length > 0 && searchState.searchResults.length === 0 && !searchState.searchQuery) {
       const initial = filterStations(searchState.allStations, '');
+      const idx = initial.findIndex((s) => s.id === initialStationId);
       setSearchState(prev => ({ 
         ...prev, 
         searchResults: initial,
-        selectedIndex: initial.length > 0 ? 0 : -1,
+        selectedIndex: idx >= 0 ? idx : (initial.length > 0 ? 0 : -1),
       }));
     }
-  }, [searchState.allStations.length, searchState.searchResults.length, searchState.searchQuery]);
+  }, [searchState.allStations.length, searchState.searchResults.length, searchState.searchQuery, initialStationId]);
 
   return {
     ...searchState,

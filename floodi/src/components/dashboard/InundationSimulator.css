@@ -1,0 +1,202 @@
+.simulator-container {
+  background: var(--dash-card-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: var(--dash-card-shadow);
+  margin-bottom: 24px;
+  border: var(--dash-card-border, none);
+}
+
+.simulator-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.simulator-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--dash-title-color);
+  letter-spacing: -0.02em;
+  font-family: 'Outfit', sans-serif;
+}
+
+.simulator-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.context-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.context-item ion-icon {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.context-item.time {
+  color: var(--sentinel-time-text);
+  font-size: 0.65rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.context-item.wind {
+  color: #ffa500;
+}
+
+.context-item.precip {
+  color: #00b4d8;
+}
+
+.context-source {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--sentinel-text-dim, rgba(127, 127, 127, 0.4));
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.simulator-readout {
+  background: linear-gradient(135deg, rgba(var(--ion-color-primary-rgb), 0.1), rgba(var(--ion-color-primary-rgb), 0.2));
+  color: var(--ion-color-primary);
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-weight: 800;
+  font-family: 'Inter', monospace;
+  font-size: 0.9rem;
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.3);
+  box-shadow: 0 4px 12px rgba(var(--ion-color-primary-rgb), 0.15);
+}
+
+.simulator-slider-wrapper {
+  padding: 10px 0;
+}
+
+.simulator-slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 8px;
+  background: var(--dash-slider-track);
+  border-radius: 5px;
+  outline: none;
+  border: 1px solid var(--sentinel-border);
+}
+
+.simulator-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--ion-color-primary), #0077b6);
+  cursor: pointer;
+  box-shadow: 0 0 15px rgba(var(--ion-color-primary-rgb), 0.4);
+  border: 3px solid #fff;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.simulator-slider::-webkit-slider-thumb:active {
+  transform: scale(1.1);
+}
+
+.simulator-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--ion-color-secondary, #00b4d8);
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0, 180, 216, 0.5);
+  border: 2px solid var(--ion-background-color, #fff);
+}
+
+.simulator-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--dash-label-color);
+  font-size: 0.8rem;
+}
+
+.simulator-label-datum {
+  font-size: 0.72rem;
+  opacity: 0.55;
+  letter-spacing: 0.04em;
+}
+
+/* ── Reference level ticks ────────────────────────────────────────────────── */
+.simulator-ticks {
+  position: relative;
+  height: 20px;
+  margin-top: 4px;
+}
+
+.sim-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 0 3px var(--dash-card-bg, #fff), 0 0 3px var(--dash-card-bg, #fff), 0 0 3px var(--dash-card-bg, #fff);
+}
+
+/* Vertical marker line */
+.sim-tick::before {
+  content: '';
+  display: block;
+  width: 1px;
+  height: 6px;
+  margin: 0 auto 2px;
+}
+
+.sim-tick-mhhw {
+  color: rgba(100, 200, 255, 0.85);
+}
+.sim-tick-mhhw::before {
+  background: rgba(100, 200, 255, 0.6);
+}
+
+.sim-tick-minor {
+  color: #ffdc1e;
+}
+.sim-tick-minor::before {
+  background: #ffdc1e;
+}
+
+.sim-tick-moderate {
+  color: #ffa500;
+}
+.sim-tick-moderate::before {
+  background: #ffa500;
+}
+
+.sim-tick-major {
+  color: #d22323;
+}
+.sim-tick-major::before {
+  background: #d22323;
+}
+
+.sim-tick-extreme {
+  color: #a020f0;
+}
+.sim-tick-extreme::before {
+  background: #a020f0;
+}

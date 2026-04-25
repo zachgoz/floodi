@@ -1,0 +1,159 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Reads the role from the user's document. Beware of recursive reads.
+    function hasRole(required) {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == required;
+    }
+
+    function isAdmin() { return isAuthenticated() && hasRole('admin'); }
+    function isModerator() { return isAuthenticated() && (hasRole('moderator') || hasRole('admin')); }
+
+    // USERS COLLECTION
+    match /users/{uid} {
+      // Restrict reads to owner or admin
+      allow read: if isOwner(uid) || isAdmin();
+
+      // Validate structure and optional fields
+      function validUserData() {
+        // required and enum fields
+        return request.resource.data.uid == uid &&
+               request.resource.data.role in ['anonymous','user','moderator','admin'] &&
+               request.resource.data.isActive is bool &&
+               request.resource.data.createdAt is timestamp &&
+               request.resource.data.updatedAt is timestamp &&
+               // optional primitives with constraints
+               (!("email" in request.resource.data) || request.resource.data.email == null || (
+                 request.resource.data.email is string && request.resource.data.email.size() >= 3 && request.resource.data.email.size() <= 254 &&
+                 request.resource.data.email.matches('^.+@.+\\..+$')
+               )) &&
+               (!("displayName" in request.resource.data) || request.resource.data.displayName == null || (
+                 request.resource.data.displayName is string && request.resource.data.displayName.size() <= 50
+               )) &&
+               (!("photoURL" in request.resource.data) || request.resource.data.photoURL == null || (
+                 request.resource.data.photoURL is string && request.resource.data.photoURL.matches('^https?://.*')
+               )) &&
+               (!("lastLoginAt" in request.resource.data) || request.resource.data.lastLoginAt == null || request.resource.data.lastLoginAt is timestamp);
+      }
+
+      // Create requires owner AND valid data
+      allow create: if isOwner(uid) && validUserData();
+
+      // Update requires valid data AND either owner-without-role-change or admin
+      allow update: if validUserData() && (
+        (isOwner(uid) && !('role' in request.resource.data.diff(resource.data).changedKeys())) ||
+        isAdmin()
+      );
+
+      // Only admins can delete users
+      allow delete: if isAdmin();
+    }
+
+    // PUBLIC PROFILES: limited exposure of user info
+    match /publicProfiles/{uid} {
+      // Any authenticated user can read public profiles
+      allow read: if isAuthenticated();
+
+      // Basic validation
+      function validPublicProfile() {
+        return request.resource.data.uid == uid &&
+               request.resource.data.createdAt is timestamp &&
+               request.resource.data.updatedAt is timestamp &&
+               (!("displayName" in request.resource.data) || request.resource.data.displayName == null || (
+                 request.resource.data.displayName is string && request.resource.data.displayName.size() <= 50
+               )) &&
+               (!("photoURL" in request.resource.data) || request.resource.data.photoURL == null || (
+                 request.resource.data.photoURL is string && request.resource.data.photoURL.matches('^https?://.*')
+               ));
+      }
+
+      // Owner or admin can write public profile
+      allow create, update: if (isOwner(uid) || isAdmin()) && validPublicProfile();
+      allow delete: if isAdmin();
+    }
+
+    // COMMENTS COLLECTION
+    match /comments/{id} {
+      // Read: public for non-deleted; deleted only visible to moderators/admins
+      allow read: if !resource.data.isDeleted || isModerator();
+
+      // Validation helpers
+      function validIso(s) { return s is string && s.size() >= 10; }
+
+      // Operation helpers
+      function isCreate() { return resource == null; }
+      function isUpdate() { return resource != null; }
+
+      // Enforce server time on create/update and immutability of createdAt after create
+      function validTimestamps() {
+        return (isCreate() && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time) ||
+               (isUpdate() && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.updatedAt == request.time);
+      }
+
+      function validCommentMetadata() {
+        return request.resource.data.metadata is map &&
+               // Station validation
+               (request.resource.data.metadata.station is map) &&
+               (request.resource.data.metadata.station.id is string) &&
+               (request.resource.data.metadata.station.name is string) &&
+               // Time range validation
+               (request.resource.data.metadata.timeRange is map) &&
+               validIso(request.resource.data.metadata.timeRange.startTime) &&
+               validIso(request.resource.data.metadata.timeRange.endTime);
+      }
+
+      function validEditHistory() {
+        return request.resource.data.editHistory is list;
+      }
+
+      function validCommentData() {
+        return request.resource.data.authorUid is string &&
+               request.resource.data.authorUid == request.auth.uid &&
+               request.resource.data.content is string &&
+               request.resource.data.content.size() >= 1 &&
+               request.resource.data.content.size() <= 2000 &&
+               validCommentMetadata() &&
+               request.resource.data.isEdited is bool &&
+               request.resource.data.isDeleted is bool &&
+               validTimestamps() &&
+               validEditHistory();
+      }
+
+      // Permission helpers
+      function canEditComment() {
+        return !resource.data.isDeleted &&
+               ((isOwner(resource.data.authorUid) && request.time < resource.data.createdAt + duration.value(24, 'h')) ||
+                isModerator());
+      }
+
+      function canDeleteComment() {
+        return (isOwner(resource.data.authorUid) && request.time < resource.data.createdAt + duration.value(24, 'h')) ||
+               isModerator();
+      }
+
+      // Create: must be authenticated, with valid data
+      allow create: if isAuthenticated() && validCommentData();
+
+      // Update: enforce permissions and validation; createdAt immutable (enforced by validTimestamps)
+      // Ensure general updates cannot toggle isDeleted; soft-delete rule below is the only path
+      allow update: if canEditComment() && validCommentData() &&
+        (request.resource.data.isDeleted == resource.data.isDeleted);
+
+      // Soft delete via update to isDeleted true; restrict changed keys to only isDeleted and updatedAt
+      allow update: if canDeleteComment() && (request.resource.data.isDeleted == true) &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(['isDeleted', 'updatedAt']);
+
+      // Hard delete only for admins
+      allow delete: if isAdmin();
+    }
+  }
+}

@@ -8,6 +8,19 @@ export interface Point {
   v: number;
 }
 
+/** Wind vector data point (hourly) */
+export interface WindPoint {
+  t: Date;
+  speed: number; // Mph
+  dir: number; // Degrees
+}
+
+/** Precipitation accumulation data point (hourly) */
+export interface PrecipPoint {
+  t: Date;
+  value: number; // Inches
+}
+
 /** Station information from NOAA API */
 export interface Station {
   id: string;
@@ -24,13 +37,20 @@ export interface ChartData {
   adjusted: Record<string, number>;
   offset: number | null;
   nPoints: number;
+  wind?: Record<string, { speed: number; dir: number }>;
+  precip?: Record<string, number>;
 }
 
 /** Chart configuration and dimensions */
 export interface ChartConfig {
   size: { w: number; h: number };
   margins: { l: number; r: number; t: number; b: number };
-  threshold: number;
+  thresholds: {
+    minor: number;
+    moderate: number;
+    major: number;
+    extreme: number;
+  };
   showDelta: boolean;
   timezone: 'local' | 'gmt';
 }
@@ -57,7 +77,12 @@ export interface AppConfiguration {
     name: string;
     state?: string;
   };
-  threshold: number;
+  thresholds: {
+    minor: number;
+    moderate: number;
+    major: number;
+    extreme: number;
+  };
   offset: OffsetConfig;
   timeRange: TimeRange;
   display: {
@@ -71,6 +96,55 @@ export interface AppConfiguration {
 export interface ChartInteraction {
   hoverT: Date | null;
   setHoverT: (date: Date | null) => void;
+}
+
+/**
+ * Comment overlay configuration and state for Tab2 chart.
+ */
+export interface CommentOverlayConfig {
+  /** Enable comment markers and tooltip augmentation */
+  enabled?: boolean;
+  /** Marker size in px */
+  markerSize?: number;
+  /** Tooltip: max comments to preview */
+  maxTooltipItems?: number;
+}
+
+/**
+ * Selection state for click/drag time range creation on the chart.
+ */
+export interface TimeRangeSelection {
+  selecting: boolean;
+  start: Date | null;
+  end: Date | null;
+}
+
+/**
+ * High-level comment state for the chart overlay.
+ */
+export interface ChartCommentState {
+  visible: boolean;
+  creationMode: boolean;
+  hoveredCommentId?: string | null;
+  selectedRange?: { start: Date; end: Date } | null;
+}
+
+/**
+ * Handlers for comment overlay interactions.
+ */
+export interface ChartCommentHandlers {
+  onToggleOverlay?: () => void;
+  onToggleCreationMode?: () => void;
+  onHoverComment?: (id: string | null) => void;
+  onClickComment?: (id: string) => void;
+  onSelectTimeRange?: (start: Date, end: Date) => void;
+}
+
+/**
+ * Extend ChartConfig to optionally include comment overlay preferences.
+ */
+export interface ChartConfigWithComments extends ChartConfig {
+  comments?: CommentOverlayConfig;
 }
 
 /** Data loading and error state */
