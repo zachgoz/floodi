@@ -12,6 +12,8 @@ interface AtmosphericOverlayProps {
   observedWaterLevel?: number; // in ft
   onReset?: () => void;
   source?: string;
+  surge?: number | null;
+  prediction?: number | null;
 }
 
 /** Convert a meteorological bearing (0° = N, clockwise) to a compass label */
@@ -33,11 +35,11 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
   precipitationAccumulation,
   windSpeed,
   windDirection,
-  time,
   isLive = true,
   observedWaterLevel = 0,
-  onReset,
   source,
+  surge,
+  prediction,
 }) => {
   const arrowColor = windColor(windSpeed);
   const arrowLen = 10;
@@ -46,42 +48,83 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
     <div className={`atmospheric-sentinel ${isLive ? 'is-live' : 'is-historical'}`}>
       {/* Status indicator moved to Hydrograph title subtitle for better layout */}
 
-      <div className="sentinel-metrics">
-        {/* Observed Water Level */}
-        <div className="metric-item water-level" title="Observed Water Level">
-          <div className="metric-icon-box">
-            <IonIcon icon={waterOutline} className="metric-icon tide" />
-          </div>
-          <div className="metric-details">
-            <span className="metric-label">
-              {isLive ? 'Observed' : (source === 'Scroll Context' ? 'Viewing' : (source || 'Observed'))}
-            </span>
-            <div className="metric-value-row">
-              <span className="metric-value">{observedWaterLevel.toFixed(2)}</span>
-              <span className="metric-unit">ft</span>
+      <div className="sentinel-metrics tidal-metrics">
+        {/* Tidal Group: Predicted + Surge = Final */}
+        <div className="tidal-group">
+          {prediction !== null && prediction !== undefined && (
+            <div className="metric-item prediction" title="NOAA Prediction">
+              <div className="metric-details">
+                <div className="metric-value-row">
+                  <span className="metric-value">{prediction.toFixed(2)}</span>
+                  <span className="metric-unit">ft</span>
+                </div>
+                <span className="metric-label">NOAA Baseline</span>
+              </div>
+            </div>
+          )}
+
+          {surge !== null && surge !== undefined && (
+            <>
+              <span className="tidal-operator">+</span>
+              <div className="metric-item surge-gauge" title="Surge (Observed - Predicted)">
+                <div className="metric-details">
+                  <div className="gauge-container">
+                    <div className="gauge-track">
+                      <div 
+                        className={`gauge-fill ${surge >= 0 ? 'surge-positive' : 'surge-negative'}`}
+                        style={{ 
+                          width: `${Math.min(Math.abs(surge) * 20, 50)}%`,
+                          left: surge >= 0 ? '50%' : 'auto',
+                          right: surge < 0 ? '50%' : 'auto'
+                        }}
+                      />
+                      <div className="gauge-center" />
+                    </div>
+                    <div className="metric-value-row">
+                      <span className="metric-value">{surge >= 0 ? '+' : ''}{surge.toFixed(2)}</span>
+                      <span className="metric-unit">ft</span>
+                    </div>
+                  </div>
+                  <span className="metric-label">Storm Surge</span>
+                </div>
+              </div>
+              <span className="tidal-operator">=</span>
+            </>
+          )}
+
+          {/* Final Water Level (Observed or FloodCast) */}
+          <div className="metric-item water-level highlight" title="Final Water Level">
+            <div className="metric-icon-box">
+              <IonIcon icon={waterOutline} className="metric-icon tide" />
+            </div>
+            <div className="metric-details">
+              <div className="metric-value-row">
+                <span className="metric-value">{observedWaterLevel.toFixed(2)}</span>
+                <span className="metric-unit">ft</span>
+              </div>
+              <span className="metric-label">
+                {source === 'Observed' ? 'Actual Level' : (source === 'FloodCast' ? 'FloodCast' : 'Total Level')}
+              </span>
             </div>
           </div>
         </div>
+      </div>
 
+      <div className="sentinel-metrics atmo-metrics">
         {precipitationAccumulation !== undefined && precipitationAccumulation > 0.005 && (
-          <>
-            <div className="metric-divider" />
-            <div className="metric-item precip-level">
-              <div className="metric-icon-box">
-                <IonIcon icon={waterOutline} className="metric-icon precip" />
-              </div>
-              <div className="metric-details">
-                <span className="metric-label">Precip</span>
-                <div className="metric-value-row">
-                  <span className="metric-value">{precipitationAccumulation.toFixed(2)}</span>
-                  <span className="metric-unit">in</span>
-                </div>
-              </div>
+          <div className="metric-item precip-level">
+            <div className="metric-icon-box">
+              <IonIcon icon={waterOutline} className="metric-icon precip" />
             </div>
-          </>
+            <div className="metric-details">
+              <div className="metric-value-row">
+                <span className="metric-value">{precipitationAccumulation.toFixed(2)}</span>
+                <span className="metric-unit">in</span>
+              </div>
+              <span className="metric-label">Precip</span>
+            </div>
+          </div>
         )}
-
-        <div className="metric-divider" />
 
         {/* Wind */}
         <div className="metric-item wind-level">
@@ -108,12 +151,12 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
             </svg>
           </div>
           <div className="metric-details">
-            <span className="metric-label">Wind</span>
             <div className="metric-value-row">
               <span className="metric-value" style={{ color: arrowColor }}>{windSpeed.toFixed(0)}</span>
               <span className="metric-unit">mph</span>
               <span className="metric-dir">{degToCompass(windDirection)}</span>
             </div>
+            <span className="metric-label">Wind</span>
           </div>
         </div>
       </div>

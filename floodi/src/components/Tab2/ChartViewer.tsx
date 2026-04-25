@@ -82,6 +82,8 @@ interface ChartViewerProps {
     lookbackH: number;
     lookaheadH: number;
   };
+  /** List of data fetching warnings */
+  warnings?: string[];
 }
 
 /**
@@ -784,7 +786,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           const stripTop = margins.t + innerH + 4;
           const stripH = ATMO_STRIP_H;
           const precipH = stripH * 0.60;
-          const precipTop = stripTop + stripH - precipH; // bars grow upward from stripBottom
           const windY = stripTop + 13; // wind arrows in upper portion
 
           const maxPrecip = Math.max(0.01, ...precipPoints.map(p => p.value));
@@ -1142,13 +1143,19 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             }
           }
 
+          // Track last label X positions to prevent overlap
+          let lastPeakLabelX = -100;
+          let lastDateLabelX = -100;
+
           return peaks.map((tick, i) => {
             const x = xOf(tick);
             // Relaxed boundary check to show peaks right on the edge
             if (x < margins.l - 5 || x > margins.l + innerW + 5) return null;
             
-            // For clutter control, maybe only show labels that are at least ~40px apart
-            // but for tide peaks (~6hrs apart) it's usually fine.
+            // Determine if we should show the time label near the peak
+            // Clutter control: minimum 70px between peak labels
+            const showPeakLabel = (x - lastPeakLabelX) > 70;
+            if (showPeakLabel) lastPeakLabelX = x;
             
             return (
               <g key={`xtick-${i}`}>
@@ -1160,7 +1167,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                   stroke="var(--chart-grid)"
                   opacity={0.3}
                 />
-                {(() => {
+                {showPeakLabel && (() => {
                   // Find values for this specific peak to determine Y position
                   const predPoint = predictedPoints.find(p => p.t.getTime() === tick.getTime());
                   const nearestObs = findNearestPoint(observedPoints, tick);
@@ -1226,7 +1233,10 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                     const prevTick = i > 0 ? peaks[i-1] : null;
                     const isNewDay = prevTick ? tick.getDate() !== prevTick.getDate() : true;
                     
-                    if (isNewDay || isFirstTick) {
+                    // Clutter control for date labels: only show on new day and if space permits (>60px)
+                    const showDateLabel = (isNewDay || isFirstTick) && (x - lastDateLabelX > 60);
+                    if (showDateLabel) {
+                      lastDateLabelX = x;
                       return new Intl.DateTimeFormat(undefined, {
                         month: 'short',
                         day: 'numeric',
@@ -1484,7 +1494,15 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
           const centerTime = new Date(activeT0 + (activeT1 - activeT0) * nowRatio);
           const x = margins.l + innerW * nowRatio;
-          const nowX = xOf(now);
+          
+          const obsRes = findNearestPoint(observedPoints, centerTime);
+          const adjRes = findNearestPoint(adjustedPoints, centerTime);
+          const predRes = findNearestPoint(predictedPoints, centerTime);
+
+          // We'll show dots for Observed and the "main" forecast (Adjusted/Predicted)
+          const obsY = (obsRes && obsRes.dtMin < 60) ? yOf(obsRes.point.v) : null;
+          const forecastY = (adjRes && adjRes.dtMin < 60) ? yOf(adjRes.point.v) : 
+                            (predRes && predRes.dtMin < 60) ? yOf(predRes.point.v) : null;
           
           return (
             <g key="viewing-time-marker">
@@ -1497,6 +1515,25 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 strokeWidth={2.5}
                 opacity={0.9}
               />
+              
+              {/* Intersection dots */}
+              {obsY !== null && (
+                <circle 
+                  cx={x} cy={obsY} r={4.5} 
+                  fill="var(--chart-bg, #fff)" 
+                  stroke="var(--line-observed, #2ecc71)" 
+                  strokeWidth={2} 
+                />
+              )}
+              {forecastY !== null && (
+                <circle 
+                  cx={x} cy={forecastY} r={4.5} 
+                  fill="var(--chart-bg, #fff)" 
+                  stroke={adjRes && adjRes.dtMin < 60 ? "var(--line-adjusted, #3498db)" : "var(--line-predicted, #95a5a6)"} 
+                  strokeWidth={2} 
+                />
+              )}
+
               <text
                 x={x + 6}
                 y={margins.t + 18}
@@ -1509,7 +1546,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                   strokeWidth: '4px'
                 }}
               >
-                {`VIEWING: ${formatTooltipTime(centerTime, timezone)}`}
+                {formatTooltipTime(centerTime, timezone)}
               </text>
             </g>
           );

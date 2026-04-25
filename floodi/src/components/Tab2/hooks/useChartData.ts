@@ -80,6 +80,8 @@ export function useChartData(config: AppConfiguration) {
       const lookahead = timeRange.mode === 'relative' ? (timeRange.lookaheadH + 120) : // Add 5 days in hours
         Math.max(1, Math.ceil((fEnd.getTime() - now.getTime()) / 3600_000));
 
+      const warnings: string[] = [];
+
       // We use Promise.all to fetch everything in parallel
       const [adjustedResult, observed, predicted, windData, precipData] = await Promise.all([
         buildAdjustedFuture({
@@ -92,6 +94,7 @@ export function useChartData(config: AppConfiguration) {
           units: 'english',
         }).catch(err => {
           console.warn('buildAdjustedFuture failed:', err);
+          warnings.push('Surge forecast calculation failed');
           return { adjusted: {}, offset: 0, n: 0 };
         }),
 
@@ -104,6 +107,7 @@ export function useChartData(config: AppConfiguration) {
           units: 'english',
         }).catch(err => {
           console.warn('fetchObservedWaterLevels failed:', err);
+          warnings.push('Observed water level data unavailable');
           return {};
         }) : Promise.resolve({}),
 
@@ -116,6 +120,7 @@ export function useChartData(config: AppConfiguration) {
           units: 'english',
         }).catch(err => {
           console.warn('fetchPredictions failed:', err);
+          warnings.push('Tide predictions unavailable');
           return {};
         }),
 
@@ -126,6 +131,7 @@ export function useChartData(config: AppConfiguration) {
           units: 'english',
         }).catch(err => {
           console.warn('fetchWind failed:', err);
+          warnings.push('Wind data unavailable');
           return {};
         }),
 
@@ -136,6 +142,7 @@ export function useChartData(config: AppConfiguration) {
           units: 'english',
         }).catch(err => {
           console.warn('fetchPrecipitation failed:', err);
+          warnings.push('Precipitation data unavailable');
           return {};
         }),
       ]);
@@ -148,6 +155,7 @@ export function useChartData(config: AppConfiguration) {
         nPoints: adjustedResult.n,
         wind: windData as any,
         precip: precipData as any,
+        warnings,
       };
 
       // Update cache
@@ -269,6 +277,7 @@ export function useChartData(config: AppConfiguration) {
       precipPoints,
       effectiveOffset,
       timeDomain,
+      warnings: data.warnings,
     };
   }, [dataState.data, timeDomain, config.offset]);
 

@@ -58,6 +58,25 @@ function fmtBeginEnd(d: Date): string {
   return `${y}${m}${day} ${hh}:${mm}`;
 }
 
+/**
+ * Splits a date range into smaller chunks to respect API limits (e.g., NOAA 31-day limit)
+ */
+function splitDateRange(start: Date, end: Date, maxDays: number): { s: Date; e: Date }[] {
+  const chunks: { s: Date; e: Date }[] = [];
+  let curr = new Date(start);
+  const maxMs = maxDays * 24 * 3600_000;
+
+  while (curr < end) {
+    let chunkEnd = new Date(curr.getTime() + maxMs);
+    if (chunkEnd > end) chunkEnd = end;
+    chunks.push({ s: new Date(curr), e: new Date(chunkEnd) });
+    // Advance slightly (1ms) to avoid overlapping the exact boundary if needed, 
+    // but for time series we usually want contiguous chunks.
+    curr = chunkEnd;
+  }
+  return chunks;
+}
+
 // (removed unused isoMinute helper)
 
 /**
@@ -163,37 +182,42 @@ export async function fetchObservedWaterLevels(opts: {
 }): Promise<TimeSeries> {
   const { station, start, end, interval = 6, datum = 'MLLW', units = 'english' } = opts;
   
-  // Build API request parameters
-  const params = {
-    product: 'water_level',           // Request water level observations
-    application: 'canal-dr-flood',    // Application identifier for usage tracking
-    format: 'json',                   // JSON response format
-    time_zone: 'gmt',                 // All times in GMT/UTC
-    units,                            // Measurement units
-    datum,                            // Vertical reference datum
-    station,                          // NOAA station identifier
-    interval: String(interval),       // Data sampling interval
-    begin_date: fmtBeginEnd(start),   // Formatted start datetime
-    end_date: fmtBeginEnd(end),       // Formatted end datetime
+  // NOAA CO-OPS has a 31-day limit for water_level requests.
+  const chunks = splitDateRange(start, end, 31);
+  
+  const fetchChunk = async (s: Date, e: Date) => {
+    const params = {
+      product: 'water_level',
+      application: 'canal-dr-flood',
+      format: 'json',
+      time_zone: 'gmt',
+      units,
+      datum,
+      station,
+      interval: String(interval),
+      begin_date: fmtBeginEnd(s),
+      end_date: fmtBeginEnd(e),
+    };
+    
+    try {
+      const data = await requestNOAA(params) as { data?: Array<{ v: string; t: string }> };
+      const chunkOut: TimeSeries = {};
+      for (const row of data?.data ?? []) {
+        const v = parseFloat(row.v);
+        const t = row.t as string;
+        if (!isFinite(v) || !t) continue;
+        const iso = t.replace(' ', 'T') + 'Z';
+        chunkOut[iso] = v;
+      }
+      return chunkOut;
+    } catch (err) {
+      console.warn(`Chunk fetch failed [${fmtBeginEnd(s)} - ${fmtBeginEnd(e)}]:`, err);
+      return {};
+    }
   };
-  
-  const data = await requestNOAA(params) as { data?: Array<{ v: string; t: string }>; error?: { message?: string } };
-  const out: TimeSeries = {};
-  
-  // Process response data into our TimeSeries format
-  for (const row of data?.data ?? []) {
-    const v = parseFloat(row.v);      // Water level value
-    const t = row.t as string;        // Timestamp 'YYYY-MM-DD HH:MM'
-    
-    // Skip invalid data points
-    if (!isFinite(v) || !t) continue;
-    
-    // Convert NOAA timestamp to ISO format: '2024-01-15 12:30' -> '2024-01-15T12:30Z'
-    const iso = t.replace(' ', 'T') + 'Z';
-    out[iso] = v;
-  }
-  
-  return out;
+
+  const results = await Promise.all(chunks.map(c => fetchChunk(c.s, c.e)));
+  return Object.assign({}, ...results);
 }
 
 /**
@@ -232,37 +256,43 @@ export async function fetchPredictions(opts: {
 }): Promise<TimeSeries> {
   const { station, start, end, interval = 6, datum = 'MLLW', units = 'english' } = opts;
   
-  // Build API request parameters for harmonic predictions
-  const params = {
-    product: 'predictions',           // Request tide predictions
-    application: 'canal-dr-flood',    // Application identifier
-    format: 'json',                   // JSON response format
-    time_zone: 'gmt',                 // All times in GMT/UTC
-    units,                            // Measurement units
-    datum,                            // Vertical reference datum
-    station,                          // NOAA station identifier
-    interval: String(interval),       // Prediction interval
-    begin_date: fmtBeginEnd(start),   // Formatted start datetime
-    end_date: fmtBeginEnd(end),       // Formatted end datetime
+  // While predictions have a larger limit (years), we chunk at 31 days for consistency
+  // and to avoid potential timeout issues with very large payloads.
+  const chunks = splitDateRange(start, end, 31);
+
+  const fetchChunk = async (s: Date, e: Date) => {
+    const params = {
+      product: 'predictions',
+      application: 'canal-dr-flood',
+      format: 'json',
+      time_zone: 'gmt',
+      units,
+      datum,
+      station,
+      interval: String(interval),
+      begin_date: fmtBeginEnd(s),
+      end_date: fmtBeginEnd(e),
+    };
+    
+    try {
+      const data = await requestNOAA(params) as { predictions?: Array<{ v: string; t: string }> };
+      const chunkOut: TimeSeries = {};
+      for (const row of data?.predictions ?? []) {
+        const v = parseFloat(row.v);
+        const t = row.t as string;
+        if (!isFinite(v) || !t) continue;
+        const iso = t.replace(' ', 'T') + 'Z';
+        chunkOut[iso] = v;
+      }
+      return chunkOut;
+    } catch (err) {
+      console.warn(`Predictions chunk fetch failed [${fmtBeginEnd(s)} - ${fmtBeginEnd(e)}]:`, err);
+      return {};
+    }
   };
-  
-  const data = await requestNOAA(params) as { predictions?: Array<{ v: string; t: string }>; error?: { message?: string } };
-  const out: TimeSeries = {};
-  
-  // Process prediction data into our TimeSeries format
-  for (const row of data?.predictions ?? []) {
-    const v = parseFloat(row.v);      // Predicted water level
-    const t = row.t as string;        // Timestamp 'YYYY-MM-DD HH:MM'
-    
-    // Skip invalid predictions
-    if (!isFinite(v) || !t) continue;
-    
-    // Convert to ISO format for consistency
-    const iso = t.replace(' ', 'T') + 'Z';
-    out[iso] = v;
-  }
-  
-  return out;
+
+  const results = await Promise.all(chunks.map(c => fetchChunk(c.s, c.e)));
+  return Object.assign({}, ...results);
 }
 
 /**
@@ -493,7 +523,10 @@ export async function fetchWind(opts: {
   
   // 1. Fetch historical/current wind from NOAA CO-OPS
   if (opts.start < now) {
-    try {
+    const historicalEnd = new Date(Math.min(opts.end.getTime(), now.getTime()));
+    const chunks = splitDateRange(opts.start, historicalEnd, 31);
+
+    const fetchChunk = async (s: Date, e: Date) => {
       const params = {
         product: 'wind',
         application: 'canal-dr-flood',
@@ -501,21 +534,30 @@ export async function fetchWind(opts: {
         time_zone: 'gmt',
         units: opts.units || 'english',
         station: opts.station,
-        begin_date: fmtBeginEnd(opts.start),
-        end_date: fmtBeginEnd(new Date(Math.min(opts.end.getTime(), now.getTime()))),
+        begin_date: fmtBeginEnd(s),
+        end_date: fmtBeginEnd(e),
       };
-      const data = await requestNOAA(params) as { data?: any[] };
-      for (const row of data?.data ?? []) {
-        const s = parseFloat(row.s);
-        const d = parseFloat(row.d);
-        const t = row.t as string;
-        if (!isFinite(s) || !isFinite(d) || !t) continue;
-        const iso = t.replace(' ', 'T') + 'Z';
-        out[iso] = { speed: s, dir: d };
+      
+      try {
+        const data = await requestNOAA(params) as { data?: any[] };
+        const chunkOut: Record<string, { speed: number; dir: number }> = {};
+        for (const row of data?.data ?? []) {
+          const sVal = parseFloat(row.s);
+          const dVal = parseFloat(row.d);
+          const tVal = row.t as string;
+          if (!isFinite(sVal) || !isFinite(dVal) || !tVal) continue;
+          const iso = tVal.replace(' ', 'T') + 'Z';
+          chunkOut[iso] = { speed: sVal, dir: dVal };
+        }
+        return chunkOut;
+      } catch (err) {
+        console.warn(`Wind chunk fetch failed [${fmtBeginEnd(s)} - ${fmtBeginEnd(e)}]:`, err);
+        return {};
       }
-    } catch (e) {
-      console.warn('NOAA Wind fetch failed:', e);
-    }
+    };
+
+    const results = await Promise.all(chunks.map(c => fetchChunk(c.s, c.e)));
+    Object.assign(out, ...results);
   }
 
   // 2. Fetch forecast wind from NWS if needed
@@ -700,7 +742,9 @@ export async function fetchNWSPrecipitation(opts: {
 
     // Stage 2: Historical Observations
     try {
-      const obsData = await requestNWS(`https://api.weather.gov/stations/${meta.stationId}/observations?start=${opts.start.toISOString()}&end=${new Date().toISOString()}`);
+      // Only fetch from NWS for the period after deep history (last 6 days)
+      const nwsObsStart = opts.start < deepPastThreshold ? deepPastThreshold : opts.start;
+      const obsData = await requestNWS(`https://api.weather.gov/stations/${meta.stationId}/observations?start=${nwsObsStart.toISOString()}&end=${now.toISOString()}`);
       for (const feature of obsData.features || []) {
         const props = feature.properties;
         const time = props.timestamp;

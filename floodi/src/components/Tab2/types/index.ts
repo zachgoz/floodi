@@ -39,6 +39,7 @@ export interface ChartData {
   nPoints: number;
   wind?: Record<string, { speed: number; dir: number }>;
   precip?: Record<string, number>;
+  warnings?: string[];
 }
 
 /** Chart configuration and dimensions */
@@ -151,6 +152,7 @@ export interface ChartConfigWithComments extends ChartConfig {
 export interface DataState {
   loading: boolean;
   error: string | null;
+  warnings?: string[];
   data: ChartData;
 }
 

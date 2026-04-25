@@ -75,7 +75,6 @@ const Tab2: React.FC = () => {
   const [chartActionTime, setChartActionTime] = useState<Date | null>(null);
   const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
   const [simulationLevel, setSimulationLevel] = useState<number>(2.5);
-  const [hoverTime, setHoverTime] = useState<Date | null>(null);
 
   const resetToLive = useCallback(() => {
     baseResetToLive();
@@ -244,32 +243,43 @@ const Tab2: React.FC = () => {
 
     const targetT = manualFocusTime || (currentViewport?.focusTime) || now;
     const isLive = !manualFocusTime && (!currentViewport || Math.abs(targetT.getTime() - now.getTime()) < 60000);
-    let source = 'Live Conditions';
-
     if (manualFocusTime) {
-      source = 'Selection';
+      // Manual focus
     } else if (currentViewport) {
-      source = 'Scroll Context';
+      // Scroll context
     }
 
-    // Find nearest data points using shared utility
     const obsRes = findNearestPoint(processedData.observedPoints, targetT);
     const adjRes = findNearestPoint(processedData.adjustedPoints, targetT);
     const predRes = findNearestPoint(processedData.predictedPoints, targetT);
     const windRes = findNearestPoint(processedData.windPoints, targetT);
     const precipRes = findNearestPoint(processedData.precipPoints, targetT);
 
-    // Prioritize observed water level if it's within a reasonable window (60m)
-    // Fall back to adjusted predictions if viewing the future or if observed is stale
-    const wl = (obsRes && obsRes.dtMin < 60) ? obsRes.point.v :
-               (adjRes && adjRes.dtMin < 60) ? adjRes.point.v :
-               (predRes && predRes.dtMin < 60) ? predRes.point.v : 0;
+    const isObserved = !!(obsRes && obsRes.dtMin < 60);
+    const isAdjusted = !isObserved && !!(adjRes && adjRes.dtMin < 60);
+    const isPredicted = !isObserved && !isAdjusted && !!(predRes && predRes.dtMin < 60);
+
+    const wl = isObserved ? obsRes!.point.v :
+               isAdjusted ? adjRes!.point.v :
+               isPredicted ? predRes!.point.v : 0;
+
+    const sourceLabel = isObserved ? 'Observed' :
+                        isAdjusted ? 'FloodCast' :
+                        isPredicted ? 'Predicted' : (isLive ? 'Live Conditions' : 'No Data');
+
+    const surge = isObserved && predRes && predRes.dtMin < 60
+      ? (obsRes!.point.v - predRes.point.v)
+      : (isAdjusted && predRes && predRes.dtMin < 60)
+        ? (adjRes!.point.v - predRes.point.v)
+        : null;
 
     return { 
       wl, 
       time: targetT, 
       isLive, 
-      source,
+      source: sourceLabel,
+      surge,
+      prediction: predRes && predRes.dtMin < 60 ? predRes.point.v : null,
       wind: windRes && windRes.dtMin < 60 ? { speed: windRes.point.speed, dir: windRes.point.dir } : null,
       precip: precipRes && precipRes.dtMin < 60 ? { value: precipRes.point.value } : null,
     };
@@ -385,6 +395,8 @@ const Tab2: React.FC = () => {
                           observedWaterLevel={activeAtmo.wl ?? 0}
                           isLive={activeAtmo.isLive}
                           source={activeAtmo.source}
+                          surge={activeAtmo.surge}
+                          prediction={activeAtmo.prediction}
                         />
                       }
                       isLive={activeAtmo.isLive}
@@ -413,7 +425,6 @@ const Tab2: React.FC = () => {
                       onTimePointSelect={(time: Date) => setChartActionTime(time)}
                       onToggleComments={chartComments.toggleCommentOverlay}
                       commentCount={chartComments.commentCount}
-                      onHoverTimeChange={setHoverTime}
                       onViewportChange={(start: Date, end: Date, focusTime: Date) => setCurrentViewport({ start, end, focusTime })}
                       onDomainChangeRequest={handleDomainChangeRequest}
                       loading={loading}
@@ -421,6 +432,7 @@ const Tab2: React.FC = () => {
                       onResetToLive={resetToLive}
                       centerRequest={centerRequest}
                       resetKey={resetCount}
+                      warnings={processedData.warnings}
                     />
 
                     {/* Google Maps inundation map — FIMAN-style road coloring */}

@@ -1,31 +1,23 @@
 .atmospheric-sentinel {
   display: flex;
   align-items: center;
-  background: var(--sentinel-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-radius: 16px;
-  padding: 4px 4px 4px 12px;
-  border: 1px solid var(--sentinel-border);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255,255,255,0.1);
-  gap: 16px;
-  height: 48px; /* Increased to prevent clipping */
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: visible; /* Ensure icons can pop slightly if needed */
+  justify-content: flex-end;
+  gap: 8px;
+  pointer-events: auto;
 }
 
 @media (max-width: 600px) {
   .atmospheric-sentinel {
+    flex-wrap: wrap;
+    justify-content: flex-start;
     gap: 8px;
-    padding: 4px 4px 4px 8px;
-    height: 44px;
-    border-radius: 12px;
+    padding: 0;
   }
 }
 
-.atmospheric-sentinel.is-historical {
-  background: rgba(var(--ion-color-primary-rgb), 0.12);
-  border-color: rgba(var(--ion-color-primary-rgb), 0.4);
+.atmospheric-sentinel.is-historical .sentinel-metrics {
+  background: rgba(var(--ion-color-primary-rgb), 0.15);
+  border-color: rgba(var(--ion-color-primary-rgb), 0.3);
 }
 
 .sentinel-status {
@@ -91,12 +83,16 @@
 .sentinel-metrics {
   display: flex;
   align-items: center;
-  background: var(--sentinel-metrics-bg);
-  border-radius: 12px;
-  padding: 0 12px;
-  height: 100%;
   gap: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  background: var(--sentinel-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--sentinel-border);
+  border-radius: 12px;
+  padding: 6px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 @media (max-width: 600px) {
@@ -106,7 +102,7 @@
   }
   
   .metric-label {
-    display: none; /* Hide 'Wind', 'Precip' text to save space; icons are enough */
+    font-size: 0.45rem;
   }
 }
 
@@ -145,12 +141,12 @@
 }
 
 .metric-label {
-  font-size: 0.6rem;
-  font-weight: 700;
+  font-size: 0.5rem;
+  font-weight: 800;
   color: var(--sentinel-text-dim);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: -1px;
+  letter-spacing: 0.06em;
+  margin-top: -1px;
 }
 
 .metric-value-row {
@@ -192,4 +188,102 @@
 
 .wind-arrow-svg {
   filter: drop-shadow(0 0 4px rgba(0,0,0,0.3));
+}
+
+/* Surge Gauge Styles */
+.surge-gauge .metric-details {
+  min-width: 80px;
+}
+
+.gauge-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gauge-track {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.gauge-fill {
+  position: absolute;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease, left 0.3s ease, right 0.3s ease;
+}
+
+.surge-positive {
+  background: linear-gradient(90deg, #3880ff, #4cc9f0);
+}
+
+.surge-negative {
+  background: linear-gradient(270deg, #ff4d4d, #e74c3c);
+}
+
+.gauge-center {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.3);
+  z-index: 2;
+}
+
+/* Tidal Dashboard Equation Styles */
+.tidal-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tidal-operator {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: var(--sentinel-text-dim);
+  opacity: 0.5;
+  font-family: 'Inter', sans-serif;
+  margin-top: 2px;
+}
+
+.metric-item.highlight {
+  background: rgba(var(--ion-color-primary-rgb), 0.15);
+  padding: 2px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.3);
+}
+
+@media (max-width: 600px) {
+  .tidal-group {
+    gap: 6px;
+  }
+  
+  .tidal-operator {
+    font-size: 0.8rem;
+    margin: 0 1px;
+  }
+  
+  .surge-gauge .metric-details {
+    min-width: 50px;
+  }
+  
+  .metric-item.prediction .metric-label,
+  .metric-item.surge-gauge .metric-label {
+    display: block; /* Ensure they are visible as requested */
+    font-size: 0.45rem;
+  }
+
+  .metric-item.highlight {
+    padding: 2px 4px;
+  }
+  
+  .sentinel-metrics {
+    gap: 8px;
+    padding: 0 4px;
+  }
 }

@@ -54,9 +54,15 @@
   font-size: 0.8rem;
   font-weight: 700;
   border: 1px solid rgba(var(--ion-color-primary-rgb), 0.2);
-  margin-left: 4px;
+  margin-left: 0;
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.is-live .viewing-time-pill {
+  background: rgba(var(--ion-color-success-rgb), 0.1);
+  color: var(--ion-color-success);
+  border-color: rgba(var(--ion-color-success-rgb), 0.2);
 }
 
 .reset-to-live-btn {
@@ -117,6 +123,35 @@
   background: linear-gradient(135deg, var(--dash-title-color), var(--ion-color-primary));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+.hydrograph-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: rgba(var(--ion-color-warning-rgb, 255, 196, 9), 0.1);
+  border-left: 3px solid var(--ion-color-warning, #ffc409);
+  border-radius: 8px;
+}
+
+.warning-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ion-color-warning-shade, #e0ac08);
+  font-size: 0.85rem;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+}
+
+.warning-icon {
+  font-size: 1rem;
+}
+
+.warning-text {
+  line-height: 1.4;
 }
 
 .hydrograph-chart-wrapper {

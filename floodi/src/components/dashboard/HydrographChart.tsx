@@ -33,9 +33,9 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
   loading = false,
   isLive = true,
   time,
-  source,
   onViewportChange,
   onResetToLive,
+  warnings,
   ...chartProps
 }) => {
   return (
@@ -44,11 +44,9 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
         <div className="title-group">
           <h2 className="hydrograph-title">{locationName}</h2>
           <div className={`hydrograph-subtitle ${isLive ? 'is-live' : 'is-historical'}`}>
-            <span className="subtitle-dot" />
-            <span className="subtitle-text">
-              {isLive ? 'Live Conditions' : (source === 'Scroll Context' ? 'Viewing' : (source || 'Viewing'))}
-            </span>
-            {time && !isLive && (
+            {isLive && <span className="subtitle-dot" />}
+            {isLive && <span className="subtitle-text">Live</span>}
+            {time && (
               <span className="viewing-time-pill">
                 {time.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
               </span>
@@ -66,6 +64,17 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
         </div>
         {sentinel}
       </div>
+
+      {warnings && warnings.length > 0 && (
+        <div className="hydrograph-warnings">
+          {warnings.map((w, i) => (
+            <div key={i} className="warning-item">
+              <span className="warning-icon">⚠️</span>
+              <span className="warning-text">{w}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="hydrograph-chart-wrapper">
         {loading && (
