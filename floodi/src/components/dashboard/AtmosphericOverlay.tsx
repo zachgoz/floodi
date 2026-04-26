@@ -58,7 +58,10 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
                   <span className="metric-value">{prediction.toFixed(2)}</span>
                   <span className="metric-unit">ft</span>
                 </div>
-                <span className="metric-label">NOAA Baseline</span>
+                <div className="metric-label-row">
+                  <span className="legend-dot" style={{ backgroundColor: 'var(--line-predicted, #95a5a6)' }} />
+                  <span className="metric-label">NOAA<br/>Prediction</span>
+                </div>
               </div>
             </div>
           )}
@@ -68,24 +71,20 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
               <span className="tidal-operator">+</span>
               <div className="metric-item surge-gauge" title="Surge (Observed - Predicted)">
                 <div className="metric-details">
-                  <div className="gauge-container">
-                    <div className="gauge-track">
-                      <div 
-                        className={`gauge-fill ${surge >= 0 ? 'surge-positive' : 'surge-negative'}`}
-                        style={{ 
-                          width: `${Math.min(Math.abs(surge) * 20, 50)}%`,
-                          left: surge >= 0 ? '50%' : 'auto',
-                          right: surge < 0 ? '50%' : 'auto'
-                        }}
-                      />
-                      <div className="gauge-center" />
-                    </div>
-                    <div className="metric-value-row">
-                      <span className="metric-value">{surge >= 0 ? '+' : ''}{surge.toFixed(2)}</span>
-                      <span className="metric-unit">ft</span>
-                    </div>
+                  <div className="metric-value-row">
+                    <span className="metric-value">{surge >= 0 ? '+' : ''}{surge.toFixed(2)}</span>
+                    <span className="metric-unit">ft</span>
                   </div>
-                  <span className="metric-label">Storm Surge</span>
+                  <div className="metric-label-row">
+                    {source === 'FloodCast' ? (
+                      <span className="legend-dashed-line" style={{ borderColor: '#1976d2' }} />
+                    ) : (
+                      <span className="legend-dot" style={{ backgroundColor: '#1976d2' }} />
+                    )}
+                    <span className="metric-label">
+                      {source === 'FloodCast' ? <>Predicted<br/>Surge</> : <>Observed<br/>Surge</>}
+                    </span>
+                  </div>
                 </div>
               </div>
               <span className="tidal-operator">=</span>
@@ -94,39 +93,28 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
 
           {/* Final Water Level (Observed or FloodCast) */}
           <div className="metric-item water-level highlight" title="Final Water Level">
-            <div className="metric-icon-box">
-              <IonIcon icon={waterOutline} className="metric-icon tide" />
-            </div>
             <div className="metric-details">
               <div className="metric-value-row">
                 <span className="metric-value">{observedWaterLevel.toFixed(2)}</span>
                 <span className="metric-unit">ft</span>
               </div>
-              <span className="metric-label">
-                {source === 'Observed' ? 'Actual Level' : (source === 'FloodCast' ? 'FloodCast' : 'Total Level')}
-              </span>
+              <div className="metric-label-row">
+                {source === 'FloodCast' ? (
+                  <span className="legend-dashed-line" style={{ borderColor: 'var(--line-observed, #2ecc71)' }} />
+                ) : (
+                  <span className="legend-dot" style={{ backgroundColor: 'var(--line-observed, #2ecc71)' }} />
+                )}
+                <span className="metric-label">
+                  {source === 'Observed' ? <>Observed<br/>Water Level</> : (source === 'FloodCast' ? <>Floodcast<br/>Water Level</> : <>Total<br/>Water Level</>)}
+                </span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Wind */}
       <div className="sentinel-metrics atmo-metrics">
-        {precipitationAccumulation !== undefined && precipitationAccumulation > 0.005 && (
-          <div className="metric-item precip-level">
-            <div className="metric-icon-box">
-              <IonIcon icon={waterOutline} className="metric-icon precip" />
-            </div>
-            <div className="metric-details">
-              <div className="metric-value-row">
-                <span className="metric-value">{precipitationAccumulation.toFixed(2)}</span>
-                <span className="metric-unit">in</span>
-              </div>
-              <span className="metric-label">Precip</span>
-            </div>
-          </div>
-        )}
-
-        {/* Wind */}
         <div className="metric-item wind-level">
           <div className="metric-icon-box">
             <svg
@@ -160,6 +148,24 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
           </div>
         </div>
       </div>
+
+      {precipitationAccumulation !== undefined && precipitationAccumulation > 0.005 && (
+        <div className="sentinel-metrics atmo-metrics">
+          <div className="metric-item precip-level">
+            <div className="metric-icon-box">
+              <IonIcon icon={waterOutline} className="metric-icon precip" />
+            </div>
+            <div className="metric-details">
+              <div className="metric-value-row">
+                <span className="metric-value">{precipitationAccumulation.toFixed(2)}</span>
+                <span className="metric-unit">in</span>
+              </div>
+              <span className="metric-label">Precip</span>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

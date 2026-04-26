@@ -140,13 +140,34 @@
   justify-content: center;
 }
 
+.metric-label-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: -1px;
+}
+
+.legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.2);
+}
+
+.legend-dashed-line {
+  width: 12px;
+  height: 0;
+  border-top: 2px dashed;
+  flex-shrink: 0;
+}
+
 .metric-label {
   font-size: 0.5rem;
   font-weight: 800;
   color: var(--sentinel-text-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin-top: -1px;
 }
 
 .metric-value-row {
@@ -190,50 +211,7 @@
   filter: drop-shadow(0 0 4px rgba(0,0,0,0.3));
 }
 
-/* Surge Gauge Styles */
-.surge-gauge .metric-details {
-  min-width: 80px;
-}
 
-.gauge-container {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.gauge-track {
-  position: relative;
-  width: 100%;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.gauge-fill {
-  position: absolute;
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.3s ease, left 0.3s ease, right 0.3s ease;
-}
-
-.surge-positive {
-  background: linear-gradient(90deg, #3880ff, #4cc9f0);
-}
-
-.surge-negative {
-  background: linear-gradient(270deg, #ff4d4d, #e74c3c);
-}
-
-.gauge-center {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  width: 1px;
-  height: 100%;
-  background: rgba(255, 255, 255, 0.3);
-  z-index: 2;
-}
 
 /* Tidal Dashboard Equation Styles */
 .tidal-group {
@@ -253,9 +231,10 @@
 
 .metric-item.highlight {
   background: rgba(var(--ion-color-primary-rgb), 0.15);
-  padding: 2px 8px;
-  border-radius: 8px;
+  padding: 4px 10px;
+  border-radius: 10px;
   border: 1px solid rgba(var(--ion-color-primary-rgb), 0.3);
+  min-width: fit-content;
 }
 
 @media (max-width: 600px) {
@@ -268,12 +247,8 @@
     margin: 0 1px;
   }
   
-  .surge-gauge .metric-details {
-    min-width: 50px;
-  }
-  
   .metric-item.prediction .metric-label,
-  .metric-item.surge-gauge .metric-label {
+  .metric-item .metric-label {
     display: block; /* Ensure they are visible as requested */
     font-size: 0.45rem;
   }
