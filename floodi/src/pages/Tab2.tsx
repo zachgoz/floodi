@@ -425,8 +425,9 @@ const Tab2: React.FC = () => {
                       onCommentHover={(c) => chartComments.handleCommentHover(c)}
                       onCommentClick={(cs) => chartComments.handleCommentClick(cs)}
                       onTimePointSelect={(time: Date, level?: number) => {
-                        setChartActionTime(time);
+                        // Skip the action sheet and go straight to comment form
                         setChartActionLevel(level);
+                        chartComments.handleTimeRangeSelect({ at: time });
                       }}
                       onToggleComments={chartComments.toggleCommentOverlay}
                       commentCount={chartComments.commentCount}
@@ -519,34 +520,6 @@ const Tab2: React.FC = () => {
           config={config}
           waterLevel={chartActionLevel}
         />
-        {/* Action sheet — shown when the user taps a point on the hydrograph */}
-        <IonActionSheet
-          isOpen={!!chartActionTime}
-          onDidDismiss={() => setChartActionTime(null)}
-          header={chartActionTime ? formatTime(chartActionTime) : 'Chart Options'}
-          subHeader={getActionSheetSubheader(chartActionTime)}
-          buttons={[
-            ...(chartActionTime && processedData ? [
-              ...(findNearestPoint(processedData.observedPoints, chartActionTime)?.dtMin ?? 99) < 15 ? [{
-                text: 'Simulate Observed Water Level',
-                handler: () => handleSimulateObserved(chartActionTime)
-              }] : [],
-              ...(findNearestPoint(processedData.adjustedPoints, chartActionTime)?.dtMin ?? 99) < 15 ? [{
-                text: 'Simulate FloodCast Predicted Level',
-                handler: () => handleSimulatePredicted(chartActionTime)
-              }] : []
-            ] : []),
-            {
-              text: 'Add Image / Comment',
-              handler: () => {
-                if (chartActionTime) chartComments.handleTimeRangeSelect({ at: chartActionTime });
-              }
-            },
-            {
-              text: 'Cancel',
-              role: 'cancel',
-            }
-          ]}
         />
       </IonContent>
     </IonPage>
