@@ -1005,46 +1005,53 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         {showComments && comments.length > 0 && (
           <g aria-label="Comment markers" className="chart-comment-markers">
             {(() => {
-              // cluster by x position (bins)
-              const bins = new Map<number, Comment[]>();
-              const binSize = 14; // px
+              // Stable clustering by absolute time buckets (e.g. 30 mins)
+              // rather than pixel bins which change during scroll.
+              const timeBins = new Map<number, Comment[]>();
+              const bucketMs = 30 * 60000; // 30 minute buckets
+              
               for (const c of comments) {
                 const tr = c.metadata?.timeRange;
                 if (!isCommentTimeRange(tr)) continue;
                 const s = Date.parse(tr.startTime);
                 const e = Date.parse(tr.endTime);
-                if (!Number.isFinite(s) || !Number.isFinite(e) || s > e) continue;
-                const mid = new Date((s + e) / 2);
-                const x = xOf(mid);
-                const bin = Math.round(x / binSize);
-                const arr = bins.get(bin) || [];
+                if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
+                const midMs = (s + e) / 2;
+                const bucket = Math.floor(midMs / bucketMs);
+                const arr = timeBins.get(bucket) || [];
                 arr.push(c);
-                bins.set(bin, arr);
+                timeBins.set(bucket, arr);
               }
 
               const colorFor = (evt?: string) => evt === 'threshold-crossing' ? '#e74c3c' : evt === 'surge-event' ? '#f39c12' : '#3498db';
 
-              const getNearestObservedY = (timeMs: number) => {
-                if (observedPoints.length === 0) return margins.t + 6;
-                const nearestObs = observedPoints.reduce((best, point) => {
-                  const dt = Math.abs(point.t.getTime() - timeMs);
-                  const bestDt = best ? Math.abs(best.t.getTime() - timeMs) : Infinity;
-                  return dt < bestDt ? point : best;
-                }, null as Point | null);
-                return nearestObs ? yOf(nearestObs.v) : margins.t + 6;
-              };
-
               const els: React.ReactElement[] = [];
               let idx = 0;
-              bins.forEach((arr, bin) => {
-                const midMs = (bin * binSize + binSize / 2 - margins.l) / innerW * (t1 - t0) + t0;
-                const midTime = new Date(midMs);
-                const cx = xOf(midTime);
-                const cy = getNearestObservedY(midMs);
+              timeBins.forEach((arr, bucket) => {
+                // Calculate position for the cluster or single marker
+                let displayTimeMs: number;
+                let color: string;
+                let isCluster = arr.length > 1;
 
-                if (arr.length === 1) {
+                if (!isCluster) {
                   const c = arr[0];
-                  const color = colorFor(c.metadata?.timeRange?.eventType);
+                  const tr = c.metadata?.timeRange!;
+                  displayTimeMs = (Date.parse(tr.startTime) + Date.parse(tr.endTime)) / 2;
+                  color = colorFor(tr.eventType);
+                } else {
+                  // Center of the bucket for clusters
+                  displayTimeMs = bucket * bucketMs + bucketMs / 2;
+                  color = '#7f8c8d';
+                }
+
+                const cx = xOf(new Date(displayTimeMs));
+                // Only render if within visible horizontal range (plus small margin)
+                if (cx < margins.l - 20 || cx > margins.l + innerW + 20) return;
+
+                const cy = getNearestObservedY(displayTimeMs);
+
+                if (!isCluster) {
+                  const c = arr[0];
                   els.push(
                     <g key={`cm-${c.id}-${idx++}`} transform={`translate(${cx}, ${cy})`}>
                       <circle
@@ -1063,17 +1070,16 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                     </g>
                   );
                 } else {
-                  // cluster badge
                   els.push(
                     <g
-                      key={`cluster-${bin}-${idx++}`}
+                      key={`cluster-${bucket}-${idx++}`}
                       transform={`translate(${cx}, ${cy})`}
                       onClick={(e) => { e.stopPropagation(); onCommentClick?.(arr); }}
                       style={{ cursor: 'pointer' }}
                       role="button"
                       tabIndex={0}
                     >
-                      <circle r={8} fill="#7f8c8d" stroke="#000" />
+                      <circle r={8} fill={color} stroke="#000" />
                       <text x={-3.5} y={4} fontSize="10" fill="#fff" style={{ pointerEvents: 'none' }}>{arr.length}</text>
                     </g>
                   );
