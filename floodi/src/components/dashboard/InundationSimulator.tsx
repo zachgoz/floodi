@@ -101,7 +101,7 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
             </div>
           )}
         </div>
-        <div className="simulator-readout">{waterLevelFt.toFixed(2)} ft MLLW</div>
+        <div className="simulator-readout">{waterLevelFt.toFixed(2)} ft</div>
       </div>
 
       <div className="simulator-slider-wrapper">

@@ -12,7 +12,7 @@
 .simulator-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 8px;
   gap: 8px;
 }
@@ -75,16 +75,15 @@
 .simulator-readout {
   background: linear-gradient(135deg, rgba(var(--ion-color-primary-rgb), 0.1), rgba(var(--ion-color-primary-rgb), 0.2));
   color: var(--ion-color-primary);
-  padding: 2px 8px;
+  padding: 4px 10px;
   border-radius: 8px;
   font-weight: 800;
   font-family: 'Inter', monospace;
-  font-size: 0.75rem;
+  font-size: 0.9rem;
   border: 1px solid rgba(var(--ion-color-primary-rgb), 0.3);
   box-shadow: 0 4px 12px rgba(var(--ion-color-primary-rgb), 0.1);
   white-space: nowrap;
   flex-shrink: 0;
-  margin-top: 2px;
 }
 
 .simulator-slider-wrapper {
