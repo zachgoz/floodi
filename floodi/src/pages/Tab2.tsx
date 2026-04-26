@@ -72,8 +72,6 @@ const Tab2: React.FC = () => {
   const [resetCount, setResetCount] = useState(0);
   const [currentViewport, setCurrentViewport] = React.useState<{ start: Date; end: Date; focusTime: Date } | null>(null);
   const [manualFocusTime, setManualFocusTime] = useState<Date | null>(null);
-  const [chartActionTime, setChartActionTime] = useState<Date | null>(null);
-  const [chartActionLevel, setChartActionLevel] = useState<number | undefined>(undefined);
   const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
   const [simulationLevel, setSimulationLevel] = useState<number>(2.5);
 
