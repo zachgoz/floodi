@@ -14,14 +14,13 @@ import {
   IonButtons,
   IonButton,
   IonIcon,
-  IonActionSheet,
 } from '@ionic/react';
 import { settingsOutline } from 'ionicons/icons';
 // import { ChartViewer } from '../components/Tab2/ChartViewer'; // Removed to avoid confusion with default import in HydrographChart
 import { SettingsModal } from '../components/Tab2/SettingsModal';
 import { useSettingsStorage } from '../components/Tab2/hooks/useSettingsStorage';
 import { useChartData } from '../components/Tab2/hooks/useChartData';
-import { formatTooltipTime, findNearestPoint } from '../components/Tab2/hooks/useChartInteraction';
+import { formatTooltipTime } from '../components/Tab2/hooks/useChartInteraction';
 import type { Station } from '../components/Tab2/types';
 import { useChartComments } from '../components/Tab2/hooks/useChartComments';
 import { ChartCommentModal } from '../components/Tab2/ChartCommentModal';
@@ -140,42 +139,8 @@ const Tab2: React.FC = () => {
     }
   };
 
-  /**
-   * Format date/time based on current timezone setting
-   */
   const formatTime = (date: Date): string => {
     return formatTooltipTime(date, config.display.timezone);
-  };
-
-  /**
-   * Helper to build a context string for the action sheet
-   */
-  const getActionSheetSubheader = (time: Date | null) => {
-    if (!time || !processedData) return undefined;
-
-    const obs = findNearestPoint(processedData.observedPoints, time);
-    const pred = findNearestPoint(processedData.predictedPoints, time);
-    const adj = findNearestPoint(processedData.adjustedPoints, time);
-    const wind = findNearestPoint(processedData.windPoints, time);
-    const precip = findNearestPoint(processedData.precipPoints, time);
-
-    const parts: string[] = [];
-
-    if (obs && obs.dtMin < 10) parts.push(`Obs: ${obs.point.v.toFixed(2)}ft`);
-    if (adj && adj.dtMin < 10) parts.push(`FloodCast: ${adj.point.v.toFixed(2)}ft`);
-    if (pred && pred.dtMin < 10) parts.push(`NOAA: ${pred.point.v.toFixed(2)}ft`);
-
-    if (wind && wind.dtMin < 60) {
-      const COMPASS_DIRS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-      const compass = COMPASS_DIRS[Math.round(((wind.point.dir % 360) + 360) % 360 / 22.5) % 16];
-      parts.push(`${wind.point.speed.toFixed(0)}mph ${compass}`);
-    }
-
-    if (precip && precip.dtMin < 60 && precip.point.value > 0.005) {
-      parts.push(`Precip: ${precip.point.value.toFixed(2)}in`);
-    }
-
-    return parts.length > 0 ? parts.join(' | ') : formatTime(time);
   };
 
   /**
@@ -228,10 +193,7 @@ const Tab2: React.FC = () => {
   /**
    * Focus helpers for specific data points
    */
-  const handleFocusPoint = (time: Date) => {
-    setManualFocusTime(time);
-    setCenterRequest({ time, id: Date.now() });
-  };
+
 
   // Derive atmospheric values for the overlay pill and map visualization
   const activeAtmo = useMemo(() => {
@@ -291,27 +253,6 @@ const Tab2: React.FC = () => {
       setSimulationLevel(activeAtmo.wl);
     }
   }, [activeAtmo.wl]);
-
-  /**
-   * Action handlers for simulators
-   */
-  const handleSimulateObserved = (time: Date) => {
-    if (!processedData) return;
-    const res = findNearestPoint(processedData.observedPoints, time);
-    if (res) {
-      setSimulationLevel(res.point.v);
-      handleFocusPoint(time);
-    }
-  };
-
-  const handleSimulatePredicted = (time: Date) => {
-    if (!processedData) return;
-    const res = findNearestPoint(processedData.adjustedPoints, time);
-    if (res) {
-      setSimulationLevel(res.point.v);
-      handleFocusPoint(time);
-    }
-  };
 
   return (
     <IonPage className="floodcast-page">
