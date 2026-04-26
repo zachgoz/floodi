@@ -140,7 +140,14 @@ export const InundationMap: React.FC<InundationMapProps> = ({
     <div className="inundation-map-wrapper">
       <DeckGL
         initialViewState={INITIAL_VIEW_STATE}
-        controller
+        controller={{
+          dragPan: true,
+          scrollZoom: false,
+          touchRotate: false,
+          dragRotate: false,
+          // Require two fingers for touch panning to allow page scrolling
+          dragMode: 'pan',
+        }}
         layers={layers}
         getTooltip={pinnedRoad ? undefined : getTooltip}
         onClick={(info) => {
@@ -155,6 +162,7 @@ export const InundationMap: React.FC<InundationMapProps> = ({
           reuseMaps
           defaultCenter={{ lat: INITIAL_VIEW_STATE.latitude, lng: INITIAL_VIEW_STATE.longitude }}
           defaultZoom={INITIAL_VIEW_STATE.zoom}
+          gestureHandling="cooperative"
         />
       </DeckGL>
 
