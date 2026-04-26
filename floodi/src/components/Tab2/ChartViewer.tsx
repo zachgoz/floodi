@@ -1037,18 +1037,14 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
               const els: React.ReactElement[] = [];
               let idx = 0;
               bins.forEach((arr, bin) => {
-                const x = bin * binSize;
+                const midMs = (bin * binSize + binSize / 2 - margins.l) / innerW * (t1 - t0) + t0;
+                const midTime = new Date(midMs);
+                const cx = xOf(midTime);
+                const cy = getNearestObservedY(midMs);
+
                 if (arr.length === 1) {
                   const c = arr[0];
-                  const tr = c.metadata?.timeRange;
-                  if (!isCommentTimeRange(tr)) return;
-                  const s = Date.parse(tr.startTime);
-                  const e = Date.parse(tr.endTime);
-                  if (!Number.isFinite(s) || !Number.isFinite(e) || s > e) return;
-                  const mid = new Date((s + e) / 2);
-                  const cx = xOf(mid);
-                  const cy = getNearestObservedY(mid.getTime());
-                  const color = colorFor(tr.eventType);
+                  const color = colorFor(c.metadata?.timeRange?.eventType);
                   els.push(
                     <g key={`cm-${c.id}-${idx++}`} transform={`translate(${cx}, ${cy})`}>
                       <circle
@@ -1057,46 +1053,28 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                         fill={color}
                         stroke="#000"
                         role="button"
-                        aria-label={`Comment ${c.authorDisplayName || 'unknown'}: ${c.content?.replace(/<[^>]+>/g, '').slice(0, 40)}...`}
+                        aria-label={`Comment ${c.authorDisplayName || 'unknown'}`}
                         tabIndex={0}
                         onMouseEnter={() => onCommentHover?.(c)}
                         onMouseLeave={() => onCommentHover?.(null)}
                         onClick={(e) => { e.stopPropagation(); onCommentClick?.([c]); }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.stopPropagation();
-                            onCommentClick?.([c]);
-                          }
-                        }}
                         style={{ cursor: 'pointer' }}
                       />
                     </g>
                   );
                 } else {
                   // cluster badge
-                  const cx = Math.max(margins.l + 6, Math.min(margins.l + innerW - 6, x));
-                  const fraction = (cx - margins.l) / innerW;
-                  const timeMs = t0 + fraction * (t1 - t0);
-                  const cy = getNearestObservedY(timeMs);
-
                   els.push(
                     <g
                       key={`cluster-${bin}-${idx++}`}
                       transform={`translate(${cx}, ${cy})`}
                       onClick={(e) => { e.stopPropagation(); onCommentClick?.(arr); }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.stopPropagation();
-                          onCommentClick?.(arr);
-                        }
-                      }}
                       style={{ cursor: 'pointer' }}
                       role="button"
                       tabIndex={0}
-                      aria-label={`View thread of ${arr.length} comments`}
                     >
                       <circle r={8} fill="#7f8c8d" stroke="#000" />
-                      <text x={-3.5} y={4} fontSize="10" fill="#fff">{arr.length}</text>
+                      <text x={-3.5} y={4} fontSize="10" fill="#fff" style={{ pointerEvents: 'none' }}>{arr.length}</text>
                     </g>
                   );
                 }
