@@ -585,11 +585,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
       const dy = event.clientY - pos.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      // Tap detection (single pointer)
-      if (distance < 10 && activePointersRef.current.size === 0) {
-        const t = computeTimeAtPointer(event) || pos.t;
-        onTimePointSelect?.(t);
-      }
+      // Tap detection (single pointer) - NO LONGER TRIGGERS onTimePointSelect
+      // We only use pointer up to clear pan state and calculate distance.
       pointerDownPosRef.current = null;
     }
   };
