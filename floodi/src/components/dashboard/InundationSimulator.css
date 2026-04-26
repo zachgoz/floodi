@@ -140,7 +140,7 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-top: 10px;
+  margin-top: 4px;
   color: var(--dash-label-color);
 }
 

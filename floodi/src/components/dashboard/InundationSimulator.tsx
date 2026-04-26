@@ -91,14 +91,7 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
           aria-label="Adjust flood simulation water level (ft MLLW)"
         />
 
-        {/* Simplified reference ticks — hidden labels on mobile to avoid overlap */}
-        <div className="simulator-ticks">
-          {ticks.map(({ label, ft, cls }) => (
-            <span key={label} style={{ left: `${pct(ft)}%` }} className={`sim-tick ${cls}`} title={`${label}: ${ft} ft MLLW`}>
-              <span className="tick-label">{label}</span>
-            </span>
-          ))}
-        </div>
+
 
         <div className="simulator-labels">
           <div className="label-group">
