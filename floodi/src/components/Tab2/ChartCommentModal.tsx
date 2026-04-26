@@ -26,12 +26,14 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
   const { user } = useAuth();
 
   const rangeDisplay = useMemo(() => (range ? formatTimeRangeForDisplay(range, config.display.timezone) : null), [range, config.display.timezone]);
-  const isThread = existingComments.length > 0;
+  const commentCount = existingComments.length;
   
   const levelSuffix = waterLevel !== undefined && waterLevel !== null ? ` (${waterLevel.toFixed(1)} ft)` : '';
-  const title = isThread 
-    ? `Thread${rangeDisplay ? ` at ${rangeDisplay.label.split(' - ')[0]}` : ''}${levelSuffix}`
-    : `Drop Pin${rangeDisplay ? ` at ${rangeDisplay.label.split(' - ')[0]}` : ''}${levelSuffix}`;
+  const title = commentCount > 1 
+    ? `Comment Thread${rangeDisplay ? ` at ${rangeDisplay.label.split(' - ')[0]}` : ''}${levelSuffix}`
+    : commentCount === 1
+      ? `Comment Details${rangeDisplay ? ` at ${rangeDisplay.label.split(' - ')[0]}` : ''}${levelSuffix}`
+      : `Drop Pin${rangeDisplay ? ` at ${rangeDisplay.label.split(' - ')[0]}` : ''}${levelSuffix}`;
 
   const handleSubmit = async (values: CommentFormValues) => {
     if (!range || !user) return;
@@ -85,7 +87,7 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
           .premium-form-container {
             display: flex;
             flex-direction: column;
-            gap: 24px;
+            gap: 20px;
             padding: 8px 16px 24px 16px;
           }
           .input-group {
@@ -146,13 +148,13 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
           .thread-container {
             display: flex;
             flex-direction: column;
-            gap: 16px;
-            margin-bottom: 24px;
+            gap: 12px;
+            margin-bottom: 16px;
           }
           .thread-comment {
             background: rgba(255, 255, 255, 0.7);
             border-radius: 12px;
-            padding: 16px;
+            padding: 14px;
             box-shadow: 0 2px 8px rgba(25, 28, 30, 0.04);
             border: 1px solid rgba(255, 255, 255, 0.8);
           }
@@ -160,38 +162,48 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
           }
           .thread-author {
             font-family: 'Inter', sans-serif;
-            font-size: 0.875rem;
+            font-size: 0.8rem;
             font-weight: 600;
             color: #003358;
           }
           .thread-time {
             font-family: 'Inter', sans-serif;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             color: #8c97a5;
           }
           .thread-content-text {
             font-family: 'Inter', sans-serif;
-            font-size: 1rem;
-            line-height: 1.5;
+            font-size: 0.95rem;
+            line-height: 1.4;
             color: #191c1e;
             margin: 0;
             white-space: pre-wrap;
           }
           .thread-pill {
             display: inline-block;
-            padding: 2px 8px;
+            padding: 1px 6px;
             background: rgba(0, 51, 88, 0.06);
             color: #003358;
-            border-radius: 12px;
-            font-size: 0.75rem;
+            border-radius: 8px;
+            font-size: 0.65rem;
             font-family: 'Inter', sans-serif;
-            margin-top: 8px;
+            margin-top: 6px;
             margin-right: 4px;
             font-weight: 500;
+          }
+          .divider-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #003358;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin: 8px 0 12px 0;
+            opacity: 0.8;
           }
         `}
       </style>
@@ -216,7 +228,7 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding">
-        {existingComments.length > 0 && (
+        {commentCount > 0 && (
           <div className="thread-container">
             {existingComments.map((c) => (
               <div key={c.id} className="thread-comment">
@@ -234,6 +246,9 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
             ))}
           </div>
         )}
+        
+        {commentCount > 0 && <div className="divider-label">Reply or add observation</div>}
+        
         <CommentForm
           stationId={config.station.id}
           initialRange={range ? { start: new Date(range.startTime).toISOString(), end: new Date(range.endTime).toISOString() } : undefined}
