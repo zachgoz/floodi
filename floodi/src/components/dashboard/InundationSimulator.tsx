@@ -30,12 +30,7 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
   simulationContext,
 }) => {
   const [showDatumInfo, setShowDatumInfo] = useState(false);
-  const ticks = useMemo(() => [
-    { label: 'Minor', ft: thresholds.minor, cls: 'sim-tick-minor' },
-    { label: 'Moderate', ft: thresholds.moderate, cls: 'sim-tick-moderate' },
-    { label: 'Major', ft: thresholds.major, cls: 'sim-tick-major' },
-    { label: 'Extreme', ft: thresholds.extreme, cls: 'sim-tick-extreme' },
-  ], [thresholds]);
+
   const pct = (ft: number) =>
     Math.max(0, Math.min(100, Math.round(((ft - minLevelFt) / (maxLevelFt - minLevelFt)) * 100)));
 
@@ -74,11 +69,11 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
 
   return (
     <div className="simulator-container" style={{
-      ['--p-minor' as any]: `${pMinor}%`,
-      ['--p-mod' as any]: `${pModerate}%`,
-      ['--p-major' as any]: `${pMajor}%`,
-      ['--p-ext' as any]: `${pExtreme}%`,
-    }}>
+      '--p-minor': `${pMinor}%`,
+      '--p-mod': `${pModerate}%`,
+      '--p-major': `${pMajor}%`,
+      '--p-ext': `${pExtreme}%`,
+    } as React.CSSProperties}>
       <div className="simulator-header">
         <div className="simulator-title-group">
           <h3 className="simulator-title">{dynamicTitle}</h3>
