@@ -74,12 +74,22 @@ const Tab2: React.FC = () => {
   const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
   const [simulationLevel, setSimulationLevel] = useState<number>(2.5);
 
+  const [isUserSimulating, setIsUserSimulating] = useState(false);
+
   const resetToLive = useCallback(() => {
     baseResetToLive();
     setCurrentViewport(null);
     setManualFocusTime(null);
+    setIsUserSimulating(false);
     setResetCount(c => c + 1);
   }, [baseResetToLive]);
+
+  // Reset simulation flag when the user interacts with the chart (changing focus time)
+  React.useEffect(() => {
+    if (manualFocusTime || currentViewport?.focusTime) {
+      setIsUserSimulating(false);
+    }
+  }, [manualFocusTime, currentViewport?.focusTime]);
 
   // Professional data fetching and processing
   const {
@@ -235,8 +245,8 @@ const Tab2: React.FC = () => {
         ? (adjRes!.point.v - predRes.point.v)
         : null;
 
-    // Determine if the user has manually deviated from the chart-derived level
-    const isSimulated = Math.abs(simulationLevel - wl) > 0.01;
+    // Use the explicit simulation flag
+    const isSimulated = isUserSimulating;
 
     return { 
       wl: isSimulated ? simulationLevel : wl, 
@@ -249,14 +259,14 @@ const Tab2: React.FC = () => {
       wind: windRes && windRes.dtMin < 60 ? { speed: windRes.point.speed, dir: windRes.point.dir } : null,
       precip: precipRes && precipRes.dtMin < 60 ? { value: precipRes.point.value } : null,
     };
-  }, [processedData, currentViewport, manualFocusTime, simulationLevel, config?.timeRange]);
+  }, [processedData, currentViewport, manualFocusTime, simulationLevel, isUserSimulating, config?.timeRange]);
 
   // Sync simulation level (for map)
   React.useEffect(() => {
-    if (activeAtmo.wl !== null && activeAtmo.wl !== undefined) {
+    if (!isUserSimulating && activeAtmo.wl !== null && activeAtmo.wl !== undefined) {
       setSimulationLevel(activeAtmo.wl);
     }
-  }, [activeAtmo.wl]);
+  }, [activeAtmo.wl, isUserSimulating]);
 
   return (
     <IonPage className="floodcast-page">
@@ -398,7 +408,10 @@ const Tab2: React.FC = () => {
                       waterLevelFt={simulationLevel}
                       minLevelFt={0.0}
                       maxLevelFt={10.0}
-                      onLevelChange={setSimulationLevel}
+                      onLevelChange={(val) => {
+                        setSimulationLevel(val);
+                        setIsUserSimulating(true);
+                      }}
                       thresholds={config.thresholds}
                       // @ts-expect-error missing strict typing
                       simulationContext={activeAtmo}
