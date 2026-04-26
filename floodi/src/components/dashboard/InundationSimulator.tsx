@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
-import { IonIcon } from '@ionic/react';
-import { waterOutline, timeOutline, flagOutline } from 'ionicons/icons';
+import React, { useMemo, useState } from 'react';
+import { IonIcon, IonAlert } from '@ionic/react';
+import { waterOutline, timeOutline, helpCircleOutline } from 'ionicons/icons';
 import type { AppConfiguration } from '../Tab2/types';
 import './InundationSimulator.css';
 
@@ -29,6 +29,7 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
   thresholds,
   simulationContext,
 }) => {
+  const [showDatumInfo, setShowDatumInfo] = useState(false);
   const ticks = useMemo(() => [
     { label: 'Minor', ft: thresholds.minor, cls: 'sim-tick-minor' },
     { label: 'Moderate', ft: thresholds.moderate, cls: 'sim-tick-moderate' },
@@ -123,8 +124,14 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
             <span className="label-ft">{minLevelFt.toFixed(1)} ft</span>
             <span className="label-text">No Flooding</span>
           </div>
-          <div className="label-group center">
-            <span className="simulator-label-datum">ft MLLW</span>
+          <div 
+            className="label-group center interactive" 
+            onClick={() => setShowDatumInfo(true)}
+            title="What is MLLW?"
+          >
+            <span className="simulator-label-datum">
+              ft MLLW <IonIcon icon={helpCircleOutline} className="datum-help-icon" />
+            </span>
           </div>
           <div className="label-group end extreme">
             <span className="label-ft">{maxLevelFt.toFixed(1)} ft</span>
@@ -132,6 +139,25 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
           </div>
         </div>
       </div>
+
+      <IonAlert
+        isOpen={showDatumInfo}
+        onDidDismiss={() => setShowDatumInfo(false)}
+        header="Understanding MLLW"
+        subHeader="Mean Lower Low Water"
+        message={`
+          <div class="datum-info-content">
+            <p><strong>MLLW</strong> is a tidal datum representing the average height of the lowest tide recorded each day. It is the standard reference for NOAA water levels and nautical charts.</p>
+            <p>In this simulation:</p>
+            <ul>
+              <li><strong>0.0 ft MLLW</strong> represents a typical very low tide.</li>
+              <li>Road elevations have been adjusted from standard NAVD88 to MLLW to show accurate inundation risks.</li>
+              <li>The blue/yellow/red colors correspond to local NWS flood thresholds.</li>
+            </ul>
+          </div>
+        `}
+        buttons={['Got it']}
+      />
     </div>
   );
 };
