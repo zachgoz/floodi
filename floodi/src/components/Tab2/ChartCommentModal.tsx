@@ -239,8 +239,8 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
                   </span>
                 </div>
                 <p className="thread-content-text">{c.content}</p>
-                {(Array.isArray(c.metadata.dataContext) ? c.metadata.dataContext : [c.metadata.dataContext]).map((ctx) => (
-                  <span key={ctx} className="thread-pill">{ctx}</span>
+                {(Array.isArray(c.metadata.dataContext) ? c.metadata.dataContext : [c.metadata.dataContext]).filter(Boolean).map((ctx, idx) => (
+                  <span key={`${c.id}-ctx-${ctx}-${idx}`} className="thread-pill">{ctx}</span>
                 ))}
               </div>
             ))}
