@@ -20,7 +20,7 @@ import { settingsOutline } from 'ionicons/icons';
 import { SettingsModal } from '../components/Tab2/SettingsModal';
 import { useSettingsStorage } from '../components/Tab2/hooks/useSettingsStorage';
 import { useChartData } from '../components/Tab2/hooks/useChartData';
-import { formatTooltipTime } from '../components/Tab2/hooks/useChartInteraction';
+import { formatTooltipTime, findNearestPoint } from '../components/Tab2/hooks/useChartInteraction';
 import type { Station } from '../components/Tab2/types';
 import { useChartComments } from '../components/Tab2/hooks/useChartComments';
 import { ChartCommentModal } from '../components/Tab2/ChartCommentModal';
