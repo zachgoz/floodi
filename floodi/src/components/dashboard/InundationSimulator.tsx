@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { IonIcon, IonAlert } from '@ionic/react';
-import { waterOutline, timeOutline, helpCircleOutline } from 'ionicons/icons';
+import { IonIcon, IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent } from '@ionic/react';
+import { waterOutline, timeOutline, helpCircleOutline, closeOutline } from 'ionicons/icons';
 import type { AppConfiguration } from '../Tab2/types';
 import './InundationSimulator.css';
 
@@ -112,7 +112,9 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
           max={maxLevelFt}
           step={0.05}
           value={waterLevelFt}
-          onChange={(e) => onLevelChange(parseFloat(e.target.value))}
+          onChange={(e) => {
+            onLevelChange(parseFloat(e.target.value));
+          }}
           className="simulator-slider"
           aria-label="Adjust flood simulation water level (ft MLLW)"
         />
@@ -140,24 +142,44 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
         </div>
       </div>
 
-      <IonAlert
-        isOpen={showDatumInfo}
+      <IonModal 
+        isOpen={showDatumInfo} 
         onDidDismiss={() => setShowDatumInfo(false)}
-        header="Understanding MLLW"
-        subHeader="Mean Lower Low Water"
-        message={`
-          <div class="datum-info-content">
-            <p><strong>MLLW</strong> is a tidal datum representing the average height of the lowest tide recorded each day. It is the standard reference for NOAA water levels and nautical charts.</p>
-            <p>In this simulation:</p>
+        className="datum-info-modal"
+        breakpoints={[0, 0.5, 0.8]}
+        initialBreakpoint={0.5}
+      >
+        <IonHeader>
+          <IonToolbar>
+            <IonTitle>Understanding MLLW</IonTitle>
+            <IonButtons slot="end">
+              <IonButton onClick={() => setShowDatumInfo(false)}>
+                <IonIcon icon={closeOutline} />
+              </IonButton>
+            </IonButtons>
+          </IonToolbar>
+        </IonHeader>
+        <IonContent className="ion-padding">
+          <div className="datum-info-content">
+            <p><strong>MLLW (Mean Lower Low Water)</strong> is a tidal datum representing the average height of the lowest tide recorded each day. It is the standard reference for NOAA water levels and nautical charts.</p>
+            
+            <h4 style={{ marginTop: '20px', fontSize: '1rem', fontWeight: 700 }}>In this simulation:</h4>
             <ul>
-              <li><strong>0.0 ft MLLW</strong> represents a typical very low tide.</li>
-              <li>Road elevations have been adjusted from standard NAVD88 to MLLW to show accurate inundation risks.</li>
-              <li>The blue/yellow/red colors correspond to local NWS flood thresholds.</li>
+              <li><strong>0.0 ft MLLW</strong> represents a typical very low tide baseline.</li>
+              <li>Road elevations in the map have been adjusted from standard NAVD88 to MLLW to show accurate inundation risks.</li>
+              <li>The colored track on the slider corresponds to local National Weather Service flood thresholds.</li>
             </ul>
+            
+            <p style={{ marginTop: '20px', fontSize: '0.85rem', opacity: 0.8 }}>
+              Using MLLW ensures that the water levels you see here directly match the observed data from tidal stations.
+            </p>
+            
+            <div style={{ marginTop: '30px' }}>
+              <IonButton expand="block" onClick={() => setShowDatumInfo(false)}>Got it</IonButton>
+            </div>
           </div>
-        `}
-        buttons={['Got it']}
-      />
+        </IonContent>
+      </IonModal>
     </div>
   );
 };
