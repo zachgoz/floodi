@@ -37,8 +37,18 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
   const pct = (ft: number) =>
     Math.max(0, Math.min(100, Math.round(((ft - minLevelFt) / (maxLevelFt - minLevelFt)) * 100)));
 
+  const pMinor = pct(thresholds.minor);
+  const pModerate = pct(thresholds.moderate);
+  const pMajor = pct(thresholds.major);
+  const pExtreme = pct(thresholds.extreme);
+
   return (
-    <div className="simulator-container">
+    <div className="simulator-container" style={{
+      ['--p-minor' as any]: `${pMinor}%`,
+      ['--p-mod' as any]: `${pModerate}%`,
+      ['--p-major' as any]: `${pMajor}%`,
+      ['--p-ext' as any]: `${pExtreme}%`,
+    }}>
       <div className="simulator-header">
         <div className="simulator-title-group">
           <h3 className="simulator-title">Water Level Simulation</h3>
@@ -81,11 +91,12 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
           aria-label="Adjust flood simulation water level (ft MLLW)"
         />
 
-        {/* Reference ticks aligned to NOAA datums */}
+        {/* Simplified reference ticks — hidden labels on mobile to avoid overlap */}
         <div className="simulator-ticks">
           {ticks.map(({ label, ft, cls }) => (
             <span key={label} style={{ left: `${pct(ft)}%` }} className={`sim-tick ${cls}`} title={`${label}: ${ft} ft MLLW`}>
-              {label}
+              {/* Label is hidden via CSS on small screens */}
+              <span className="tick-label">{label}</span>
             </span>
           ))}
         </div>
