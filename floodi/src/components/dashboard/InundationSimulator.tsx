@@ -42,6 +42,28 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
   const pMajor = pct(thresholds.major);
   const pExtreme = pct(thresholds.extreme);
 
+  const now = new Date();
+  const diffMinutes = (simulationContext?.time.getTime() ?? now.getTime() - now.getTime()) / 60000;
+  
+  let dynamicTitle = "Water Level Simulation";
+  if (simulationContext) {
+    if (Math.abs(diffMinutes) < 5) {
+      dynamicTitle = "Live Water Level";
+    } else if (diffMinutes < 0) {
+      dynamicTitle = "Simulating Past Water Level";
+    } else {
+      dynamicTitle = "FloodCast Water Level";
+    }
+  }
+
+  const displaySource = useMemo(() => {
+    if (!simulationContext?.source) return null;
+    if (simulationContext.source === 'Observed' && diffMinutes > 5) {
+      return '(Predicted)';
+    }
+    return `(${simulationContext.source})`;
+  }, [simulationContext?.source, diffMinutes]);
+
   return (
     <div className="simulator-container" style={{
       ['--p-minor' as any]: `${pMinor}%`,
@@ -51,21 +73,15 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
     }}>
       <div className="simulator-header">
         <div className="simulator-title-group">
-          <h3 className="simulator-title">Water Level Simulation</h3>
+          <h3 className="simulator-title">{dynamicTitle}</h3>
           {simulationContext && (
             <div className="simulator-context">
               <span className="context-item time">
                 <IonIcon icon={timeOutline} />
                 {simulationContext.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' })}
               </span>
-              {simulationContext.source && (
-                <span className="context-source">({simulationContext.source})</span>
-              )}
-              {simulationContext.wind && (
-                <span className="context-item wind">
-                  <IonIcon icon={flagOutline} />
-                  {simulationContext.wind.speed.toFixed(0)} mph
-                </span>
+              {displaySource && (
+                <span className="context-source">{displaySource}</span>
               )}
               {simulationContext.precip !== undefined && simulationContext.precip > 0 && (
                 <span className="context-item precip">
