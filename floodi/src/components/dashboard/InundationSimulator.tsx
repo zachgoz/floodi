@@ -102,9 +102,17 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
         </div>
 
         <div className="simulator-labels">
-          <span>{minLevelFt.toFixed(1)} ft</span>
-          <span className="simulator-label-datum">ft MLLW</span>
-          <span>{maxLevelFt.toFixed(1)} ft</span>
+          <div className="label-group">
+            <span className="label-ft">{minLevelFt.toFixed(1)} ft</span>
+            <span className="label-text">No Flooding</span>
+          </div>
+          <div className="label-group center">
+            <span className="simulator-label-datum">ft MLLW</span>
+          </div>
+          <div className="label-group end">
+            <span className="label-ft">{maxLevelFt.toFixed(1)} ft</span>
+            <span className="label-text extreme">Extreme Flooding</span>
+          </div>
         </div>
       </div>
     </div>

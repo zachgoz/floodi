@@ -139,10 +139,43 @@
 .simulator-labels {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   margin-top: 10px;
   color: var(--dash-label-color);
+}
+
+.label-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.label-group.end {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.label-group.center {
+  align-items: center;
+  padding-top: 2px;
+}
+
+.label-ft {
   font-size: 0.85rem;
+  font-weight: 700;
+  font-family: 'Inter', sans-serif;
+}
+
+.label-text {
+  font-size: 0.65rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--sentinel-text-dim, #8c97a5);
+}
+
+.label-text.extreme {
+  color: #a020f0;
 }
 
 .simulator-label-datum {
