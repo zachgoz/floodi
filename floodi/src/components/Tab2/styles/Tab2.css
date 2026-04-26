@@ -456,14 +456,17 @@
 @media (max-width: 600px) {
   .add-comment-fab {
     --padding-start: 10px;
-    --padding-end: 10px;
-    width: 36px;
+    --padding-end: 12px;
+    width: auto;
+    min-width: 36px;
   }
   .add-comment-fab .btn-label {
-    display: none;
+    display: inline-block;
+    font-size: 0.85rem;
   }
   .add-comment-fab ion-icon {
-    margin: 0;
+    margin-right: 4px;
+    font-size: 1.2rem;
   }
 }
 

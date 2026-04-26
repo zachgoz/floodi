@@ -1596,7 +1596,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         >
           <IonIcon icon={addCircleOutline} slot="start" />
           <span className="btn-label">
-            Add Comment {centerLevel !== null ? `(${centerLevel.toFixed(1)} ft)` : ''}
+            Comment {centerLevel !== null ? `(${centerLevel.toFixed(1)} ft)` : ''}
           </span>
         </IonButton>
       </div>
