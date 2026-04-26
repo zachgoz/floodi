@@ -518,7 +518,6 @@ const Tab2: React.FC = () => {
           config={config}
           waterLevel={chartActionLevel}
         />
-        />
       </IonContent>
     </IonPage>
   );
