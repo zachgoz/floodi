@@ -1025,6 +1025,20 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
               const colorFor = (evt?: string) => evt === 'threshold-crossing' ? '#e74c3c' : evt === 'surge-event' ? '#f39c12' : '#3498db';
 
+              const getNearestObservedY = (timeMs: number) => {
+                const obsRes = findNearestPoint(observedPoints, new Date(timeMs));
+                const adjRes = findNearestPoint(adjustedPoints, new Date(timeMs));
+                const predRes = findNearestPoint(predictedPoints, new Date(timeMs));
+                
+                let v = 0;
+                if (obsRes && obsRes.dtMin < 60) v = obsRes.point.v;
+                else if (adjRes && adjRes.dtMin < 60) v = adjRes.point.v;
+                else if (predRes && predRes.dtMin < 60) v = predRes.point.v;
+                else return margins.t + 6;
+
+                return yOf(v);
+              };
+
               const els: React.ReactElement[] = [];
               let idx = 0;
               timeBins.forEach((arr, bucket) => {
