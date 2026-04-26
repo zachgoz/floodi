@@ -235,17 +235,21 @@ const Tab2: React.FC = () => {
         ? (adjRes!.point.v - predRes.point.v)
         : null;
 
+    // Determine if the user has manually deviated from the chart-derived level
+    const isSimulated = Math.abs(simulationLevel - wl) > 0.01;
+
     return { 
-      wl, 
+      wl: isSimulated ? simulationLevel : wl, 
       time: targetT, 
       isLive, 
       source: sourceLabel,
       surge,
+      isSimulated,
       prediction: predRes && predRes.dtMin < 60 ? predRes.point.v : null,
       wind: windRes && windRes.dtMin < 60 ? { speed: windRes.point.speed, dir: windRes.point.dir } : null,
       precip: precipRes && precipRes.dtMin < 60 ? { value: precipRes.point.value } : null,
     };
-  }, [processedData, currentViewport, manualFocusTime, config?.timeRange]);
+  }, [processedData, currentViewport, manualFocusTime, simulationLevel, config?.timeRange]);
 
   // Sync simulation level (for map)
   React.useEffect(() => {

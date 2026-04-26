@@ -15,6 +15,7 @@ interface InundationSimulatorProps {
     wind?: { speed: number; dir: number };
     precip?: number;
     source?: string;
+    isSimulated?: boolean;
   };
 }
 
@@ -49,7 +50,9 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
   
   let dynamicTitle = "Water Level Simulation";
   if (simulationContext) {
-    if (Math.abs(diffMinutes) < 5) {
+    if (simulationContext.isSimulated) {
+      dynamicTitle = "User Simulated Water Level";
+    } else if (Math.abs(diffMinutes) < 5) {
       dynamicTitle = "Live Water Level";
     } else if (diffMinutes <= -5) {
       dynamicTitle = "Simulating Past Water Level";
@@ -60,12 +63,13 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
 
   const displaySource = useMemo(() => {
     if (!simulationContext?.source) return null;
+    if (simulationContext.isSimulated) return null;
     // For future predictions, we want to label it as Predicted even if the underlying data source is the standard observed track
     if (diffMinutes > 5) {
       return '(Predicted)';
     }
     return `(${simulationContext.source})`;
-  }, [simulationContext?.source, diffMinutes]);
+  }, [simulationContext?.source, simulationContext?.isSimulated, diffMinutes]);
 
   return (
     <div className="simulator-container" style={{
@@ -79,10 +83,12 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
           <h3 className="simulator-title">{dynamicTitle}</h3>
           {simulationContext && (
             <div className="simulator-context">
-              <span className="context-item time">
-                <IonIcon icon={timeOutline} />
-                {simulationContext.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' })}
-              </span>
+              {!simulationContext.isSimulated && (
+                <span className="context-item time">
+                  <IonIcon icon={timeOutline} />
+                  {simulationContext.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' })}
+                </span>
+              )}
               {displaySource && (
                 <span className="context-source">{displaySource}</span>
               )}
