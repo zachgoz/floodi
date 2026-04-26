@@ -95,7 +95,6 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
         <div className="simulator-ticks">
           {ticks.map(({ label, ft, cls }) => (
             <span key={label} style={{ left: `${pct(ft)}%` }} className={`sim-tick ${cls}`} title={`${label}: ${ft} ft MLLW`}>
-              {/* Label is hidden via CSS on small screens */}
               <span className="tick-label">{label}</span>
             </span>
           ))}
