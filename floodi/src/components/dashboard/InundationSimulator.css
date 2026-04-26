@@ -174,7 +174,8 @@
   color: var(--sentinel-text-dim, #8c97a5);
 }
 
-.label-text.extreme {
+.label-text.extreme,
+.label-group.extreme .label-ft {
   color: #a020f0;
 }
 
