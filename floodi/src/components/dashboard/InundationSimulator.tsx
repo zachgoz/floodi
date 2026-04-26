@@ -43,13 +43,15 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
   const pExtreme = pct(thresholds.extreme);
 
   const now = new Date();
-  const diffMinutes = (simulationContext?.time.getTime() ?? now.getTime() - now.getTime()) / 60000;
+  // Ensure we handle potential null/undefined context gracefully
+  const simTime = simulationContext?.time ?? now;
+  const diffMinutes = (simTime.getTime() - now.getTime()) / 60000;
   
   let dynamicTitle = "Water Level Simulation";
   if (simulationContext) {
     if (Math.abs(diffMinutes) < 5) {
       dynamicTitle = "Live Water Level";
-    } else if (diffMinutes < 0) {
+    } else if (diffMinutes <= -5) {
       dynamicTitle = "Simulating Past Water Level";
     } else {
       dynamicTitle = "FloodCast Water Level";
@@ -58,7 +60,8 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
 
   const displaySource = useMemo(() => {
     if (!simulationContext?.source) return null;
-    if (simulationContext.source === 'Observed' && diffMinutes > 5) {
+    // For future predictions, we want to label it as Predicted even if the underlying data source is the standard observed track
+    if (diffMinutes > 5) {
       return '(Predicted)';
     }
     return `(${simulationContext.source})`;
