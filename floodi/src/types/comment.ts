@@ -37,6 +37,8 @@ export interface CommentMetadata {
   dataContext: CommentDataContext | CommentDataContext[];
   /** Optional threshold value for threshold-related discussions */
   thresholdValue?: number | null;
+  /** Optional water level at the point of interest */
+  waterLevel?: number | null;
 }
 
 /** Track edits for transparency and moderation. */

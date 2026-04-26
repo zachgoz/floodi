@@ -55,7 +55,7 @@ interface ChartViewerProps {
   /** Fire when clicking a comment marker or cluster */
   onCommentClick?: (comments: Comment[]) => void;
   /** Fire when a time point is selected for comment creation */
-  onTimePointSelect?: (time: Date) => void;
+  onTimePointSelect?: (time: Date, level?: number) => void;
   /** Handlers for in-component controls (optional) */
   onToggleComments?: () => void;
   /** Count for display in the overlay controls */
@@ -284,6 +284,26 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   const activeStart = viewDomain?.start || domainStart;
   const activeEnd = viewDomain?.end || domainEnd;
 
+  // Calculate the time at the center of the viewport (the blue focus line)
+  const centerTime = useMemo(() => {
+    const t0 = activeStart.getTime();
+    const t1 = activeEnd.getTime();
+    if (!Number.isFinite(t0) || !Number.isFinite(t1)) return now;
+    return new Date(t0 + (t1 - t0) * nowRatio);
+  }, [activeStart, activeEnd, nowRatio, now]);
+
+  // Find water level at the center point for the button label
+  const centerLevel = useMemo(() => {
+    const obsRes = findNearestPoint(observedPoints, centerTime);
+    const adjRes = findNearestPoint(adjustedPoints, centerTime);
+    const predRes = findNearestPoint(predictedPoints, centerTime);
+
+    if (obsRes && obsRes.dtMin < 60) return obsRes.point.v;
+    if (adjRes && adjRes.dtMin < 60) return adjRes.point.v;
+    if (predRes && predRes.dtMin < 60) return predRes.point.v;
+    return null;
+  }, [centerTime, observedPoints, adjustedPoints, predictedPoints]);
+
   const lastViewportChangeRef = useRef<number>(0);
 
   // Immediate notification of viewport changes to parent for simulation sync
@@ -292,25 +312,17 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     const nowMs = Date.now();
     const timeSinceLast = nowMs - lastViewportChangeRef.current;
     
-    // Calculate the exact time at the focus point (nowRatio)
-    const t0 = activeStart.getTime();
-    const t1 = activeEnd.getTime();
-    const focusTime = new Date(t0 + (t1 - t0) * nowRatio);
-    
     if (timeSinceLast >= 50) {
-      onViewportChange(activeStart, activeEnd, focusTime);
+      onViewportChange(activeStart, activeEnd, centerTime);
       lastViewportChangeRef.current = nowMs;
     } else {
       const timer = setTimeout(() => {
-        const freshT0 = activeStart.getTime();
-        const freshT1 = activeEnd.getTime();
-        const freshFocus = new Date(freshT0 + (freshT1 - freshT0) * nowRatio);
-        onViewportChange(activeStart, activeEnd, freshFocus);
+        onViewportChange(activeStart, activeEnd, centerTime);
         lastViewportChangeRef.current = Date.now();
       }, 50 - timeSinceLast);
       return () => clearTimeout(timer);
     }
-  }, [activeStart.getTime(), activeEnd.getTime(), nowRatio, onViewportChange]);
+  }, [activeStart.getTime(), activeEnd.getTime(), centerTime, onViewportChange]);
 
   // Handle responsive resizing
   useEffect(() => {
@@ -608,8 +620,12 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
     // ── Touch pan state (kept in the effect closure for zero-overhead access) ──
     let touchStartX = 0;
+    let touchStartY = 0;
     let touchStartT0 = 0;
     let touchStartT1 = 0;
+    let isHorizontalPan = false;
+    let isVerticalScroll = false;
+    
     let pinchStartDist = 0;
     let pinchStartT0 = 0;
     let pinchStartT1 = 0;
@@ -618,15 +634,18 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
-        // Single finger – start a pan. Calling preventDefault() here is the
-        // critical step: it tells IonContent's scroll engine to back off.
-        e.preventDefault();
+        // Single finger – start tracking. We DO NOT call preventDefault() here
+        // so that vertical scrolling is allowed to start. We will conditionally
+        // call preventDefault() in onTouchMove if it's a horizontal pan.
         touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
         touchStartT0 = t0Ref.current;
         touchStartT1 = t1Ref.current;
         pinchStartDist = 0; // reset pinch
+        isHorizontalPan = false;
+        isVerticalScroll = false;
       } else if (e.touches.length === 2) {
-        e.preventDefault();
+        if (e.cancelable) e.preventDefault();
         const dx = e.touches[1].clientX - e.touches[0].clientX;
         const dy = e.touches[1].clientY - e.touches[0].clientY;
         pinchStartDist = Math.hypot(dx, dy);
@@ -646,7 +665,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      e.preventDefault();
       const rect = svg.getBoundingClientRect();
       const sw = sizeRef.current.w;
       const iw = innerWRef.current;
@@ -654,14 +672,32 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
       const scaleX = rect.width / sw;
 
       if (e.touches.length === 1 && touchStartT1 > touchStartT0) {
+        if (isVerticalScroll) return; // Allow browser to scroll vertically
+
         const dx = e.touches[0].clientX - touchStartX;
-        // dx in CSS pixels → SVG units → fraction of domain
-        const timeShift = -(dx / scaleX) / iw * (touchStartT1 - touchStartT0);
-        setViewDomain({
-          start: new Date(touchStartT0 + timeShift),
-          end:   new Date(touchStartT1 + timeShift),
-        });
+        const dy = e.touches[0].clientY - touchStartY;
+
+        if (!isHorizontalPan && !isVerticalScroll) {
+          // Lock direction after moving at least 4 pixels
+          if (Math.abs(dy) > 4 && Math.abs(dy) > Math.abs(dx)) {
+            isVerticalScroll = true;
+            return;
+          } else if (Math.abs(dx) > 4 && Math.abs(dx) > Math.abs(dy)) {
+            isHorizontalPan = true;
+          }
+        }
+
+        if (isHorizontalPan || (Math.abs(dx) > 0 && Math.abs(dx) > Math.abs(dy))) {
+          if (e.cancelable) e.preventDefault();
+          // dx in CSS pixels → SVG units → fraction of domain
+          const timeShift = -(dx / scaleX) / iw * (touchStartT1 - touchStartT0);
+          setViewDomain({
+            start: new Date(touchStartT0 + timeShift),
+            end:   new Date(touchStartT1 + timeShift),
+          });
+        }
       } else if (e.touches.length === 2 && pinchStartDist > 0) {
+        if (e.cancelable) e.preventDefault();
         const dx2 = e.touches[1].clientX - e.touches[0].clientX;
         const dy2 = e.touches[1].clientY - e.touches[0].clientY;
         const dist = Math.hypot(dx2, dy2);
@@ -767,13 +803,11 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
-        // touch-action: none — claim all touch gestures on this element so the browser
-        // skips its pan/zoom disambiguation phase entirely. Without this, mobile Chrome
-        // waits to see if the gesture is horizontal or vertical; a slight vertical drift
-        // causes it to fire `pointercancel` and steal the gesture mid-pan, freezing the chart.
-        // setPointerCapture (called in handlePointerDown) then guarantees we receive all
-        // subsequent pointermove events for the life of the gesture.
-        style={{ touchAction: 'none', cursor: isTouchDeviceRef.current ? 'default' : 'crosshair' }}
+        // touch-action: pan-y — allow the browser to naturally handle vertical scrolling
+        // over the chart, but defer horizontal gestures to our custom pointer/touch events.
+        // Once a horizontal pan is detected, e.preventDefault() in onTouchMove stops
+        // the browser from cancelling the gesture.
+        style={{ touchAction: 'pan-y', cursor: isTouchDeviceRef.current ? 'default' : 'crosshair' }}
       >
         {/* Background */}
         <rect x={0} y={0} width={size.w} height={size.h} fill="var(--chart-bg)" />
@@ -1277,46 +1311,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           );
         })}
 
-        {/* Legend */}
-        {innerW > 420 ? (
-          <g transform={`translate(${margins.l}, ${size.h - 10})`}>
-            <line x1={0} x2={20} y1={0} y2={0} stroke="#2ecc71" strokeWidth={2} />
-            <text x={24} y={4} fill="var(--chart-label-text)" fontSize="13" fontWeight="500">Observed</text>
-            <line x1={100} x2={120} y1={0} y2={0} stroke="#2ecc71" strokeWidth={2} strokeDasharray="5 4" />
-            <text x={124} y={4} fill="var(--chart-label-text)" fontSize="13" fontWeight="500">FloodCast Prediction</text>
-            <line x1={265} x2={285} y1={0} y2={0} stroke="#95a5a6" strokeWidth={2} />
-            <text x={289} y={4} fill="var(--chart-label-text)" fontSize="13" fontWeight="500">NOAA Prediction</text>
-            {showDelta && (
-              <>
-                <line x1={420} x2={440} y1={0} y2={0} stroke="#1976d2" strokeWidth={2} />
-                <text x={444} y={4} fill="var(--chart-label-text)" fontSize="13" fontWeight="500">Surge offset (past)</text>
-                <line x1={570} x2={590} y1={0} y2={0} stroke="#1976d2" strokeWidth={2} strokeDasharray="5 4" />
-                <text x={594} y={4} fill="var(--chart-label-text)" fontSize="13" fontWeight="500">Surge forecast</text>
-              </>
-            )}
-          </g>
-        ) : (
-          <g>
-            <g transform={`translate(${margins.l}, ${size.h - 24})`}>
-              <line x1={0} x2={20} y1={0} y2={0} stroke="#2ecc71" strokeWidth={2} />
-              <text x={24} y={4} fill="var(--chart-label-text)" fontSize="12" fontWeight="500">Observed</text>
-              <line x1={100} x2={120} y1={0} y2={0} stroke="#2ecc71" strokeWidth={2} strokeDasharray="5 4" />
-              <text x={124} y={4} fill="var(--chart-label-text)" fontSize="12" fontWeight="500">FloodCast</text>
-            </g>
-            <g transform={`translate(${margins.l}, ${size.h - 8})`}>
-              <line x1={0} x2={20} y1={0} y2={0} stroke="#95a5a6" strokeWidth={2} />
-              <text x={24} y={4} fill="var(--chart-label-text)" fontSize="12" fontWeight="500">NOAA Pred</text>
-              {showDelta && (
-                <>
-                  <line x1={120} x2={140} y1={0} y2={0} stroke="#1976d2" strokeWidth={2} />
-                  <text x={144} y={4} fill="var(--chart-label-text)" fontSize="12" fontWeight="500">Surge past</text>
-                  <line x1={240} x2={260} y1={0} y2={0} stroke="#1976d2" strokeWidth={2} strokeDasharray="5 4" />
-                  <text x={264} y={4} fill="var(--chart-label-text)" fontSize="12" fontWeight="500">Surge fcst</text>
-                </>
-              )}
-            </g>
-          </g>
-        )}
+        {/* Legend - REMOVED per user request */}
 
         {/* Interactive tooltip – suppressed on touch devices (no cursor hover) */}
         {!isTouchDeviceRef.current && (tooltipData || (showComments && comments.length > 0)) && hoverT && (
@@ -1487,12 +1482,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
         {/* VIEWING/Center Time Marker (Solid, always visible) */}
         {(() => {
-          // Always perfectly in the now ratio of the visible area
-          const activeT0 = activeStart.getTime();
-          const activeT1 = activeEnd.getTime();
-          if (!Number.isFinite(activeT0) || !Number.isFinite(activeT1)) return null;
-
-          const centerTime = new Date(activeT0 + (activeT1 - activeT0) * nowRatio);
           const x = margins.l + innerW * nowRatio;
           
           const obsRes = findNearestPoint(observedPoints, centerTime);
@@ -1598,11 +1587,21 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             <IonIcon icon={showComments ? eye : eyeOff} />
             {typeof commentCount === 'number' && <IonBadge color="primary" style={{ marginLeft: 6 }}>{commentCount}</IonBadge>}
           </IonButton>
-          <IonButton disabled aria-label="Comments">
-            <IonIcon icon={chatbubbleOutline} />
-            <span style={{ marginLeft: 6, fontSize: '0.8rem', textTransform: 'none' }}>Tap chart to pin</span>
-          </IonButton>
         </IonButtons>
+      </div>
+
+      {/* Bottom center "Add Comment" button (replacing legend) */}
+      <div className="chart-bottom-controls">
+        <IonButton 
+          className="add-comment-fab" 
+          onClick={() => onTimePointSelect?.(centerTime, centerLevel ?? undefined)}
+          aria-label="Add comment at current time"
+        >
+          <IonIcon icon={addCircleOutline} slot="start" />
+          <span className="btn-label">
+            Add Comment {centerLevel !== null ? `(${centerLevel.toFixed(1)} ft)` : ''}
+          </span>
+        </IonButton>
       </div>
     </div>
   );

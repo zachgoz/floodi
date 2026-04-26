@@ -422,3 +422,70 @@
     border: 1px solid #ccc;
   }
 }
+
+/* ==========================================================================
+   Chart Interaction Controls
+   ========================================================================== */
+
+.chart-bottom-controls {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.add-comment-fab {
+  pointer-events: auto;
+  --background: var(--ion-color-primary, #3880ff);
+  --background-activated: var(--ion-color-primary-shade);
+  --background-hover: var(--ion-color-primary-tint);
+  --color: var(--ion-color-primary-contrast, #ffffff);
+  --border-radius: 28px;
+  --padding-start: 18px;
+  --padding-end: 18px;
+  --box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  height: 44px;
+  margin: 0;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.add-comment-fab:active {
+  transform: scale(0.92);
+}
+
+.add-comment-fab .btn-label {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-size: 1rem;
+}
+
+.add-comment-fab ion-icon {
+  font-size: 1.4rem;
+  margin-right: 8px;
+}
+
+/* Glassmorphism effect for the button */
+.add-comment-fab::part(native) {
+  backdrop-filter: blur(8px);
+  background: rgba(var(--ion-color-primary-rgb), 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+@media (max-width: 576px) {
+  .chart-bottom-controls {
+    bottom: 6px;
+  }
+  .add-comment-fab {
+    height: 40px;
+    --padding-start: 14px;
+    --padding-end: 14px;
+  }
+  .add-comment-fab .btn-label {
+    font-size: 0.9rem;
+  }
+}
+

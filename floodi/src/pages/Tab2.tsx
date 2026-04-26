@@ -73,6 +73,7 @@ const Tab2: React.FC = () => {
   const [currentViewport, setCurrentViewport] = React.useState<{ start: Date; end: Date; focusTime: Date } | null>(null);
   const [manualFocusTime, setManualFocusTime] = useState<Date | null>(null);
   const [chartActionTime, setChartActionTime] = useState<Date | null>(null);
+  const [chartActionLevel, setChartActionLevel] = useState<number | undefined>(undefined);
   const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
   const [simulationLevel, setSimulationLevel] = useState<number>(2.5);
 
@@ -207,6 +208,7 @@ const Tab2: React.FC = () => {
   // Comments integration tied to current config
   const chartComments = useChartComments(config);
   const [commentModalOpen, setCommentModalOpen] = useState(false);
+  const [chartActionLevel, setChartActionLevel] = useState<number | undefined>(undefined);
 
   // Open comment modal when a selection range or comment is clicked
   React.useEffect(() => {
@@ -422,7 +424,10 @@ const Tab2: React.FC = () => {
                       comments={chartComments.comments}
                       onCommentHover={(c) => chartComments.handleCommentHover(c)}
                       onCommentClick={(cs) => chartComments.handleCommentClick(cs)}
-                      onTimePointSelect={(time: Date) => setChartActionTime(time)}
+                      onTimePointSelect={(time: Date, level?: number) => {
+                        setChartActionTime(time);
+                        setChartActionLevel(level);
+                      }}
                       onToggleComments={chartComments.toggleCommentOverlay}
                       commentCount={chartComments.commentCount}
                       onViewportChange={(start: Date, end: Date, focusTime: Date) => setCurrentViewport({ start, end, focusTime })}
@@ -512,6 +517,7 @@ const Tab2: React.FC = () => {
           range={chartComments.selectedTimeRange || (chartComments.selectedComments?.[0]?.metadata.timeRange ?? null)}
           existingComments={chartComments.selectedComments || []}
           config={config}
+          waterLevel={chartActionLevel}
         />
         {/* Action sheet — shown when the user taps a point on the hydrograph */}
         <IonActionSheet

@@ -17,17 +17,21 @@ export interface ChartCommentModalProps {
   existingComments?: Comment[];
   /** Current app configuration for station/timezone */
   config: AppConfiguration;
+  /** Optional water level at the selected time */
+  waterLevel?: number | null;
 }
 
-export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, onDismiss, range, existingComments = [], config }) => {
+export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, onDismiss, range, existingComments = [], config, waterLevel }) => {
   const { create, loading } = useComments({ stationId: config.station.id, realtime: false });
   const { user } = useAuth();
 
   const rangeDisplay = useMemo(() => (range ? formatTimeRangeForDisplay(range, config.display.timezone) : null), [range, config.display.timezone]);
   const isThread = existingComments.length > 0;
+  
+  const levelSuffix = waterLevel !== undefined && waterLevel !== null ? ` (${waterLevel.toFixed(1)} ft)` : '';
   const title = isThread 
-    ? `Thread${rangeDisplay ? ` at ${rangeDisplay.label.split(' - ')[0]}` : ''}`
-    : `Drop Pin${rangeDisplay ? ` at ${rangeDisplay.label.split(' - ')[0]}` : ''}`;
+    ? `Thread${rangeDisplay ? ` at ${rangeDisplay.label.split(' - ')[0]}` : ''}${levelSuffix}`
+    : `Drop Pin${rangeDisplay ? ` at ${rangeDisplay.label.split(' - ')[0]}` : ''}${levelSuffix}`;
 
   const handleSubmit = async (values: CommentFormValues) => {
     if (!range || !user) return;
@@ -38,6 +42,7 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
         timeRange: { ...range, eventType: values.eventType },
         dataContext: values.dataContexts,
         thresholdValue: values.threshold ?? null,
+        waterLevel: waterLevel ?? null,
       },
     });
     onDismiss();

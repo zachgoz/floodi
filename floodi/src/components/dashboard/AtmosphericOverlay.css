@@ -102,7 +102,7 @@
   }
   
   .metric-label {
-    font-size: 0.45rem;
+    font-size: 0.55rem;
   }
 }
 
@@ -163,7 +163,7 @@
 }
 
 .metric-label {
-  font-size: 0.5rem;
+  font-size: 0.85rem;
   font-weight: 800;
   color: var(--sentinel-text-dim);
   text-transform: uppercase;
@@ -177,7 +177,7 @@
 }
 
 .metric-value {
-  font-size: 1rem;
+  font-size: 1.125rem;
   font-weight: 700;
   color: var(--sentinel-text-main);
   font-family: 'Inter', sans-serif;
@@ -250,7 +250,7 @@
   .metric-item.prediction .metric-label,
   .metric-item .metric-label {
     display: block; /* Ensure they are visible as requested */
-    font-size: 0.45rem;
+    font-size: 0.7rem;
   }
 
   .metric-item.highlight {
