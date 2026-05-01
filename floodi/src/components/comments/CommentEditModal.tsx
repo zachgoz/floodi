@@ -67,7 +67,7 @@ export const CommentEditModal: React.FC<CommentEditModalProps> = ({
         const res = commentValidation.validateCommentContent(content);
         if (!res.ok) return res.errors.join(' ') || 'Invalid content.';
       }
-    } catch {}
+    } catch { /* ignore */ }
     if (characterCount === 0) return 'Please enter content.';
     if (characterCount > characterLimit) return 'Content is too long (max 2000 characters).';
     return '';

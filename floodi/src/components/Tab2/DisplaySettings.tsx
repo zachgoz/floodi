@@ -18,21 +18,35 @@ interface DisplaySettingsProps {
   theme: 'auto' | 'light' | 'dark' | undefined;
   /** Callback when theme changes */
   onThemeChange: (theme: 'auto' | 'light' | 'dark') => void;
+  /** View mode setting */
+  viewMode: 'basic' | 'advanced' | undefined;
+  /** Callback when view mode changes */
+  onViewModeChange: (viewMode: 'basic' | 'advanced') => void;
 }
 
 /**
  * Professional display settings component for chart display options
  * 
  * Provides controls for various chart display options with room for expansion.
- * Currently manages the delta series visibility toggle.
+ * Currently manages theme and view mode (basic/advanced).
  * 
  * @param props DisplaySettingsProps
  * @returns JSX.Element
  */
-export const DisplaySettings: React.FC<DisplaySettingsProps> = ({ theme = 'auto', onThemeChange }) => {
+export const DisplaySettings: React.FC<DisplaySettingsProps> = ({ 
+  theme = 'auto', 
+  onThemeChange,
+  viewMode = 'basic',
+  onViewModeChange 
+}) => {
   const handleThemeChange = (event: CustomEvent) => {
     const value = event.detail.value as 'auto' | 'light' | 'dark';
     onThemeChange(value);
+  };
+
+  const handleViewModeChange = (event: CustomEvent) => {
+    const value = event.detail.value as 'basic' | 'advanced';
+    onViewModeChange(value);
   };
 
   return (
@@ -43,7 +57,19 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({ theme = 'auto'
       </IonListHeader>
 
       <IonItem>
-        <IonLabel>Theme</IonLabel>
+        <IonLabel position="stacked">View Mode</IonLabel>
+        <IonSegment value={viewMode} onIonChange={handleViewModeChange}>
+          <IonSegmentButton value="basic">
+            <IonLabel>Basic</IonLabel>
+          </IonSegmentButton>
+          <IonSegmentButton value="advanced">
+            <IonLabel>Advanced</IonLabel>
+          </IonSegmentButton>
+        </IonSegment>
+      </IonItem>
+
+      <IonItem>
+        <IonLabel position="stacked">Theme</IonLabel>
         <IonSegment value={theme} onIonChange={handleThemeChange}>
           <IonSegmentButton value="auto">
             <IonLabel>Auto</IonLabel>

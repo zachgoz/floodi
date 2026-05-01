@@ -110,6 +110,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  /* Ensure consistent height for all items in the tidal group */
+  min-height: 40px; 
 }
 
 .metric-icon-box {
@@ -229,12 +231,45 @@
   margin-top: 2px;
 }
 
+.metric-item.highlight,
+.view-advanced .metric-item.prediction,
+.view-advanced .metric-item.surge-gauge {
+  background: rgba(var(--ion-color-primary-rgb), 0.08);
+  padding: 4px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.15);
+  min-width: fit-content;
+  transition: all 0.2s ease;
+}
+
+/* Make the final result slightly more prominent */
 .metric-item.highlight {
   background: rgba(var(--ion-color-primary-rgb), 0.15);
-  padding: 4px 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.3);
-  min-width: fit-content;
+  border-color: rgba(var(--ion-color-primary-rgb), 0.3);
+}
+
+/* Remove internal boxes in basic mode to avoid "double box" effect but keep padding for balance */
+.view-basic .metric-item.highlight {
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+}
+
+/* Ensure icon boxes are visible in both modes for tidal metrics, but keep them clean */
+.tidal-group .metric-icon-box {
+  background: transparent;
+  width: 16px; /* Narrower for dots/lines than for icons */
+  margin-right: -4px; /* Tighten up the space since we removed the box bg */
+}
+
+.view-basic .metric-item.highlight {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.view-basic .tidal-group {
+  gap: 12px; /* Restore gap since we have the dot in the icon box now */
 }
 
 @media (max-width: 600px) {

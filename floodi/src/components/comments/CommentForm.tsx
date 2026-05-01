@@ -71,7 +71,7 @@ export const CommentForm: React.FC<CommentFormProps> = ({
         const res = commentValidation.validateCommentContent(content);
         if (res && typeof res === 'object' && !res.ok) return res.errors?.join(', ') ?? 'Invalid content.';
       }
-    } catch {}
+    } catch { /* ignore */ }
     if (characterCount === 0) return 'Please enter a comment.';
     if (characterCount > characterLimit) return 'Comment is too long (max 2000 characters).';
     if (!initialRange) return 'A specific point on the chart must be selected.';

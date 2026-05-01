@@ -95,7 +95,8 @@ export function useChartInteraction(): ChartInteraction & {
     deltaPoints: Point[],
     now: Date,
     threshold: number,
-    showDelta: boolean
+    showDelta: boolean,
+    viewMode: 'basic' | 'advanced'
   ) => TooltipData | null;
   calculateTooltipPosition: typeof calculateTooltipPosition;
   formatTooltipTime: typeof formatTooltipTime;
@@ -127,7 +128,8 @@ export function useChartInteraction(): ChartInteraction & {
     deltaPoints: Point[],
     now: Date,
     threshold: number,
-    showDelta: boolean
+    showDelta: boolean,
+    viewMode: 'basic' | 'advanced'
   ): TooltipData | null => {
     if (!hoverTime) return null;
 
@@ -152,7 +154,7 @@ export function useChartInteraction(): ChartInteraction & {
 
     // Predicted data (always show if available)
     // NOAA Prediction
-    if (nearestPred && nearestPred.dtMin <= 9) {
+    if (viewMode === 'advanced' && nearestPred && nearestPred.dtMin <= 9) {
       rows.push({
         label: 'NOAA Prediction',
         value: `${nearestPred.point.v.toFixed(2)} ft`,

@@ -7,6 +7,7 @@ import AtmosphericOverlay from './AtmosphericOverlay';
 import InundationMap from './InundationMap';
 import InundationSimulator from './InundationSimulator';
 import WebcamFeedCard from './WebcamFeedCard';
+import { WEBCAMS } from './constants/webcams';
 
 import './DashboardView.css';
 
@@ -44,7 +45,12 @@ const DEFAULT_CONFIG: AppConfiguration = {
 
 export const DashboardView: React.FC = () => {
   const [simulationLevel, setSimulationLevel] = useState<number>(3.5);
-  const { data, processedData, loading, error } = useChartData(DEFAULT_CONFIG);
+  const { processedData, loading } = useChartData(DEFAULT_CONFIG);
+  const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
+
+  const resetToLive = () => {
+    setCenterRequest({ time: new Date(), id: Date.now() });
+  };
 
   const {
     observedPoints,
@@ -57,15 +63,23 @@ export const DashboardView: React.FC = () => {
 
   const { start, end, now } = timeDomain;
 
-  // Get current values from the processed data - find points nearest to 'now'
-  const currentObserved = observedPoints.length > 0 ? observedPoints[observedPoints.length - 1].v : 0;
-  
   // Find nearest wind point to 'now'
   const currentWind = windPoints.length > 0 
     ? windPoints.reduce((prev, curr) => 
         Math.abs(curr.t.getTime() - now.getTime()) < Math.abs(prev.t.getTime() - now.getTime()) ? curr : prev
       )
     : { speed: 0, dir: 0 };
+    
+  // Find nearest observed/predicted point to 'now'
+  const currentObserved = observedPoints.length > 0
+    ? observedPoints.reduce((prev, curr) =>
+        Math.abs(curr.t.getTime() - now.getTime()) < Math.abs(prev.t.getTime() - now.getTime()) ? curr : prev
+      ).v
+    : predictedPoints.length > 0 
+      ? predictedPoints.reduce((prev, curr) =>
+          Math.abs(curr.t.getTime() - now.getTime()) < Math.abs(prev.t.getTime() - now.getTime()) ? curr : prev
+        ).v 
+      : 0;
     
   // Find nearest precip point to 'now'
   const currentPrecip = precipPoints.length > 0 
@@ -115,6 +129,7 @@ export const DashboardView: React.FC = () => {
                   timezone="local"
                   showComments={true}
                   comments={[]}
+                  centerRequest={centerRequest}
                 />
                 
                 {loading && (
@@ -129,6 +144,8 @@ export const DashboardView: React.FC = () => {
                 <InundationMap
                   waterLevelFt={simulationLevel}
                   roadData={undefined}
+                  targetTime={now}
+                  onResetToLive={resetToLive}
                 />
               </APIProvider>
 
@@ -145,11 +162,15 @@ export const DashboardView: React.FC = () => {
             </div>
 
             <div className="dashboard-sidebar">
-              <WebcamFeedCard 
-                imageUrl="https://wl.secoora.org/webcam/SUNNYD_CB_02.2026-04-21T13:42Z.jpg"
-                locationName="Carolina Beach - Canal Dr"
-                timestamp={new Date()}
-              />
+              {WEBCAMS.map(cam => (
+                <WebcamFeedCard 
+                  key={cam.id}
+                  cameraId={cam.id}
+                  locationName={cam.name}
+                  targetTime={now}
+                  onResetToLive={resetToLive}
+                />
+              ))}
             </div>
           </div>
 

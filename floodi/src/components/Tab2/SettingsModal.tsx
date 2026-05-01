@@ -139,6 +139,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <DisplaySettings
             theme={config.display.theme || 'auto'}
             onThemeChange={(theme) => onDisplayChange({ theme })}
+            viewMode={config.display.viewMode || 'basic'}
+            onViewModeChange={(viewMode) => onDisplayChange({ viewMode })}
           />
 
           {/* Time Settings */}

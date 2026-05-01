@@ -14,6 +14,13 @@ interface AtmosphericOverlayProps {
   source?: string;
   surge?: number | null;
   prediction?: number | null;
+  viewMode?: 'basic' | 'advanced';
+  thresholds?: {
+    minor: number;
+    moderate: number;
+    major: number;
+    extreme: number;
+  };
 }
 
 /** Convert a meteorological bearing (0° = N, clockwise) to a compass label */
@@ -31,6 +38,24 @@ function windColor(speed: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
+/** Dynamic color for water level based on flood thresholds */
+function waterColor(level: number, thresholds?: AtmosphericOverlayProps['thresholds']): string {
+  if (!thresholds) {
+    // Fallback to defaults if thresholds aren't provided
+    if (level < 6.1) return 'var(--line-observed, #2ecc71)'; // Green
+    if (level < 7.0) return '#fbc02d'; // Yellow (Minor)
+    if (level < 7.7) return '#f57c00'; // Orange (Moderate)
+    if (level < 8.5) return '#d32f2f'; // Red (Major)
+    return '#7b1fa2'; // Purple (Extreme)
+  }
+
+  if (level < thresholds.minor) return 'var(--line-observed, #2ecc71)';
+  if (level < thresholds.moderate) return '#fbc02d';
+  if (level < thresholds.major) return '#f57c00';
+  if (level < thresholds.extreme) return '#d32f2f';
+  return '#7b1fa2';
+}
+
 export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
   precipitationAccumulation,
   windSpeed,
@@ -40,47 +65,55 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
   source,
   surge,
   prediction,
+  viewMode = 'basic',
+  thresholds,
 }) => {
   const arrowColor = windColor(windSpeed);
+  const wlColor = waterColor(observedWaterLevel, thresholds);
+  const observedGreen = 'var(--line-observed, #2ecc71)';
   const arrowLen = 10;
 
   return (
-    <div className={`atmospheric-sentinel ${isLive ? 'is-live' : 'is-historical'}`}>
+    <div className={`atmospheric-sentinel ${isLive ? 'is-live' : 'is-historical'} view-${viewMode}`}>
       {/* Status indicator moved to Hydrograph title subtitle for better layout */}
 
       <div className="sentinel-metrics tidal-metrics">
         {/* Tidal Group: Predicted + Surge = Final */}
         <div className="tidal-group">
-          {prediction !== null && prediction !== undefined && (
+          {viewMode === 'advanced' && prediction !== null && prediction !== undefined && (
             <div className="metric-item prediction" title="NOAA Prediction">
+              <div className="metric-icon-box">
+                <span className="legend-dot" style={{ backgroundColor: 'var(--line-predicted, #95a5a6)', width: '10px', height: '10px' }} />
+              </div>
               <div className="metric-details">
                 <div className="metric-value-row">
                   <span className="metric-value">{prediction.toFixed(2)}</span>
                   <span className="metric-unit">ft</span>
                 </div>
                 <div className="metric-label-row">
-                  <span className="legend-dot" style={{ backgroundColor: 'var(--line-predicted, #95a5a6)' }} />
                   <span className="metric-label">NOAA<br/>Prediction</span>
                 </div>
               </div>
             </div>
           )}
 
-          {surge !== null && surge !== undefined && (
+          {viewMode === 'advanced' && surge !== null && surge !== undefined && (
             <>
               <span className="tidal-operator">+</span>
               <div className="metric-item surge-gauge" title="Surge (Observed - Predicted)">
+                <div className="metric-icon-box">
+                  {source === 'FloodCast' ? (
+                    <span className="legend-dashed-line" style={{ borderColor: '#1976d2', width: '16px' }} />
+                  ) : (
+                    <span className="legend-dot" style={{ backgroundColor: '#1976d2', width: '10px', height: '10px' }} />
+                  )}
+                </div>
                 <div className="metric-details">
                   <div className="metric-value-row">
                     <span className="metric-value">{surge >= 0 ? '+' : ''}{surge.toFixed(2)}</span>
                     <span className="metric-unit">ft</span>
                   </div>
                   <div className="metric-label-row">
-                    {source === 'FloodCast' ? (
-                      <span className="legend-dashed-line" style={{ borderColor: '#1976d2' }} />
-                    ) : (
-                      <span className="legend-dot" style={{ backgroundColor: '#1976d2' }} />
-                    )}
                     <span className="metric-label">
                       {source === 'FloodCast' ? <>Predicted<br/>Surge</> : <>Observed<br/>Surge</>}
                     </span>
@@ -93,19 +126,21 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
 
           {/* Final Water Level (Observed or FloodCast) */}
           <div className="metric-item water-level highlight" title="Final Water Level">
+            <div className="metric-icon-box">
+              {source === 'FloodCast' ? (
+                <span className="legend-dashed-line" style={{ borderColor: observedGreen, width: '16px' }} />
+              ) : (
+                <span className="legend-dot" style={{ backgroundColor: observedGreen, width: '10px', height: '10px' }} />
+              )}
+            </div>
             <div className="metric-details">
               <div className="metric-value-row">
-                <span className="metric-value">{observedWaterLevel.toFixed(2)}</span>
+                <span className="metric-value" style={{ color: wlColor }}>{observedWaterLevel.toFixed(2)}</span>
                 <span className="metric-unit">ft</span>
               </div>
               <div className="metric-label-row">
-                {source === 'FloodCast' ? (
-                  <span className="legend-dashed-line" style={{ borderColor: 'var(--line-observed, #2ecc71)' }} />
-                ) : (
-                  <span className="legend-dot" style={{ backgroundColor: 'var(--line-observed, #2ecc71)' }} />
-                )}
                 <span className="metric-label">
-                  {source === 'Observed' ? <>Observed<br/>Water Level</> : (source === 'FloodCast' ? <>Floodcast<br/>Water Level</> : <>Total<br/>Water Level</>)}
+                  {source === 'Observed' ? <>Observed<br/>Water Level</> : (source === 'FloodCast' ? <>Floodcast<br/>Water Level</> : (viewMode === 'basic' ? <>Water Level</> : <>Total<br/>Water Level</>))}
                 </span>
               </div>
             </div>

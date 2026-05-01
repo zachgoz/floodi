@@ -84,6 +84,8 @@ interface ChartViewerProps {
   };
   /** List of data fetching warnings */
   warnings?: string[];
+  /** View mode setting */
+  viewMode?: 'basic' | 'advanced';
 }
 
 /**
@@ -208,6 +210,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   centerRequest,
   resetKey,
   timeRange,
+  viewMode = 'basic',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -771,8 +774,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   // Tooltip data calculation
   const tooltipData = useMemo(() => {
     if (!hoverT) return null;
-    return calculateTooltipData(hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, now, thresholds.minor, showDelta);
-  }, [hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, thresholds.minor, showDelta, calculateTooltipData]);
+    return calculateTooltipData(hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, now, thresholds.minor, showDelta, viewMode);
+  }, [hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, thresholds.minor, showDelta, viewMode, calculateTooltipData]);
 
   /** Handle reset of both local zoom and global absolute range */
   const handleReset = () => {
@@ -960,7 +963,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         {/* Data series */}
 
         {/* Surge Fill (Area between observed and predicted) */}
-        {observedPoints.length > 1 && predictedPoints.length > 1 && (() => {
+        {viewMode === 'advanced' && observedPoints.length > 1 && predictedPoints.length > 1 && (() => {
           const maxObsT = observedPoints[observedPoints.length - 1].t.getTime();
           const matchingPredicted = predictedPoints.filter(p => p.t.getTime() <= maxObsT);
 
@@ -989,7 +992,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         ))}
 
         {/* Predicted data */}
-        {predictedPoints.length > 1 && (
+        {viewMode === 'advanced' && predictedPoints.length > 1 && (
           <polyline
             fill="none"
             stroke="#95a5a6"
@@ -1045,11 +1048,12 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 // Calculate position for the cluster or single marker
                 let displayTimeMs: number;
                 let color: string;
-                let isCluster = arr.length > 1;
+                const isCluster = arr.length > 1;
 
                 if (!isCluster) {
                   const c = arr[0];
-                  const tr = c.metadata?.timeRange!;
+                  const tr = c.metadata?.timeRange;
+                  if (!tr) return;
                   displayTimeMs = (Date.parse(tr.startTime) + Date.parse(tr.endTime)) / 2;
                   color = colorFor(tr.eventType);
                 } else {

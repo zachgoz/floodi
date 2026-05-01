@@ -17,6 +17,7 @@ const STORAGE_KEYS = {
   TIMEZONE: 'floodi.tz',
   SHOW_DELTA: 'floodi.delta.show',
   THEME: 'floodi.theme',
+  VIEW_MODE: 'floodi.view_mode',
 } as const;
 
 /**
@@ -49,6 +50,7 @@ const DEFAULT_CONFIG: AppConfiguration = {
     timezone: 'local',
     showDelta: false,
     theme: 'auto',
+    viewMode: 'basic',
   },
 };
 
@@ -132,6 +134,7 @@ export function useSettingsStorage() {
           const storedTheme = safeGetStorageItem(STORAGE_KEYS.THEME, DEFAULT_CONFIG.display.theme!);
           return (storedTheme === 'auto' || storedTheme === 'light' || storedTheme === 'dark') ? storedTheme : DEFAULT_CONFIG.display.theme;
         })(),
+        viewMode: safeGetStorageItem(STORAGE_KEYS.VIEW_MODE, DEFAULT_CONFIG.display.viewMode!) as 'basic' | 'advanced',
       },
     };
   });
@@ -149,6 +152,7 @@ export function useSettingsStorage() {
     safeSetStorageItem(STORAGE_KEYS.ABS_END, config.timeRange.absEnd);
     safeSetStorageItem(STORAGE_KEYS.TIMEZONE, config.display.timezone);
     safeSetStorageItem(STORAGE_KEYS.SHOW_DELTA, config.display.showDelta ? '1' : '0');
+    safeSetStorageItem(STORAGE_KEYS.VIEW_MODE, config.display.viewMode ?? 'basic');
     if (config.display.theme) {
       safeSetStorageItem(STORAGE_KEYS.THEME, config.display.theme);
     }

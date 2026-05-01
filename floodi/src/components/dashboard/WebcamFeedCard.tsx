@@ -1,51 +1,166 @@
-import React from 'react';
-import { IonIcon } from '@ionic/react';
-import { videocamOutline } from 'ionicons/icons';
+import React, { useState, useEffect } from 'react';
+import { IonIcon, IonButton } from '@ionic/react';
+import { videocamOutline, refreshOutline, warningOutline, closeOutline } from 'ionicons/icons';
 import './WebcamFeedCard.css';
 
 interface WebcamFeedCardProps {
-  imageUrl: string;
   locationName: string;
-  timestamp: Date;
-  cameraId?: string;
+  cameraId: string;
+  targetTime: Date;
+  onResetToLive?: () => void;
+  onClose?: () => void;
 }
 
+// Helper to truncate seconds/milliseconds to start exactly on the minute
+function getBaseMinute(date: Date): Date {
+  const d = new Date(date);
+  d.setUTCSeconds(0);
+  d.setUTCMilliseconds(0);
+  return d;
+}
+
+function formatDateToIsoString(date: Date): string {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const year = date.getUTCFullYear();
+  const month = pad(date.getUTCMonth() + 1);
+  const day = pad(date.getUTCDate());
+  const hours = pad(date.getUTCHours());
+  const minutes = pad(date.getUTCMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}Z`;
+}
+
+// Smart lookup table: probe every minute for 60 minutes to catch any camera drift (since cameras take photos every 6 mins but drift, and also drop frames).
+// Then jump to previous likely daylight hours and probe 20-minute clusters to find the current drift.
+const FALLBACK_OFFSETS_MINUTES = [
+  // First 60 minutes minute-by-minute (guarantees finding an interval regardless of drift and dropped frames)
+  ...Array.from({ length: 60 }, (_, i) => i),
+  // Jump to 12h ago
+  ...Array.from({ length: 20 }, (_, i) => 12 * 60 + i),
+  // Jump to 24h ago
+  ...Array.from({ length: 20 }, (_, i) => 24 * 60 + i),
+  // Jump to 48h ago
+  ...Array.from({ length: 20 }, (_, i) => 48 * 60 + i),
+  // Jump to 3 days ago
+  ...Array.from({ length: 20 }, (_, i) => 3 * 24 * 60 + i),
+  // Jump to 4 days ago
+  ...Array.from({ length: 20 }, (_, i) => 4 * 24 * 60 + i),
+  // Jump to 5 days ago
+  ...Array.from({ length: 20 }, (_, i) => 5 * 24 * 60 + i),
+  // Jump to 6 days ago
+  ...Array.from({ length: 20 }, (_, i) => 6 * 24 * 60 + i),
+  // Jump to 7 days ago
+  ...Array.from({ length: 20 }, (_, i) => 7 * 24 * 60 + i),
+];
+
 export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
-  imageUrl,
   locationName,
-  timestamp,
-  cameraId = "SUNNYD_CB_02"
+  cameraId,
+  targetTime,
+  onResetToLive,
+  onClose,
 }) => {
+  const [attemptIdx, setAttemptIdx] = useState(0);
+  const [hasError, setHasError] = useState(false);
+  const MAX_ATTEMPTS = FALLBACK_OFFSETS_MINUTES.length;
+
+  // Reset attempts when time or camera changes
+  useEffect(() => {
+    setAttemptIdx(0);
+    setHasError(false);
+  }, [targetTime, cameraId]);
+
+  const isFuture = (targetTime.getTime() - Date.now()) > 10 * 60 * 1000;
+  const baseDate = getBaseMinute(targetTime);
+  const offsetMinutes = FALLBACK_OFFSETS_MINUTES[attemptIdx] || 0;
+  const imageDate = new Date(baseDate.getTime() - offsetMinutes * 60 * 1000);
+  const dateString = formatDateToIsoString(imageDate);
+
+  const imageUrl = `https://wl.secoora.org/webcam/${cameraId}.${dateString}.jpg`;
+  
+  const isStale = offsetMinutes > 60; // if image is older than 1 hour relative to targetTime
+  // If the image we are showing is more than 1 hour older than real-world 'now', it's historical.
+  const isHistorical = (Date.now() - imageDate.getTime()) > 60 * 60 * 1000;
+
+  const handleError = () => {
+    if (attemptIdx < MAX_ATTEMPTS - 1) {
+      setAttemptIdx(a => a + 1);
+    } else {
+      setHasError(true);
+    }
+  };
+
   return (
     <div className="webcam-card-container">
       <div className="webcam-header">
-        <div className="webcam-title-group">
-          <h3 className="webcam-title">
-            <IonIcon icon={videocamOutline} />
-            <span>Live Feed</span>
-          </h3>
-          <span className="webcam-location">{locationName}</span>
+        <div className="webcam-header-main">
+          <div className="webcam-title-group">
+            <h3 className="webcam-title">
+              <IonIcon icon={videocamOutline} />
+              <span>
+                {isHistorical 
+                  ? imageDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+                  : 'Live Feed'}
+              </span>
+            </h3>
+            <span className="webcam-location">{locationName}</span>
+          </div>
+          {!isFuture && (
+            <div className="webcam-status-pill">
+              <span className={`webcam-live-indicator ${(isStale || isHistorical) && !hasError ? 'stale' : ''}`} style={{ backgroundColor: hasError ? 'red' : undefined }}></span>
+              {hasError ? 'OFFLINE' : isStale ? 'STALE' : isHistorical ? 'HISTORY' : 'LIVE'}
+            </div>
+          )}
         </div>
-        <div className="webcam-status-pill">
-          <span className="webcam-live-indicator"></span>
-          LIVE
-        </div>
+        {onClose && (
+          <IonButton fill="clear" color="medium" onClick={onClose} className="webcam-close-button">
+            <IonIcon slot="icon-only" icon={closeOutline} />
+          </IonButton>
+        )}
       </div>
       
       <div className="webcam-image-wrapper">
-        <img 
-          src={imageUrl} 
-          alt={`Webcam feed from ${locationName}`} 
-          className="webcam-image" 
-          loading="lazy" 
-        />
-        <div className="webcam-overlay-badge">
-          <span className="badge-time">
-            {timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          <span className="badge-divider">|</span>
-          <span className="badge-cam">CAM: {cameraId}</span>
-        </div>
+        {isFuture ? (
+          <div className="webcam-image-placeholder">
+            <div className="placeholder-content">
+              <span className="placeholder-text">No Image Available</span>
+              <span className="placeholder-subtext">Webcams only show live or historical data</span>
+              {onResetToLive && (
+                <IonButton 
+                  onClick={onResetToLive}
+                  className="webcam-reset-button"
+                  size="small"
+                  mode="ios"
+                >
+                  <IonIcon slot="start" icon={refreshOutline} />
+                  Return to Live
+                </IonButton>
+              )}
+            </div>
+          </div>
+        ) : !hasError ? (
+          <img 
+            src={imageUrl} 
+            alt={`Webcam feed from ${locationName}`} 
+            className="webcam-image" 
+            loading="lazy"
+            onError={handleError}
+          />
+        ) : (
+          <div className="webcam-image-placeholder">
+            <span>No Image Available</span>
+          </div>
+        )}
+        {!isFuture && (
+          <div className={`webcam-overlay-badge ${isStale && !hasError ? 'stale-badge' : ''}`}>
+            <span className="badge-time">
+              {isStale && !hasError && <IonIcon icon={warningOutline} style={{ marginRight: '4px', verticalAlign: 'middle' }} />}
+              {isStale && !hasError ? imageDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' : ''}
+              {imageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            <span className="badge-divider">|</span>
+            <span className="badge-cam">CAM: {cameraId}</span>
+          </div>
+        )}
       </div>
     </div>
   );

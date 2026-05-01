@@ -32,6 +32,7 @@ import AtmosphericOverlay from '../components/dashboard/AtmosphericOverlay';
 import InundationMap from '../components/dashboard/InundationMap';
 import InundationSimulator from '../components/dashboard/InundationSimulator';
 import WebcamFeedCard from '../components/dashboard/WebcamFeedCard';
+import { WEBCAMS } from '../components/dashboard/constants/webcams';
 import { APIProvider } from '@vis.gl/react-google-maps';
 // Removed unused types
 
@@ -82,6 +83,7 @@ const Tab2: React.FC = () => {
     setManualFocusTime(null);
     setIsUserSimulating(false);
     setResetCount(c => c + 1);
+    setCenterRequest({ time: new Date(), id: Date.now() });
   }, [baseResetToLive]);
 
   // Reset simulation flag when the user interacts with the chart (changing focus time)
@@ -352,6 +354,8 @@ const Tab2: React.FC = () => {
                           source={activeAtmo.source}
                           surge={activeAtmo.surge}
                           prediction={activeAtmo.prediction}
+                          viewMode={config.display.viewMode}
+                          thresholds={config.thresholds}
                         />
                       }
                       isLive={activeAtmo.isLive}
@@ -392,6 +396,7 @@ const Tab2: React.FC = () => {
                       centerRequest={centerRequest}
                       resetKey={resetCount}
                       warnings={processedData.warnings}
+                      viewMode={config.display.viewMode}
                     />
 
                     {/* Google Maps inundation map — FIMAN-style road coloring */}
@@ -401,6 +406,8 @@ const Tab2: React.FC = () => {
                         // @ts-expect-error missing strict typing
                         roadData={roadData}
                         observedLevelFt={processedData?.observedPoints?.slice(-1)[0]?.v}
+                        targetTime={activeAtmo.time || new Date()}
+                        onResetToLive={resetToLive}
                       />
                     </APIProvider>
 
@@ -421,11 +428,15 @@ const Tab2: React.FC = () => {
               </div>
 
               <div className="dashboard-sidebar">
-                <WebcamFeedCard
-                  imageUrl="https://wl.secoora.org/webcam/SUNNYD_CB_02.2026-04-21T13:42Z.jpg"
-                  locationName={`${config.station.name} - Cam`}
-                  timestamp={new Date()}
-                />
+                {WEBCAMS.map(cam => (
+                  <WebcamFeedCard
+                    key={cam.id}
+                    cameraId={cam.id}
+                    locationName={cam.name}
+                    targetTime={activeAtmo.time || new Date()}
+                    onResetToLive={resetToLive}
+                  />
+                ))}
               </div>
             </div>
           </div>

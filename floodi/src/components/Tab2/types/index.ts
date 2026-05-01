@@ -90,6 +90,7 @@ export interface AppConfiguration {
     timezone: 'local' | 'gmt';
     showDelta: boolean;
     theme?: 'auto' | 'light' | 'dark';
+    viewMode?: 'basic' | 'advanced';
   };
 }
 
