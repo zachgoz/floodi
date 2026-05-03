@@ -6,6 +6,7 @@
 export interface Point {
   t: Date;
   v: number;
+  source?: 'fiman' | 'noaa';
 }
 
 /** Wind vector data point (hourly) */
@@ -37,8 +38,12 @@ export interface ChartData {
   adjusted: Record<string, number>;
   offset: number | null;
   nPoints: number;
+  source?: 'fiman' | 'noaa';
+  alternate?: Record<string, number>;
+  timeOffsetMins?: number;
   wind?: Record<string, { speed: number; dir: number }>;
   precip?: Record<string, number>;
+  imagery?: Record<string, Record<string, string>>;
   warnings?: string[];
 }
 
@@ -170,8 +175,9 @@ export interface StationSearchState {
 
 /** Threshold crossing information */
 export interface ThresholdCrossing {
-  tCross: Date;
-  leadMinutes: number;
+  time: Date;
+  level: number;
+  threshold: number;
 }
 
 /** Chart segment for rendering polylines */

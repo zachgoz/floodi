@@ -7,7 +7,7 @@ interface AtmosphericOverlayProps {
   precipitationAccumulation: number; // in inches
   windSpeed: number; // in mph
   windDirection: number; // in degrees (0 = North)
-  time?: Date;
+  targetTime?: Date;
   isLive?: boolean;
   observedWaterLevel?: number; // in ft
   onReset?: () => void;
@@ -42,7 +42,7 @@ function windColor(speed: number): string {
 function waterColor(level: number, thresholds?: AtmosphericOverlayProps['thresholds']): string {
   if (!thresholds) {
     // Fallback to defaults if thresholds aren't provided
-    if (level < 6.1) return 'var(--line-observed, #2ecc71)'; // Green
+    if (level < 5.6) return 'var(--line-observed, #2ecc71)'; // Green
     if (level < 7.0) return '#fbc02d'; // Yellow (Minor)
     if (level < 7.7) return '#f57c00'; // Orange (Moderate)
     if (level < 8.5) return '#d32f2f'; // Red (Major)
@@ -60,6 +60,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
   precipitationAccumulation,
   windSpeed,
   windDirection,
+  targetTime,
   isLive = true,
   observedWaterLevel = 0,
   source,

@@ -25,6 +25,16 @@ export default defineConfig({
   plugins: [
     react()
   ],
+  server: {
+    proxy: {
+      // Proxy FiMAN requests to avoid CORS issues in development
+      '/api/fiman': {
+        target: 'https://data.sunnydayflooding.com',
+        changeOrigin: true,
+        rewrite: (path: string) => path.replace(/^\/api\/fiman/, ''),
+      },
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',

@@ -4,13 +4,13 @@ import { DeckGL } from '@deck.gl/react';
 import { PathLayer } from '@deck.gl/layers';
 import type { PickingInfo } from '@deck.gl/core';
 import { IconLayer, TextLayer } from '@deck.gl/layers';
-import { WEBCAMS } from './constants/webcams';
+import { WEBCAMS } from '../../constants/webcams';
 import WebcamFeedCard from './WebcamFeedCard';
 import './InundationMap.css';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-interface RoadProperties {
+export interface RoadProperties {
   osmId:        number;
   segmentId?:   string;
   name:         string;
@@ -19,7 +19,7 @@ interface RoadProperties {
   maxElevation: number; // ft MLLW — highest point on the road segment (used for Virtual Bulkhead heuristic)
 }
 
-type RoadFeature = GeoJSON.Feature<GeoJSON.LineString, RoadProperties>;
+export type RoadFeature = GeoJSON.Feature<GeoJSON.LineString, RoadProperties>;
 
 interface InundationMapProps {
   /** Current simulated or observed water level (ft MLLW) */
@@ -32,6 +32,8 @@ interface InundationMapProps {
   targetTime?: Date;
   /** Optional callback to reset time to live */
   onResetToLive?: () => void;
+  /** Consolidated imagery map for data-driven webcam photos */
+  imagery?: Record<string, Record<string, string>>;
 }
 
 // ── FIMAN colour ramp ────────────────────────────────────────────────────────
@@ -74,6 +76,7 @@ export const InundationMap: React.FC<InundationMapProps> = ({
   observedLevelFt,
   targetTime,
   onResetToLive,
+  imagery,
 }) => {
   const [pinnedRoad, setPinnedRoad] = useState<{feature: RoadFeature, x: number, y: number} | null>(null);
   const [selectedCamera, setSelectedCamera] = useState<typeof WEBCAMS[0] | null>(null);
@@ -272,6 +275,7 @@ export const InundationMap: React.FC<InundationMapProps> = ({
             targetTime={targetTime || new Date()}
             onResetToLive={onResetToLive}
             onClose={() => setSelectedCamera(null)}
+            imagery={imagery?.[selectedCamera.id]}
           />
         </div>
       )}

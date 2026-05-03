@@ -1,3 +1,5 @@
+import { WEBCAMS } from '../constants/webcams';
+
 /**
  * @fileoverview NOAA Tides and Currents API Integration
  * 
@@ -30,10 +32,33 @@
 export type TimeSeries = Record<string, number>; // ISO minute string (UTC) -> value
 
 /**
+ * Result from fetchObservedWaterLevels, containing primary + optional alternate data.
+ */
+export interface ObservedWaterLevelResult {
+  data: TimeSeries;
+  source: 'fiman' | 'noaa';
+  alternate?: TimeSeries;
+  imagery?: Record<string, Record<string, string>>;
+}
+
+/**
+ * NAVD88-to-MLLW datum offset for Carolina Beach, NC (NOAA Station 8658163).
+ * FiMAN sensors report in NAVD88; we add this to convert to MLLW for consistency
+ * with NOAA predictions. Value is in feet.
+ * @see https://tidesandcurrents.noaa.gov/datums.html?id=8658163
+ */
+const CAROLINA_BEACH_NAVD88_TO_MLLW_FT = 2.75;
+
+/**
  * Base URL for the NOAA Tides and Currents API
  * This is the production endpoint that provides real-time and predicted data
  */
 const NOAA_BASE = 'https://api.tidesandcurrents.noaa.gov/api/prod/datagetter';
+
+/**
+ * In-memory cache for pending and completed API requests to prevent duplicates.
+ */
+const requestCache: Record<string, Promise<any> | undefined> = {};
 
 /**
  * Formats a Date object into NOAA's expected datetime format
@@ -80,69 +105,99 @@ function splitDateRange(start: Date, end: Date, maxDays: number): { s: Date; e: 
 // (removed unused isoMinute helper)
 
 /**
- * Makes HTTP requests to the NOAA Tides and Currents API with error handling
- * 
- * This function handles the low-level API communication, including URL construction,
- * CORS handling, HTTP error checking, and NOAA-specific error response parsing.
- * 
- * @param {Record<string, string | number>} params - Query parameters for the API request
- * @returns {Promise<any>} Parsed JSON response from NOAA API
- * @throws {Error} When HTTP request fails or NOAA API returns an error
- * 
- * @example
- * const params = {
- *   product: 'water_level',
- *   station: '8518750',
- *   begin_date: '20240115 12:00',
- *   end_date: '20240115 18:00'
- * };
- * const data = await requestNOAA(params);
+ * In-memory cache for pending and completed API requests to prevent duplicates.
  */
-async function requestNOAA(params: Record<string, string | number>): Promise<unknown> {
-  const usp = new URLSearchParams(params as Record<string, string>);
-  const url = `${NOAA_BASE}?${usp.toString()}`;
-  
-  // Make request with CORS enabled for web browser compatibility
-  const res = await fetch(url, { mode: 'cors' });
-  
-  // Check for HTTP-level errors — also try to read body for NOAA's own error message
-  if (!res.ok) {
-    let reason = '';
-    try {
-      const body = await res.json() as { error?: { message?: string } };
-      if (body?.error?.message) {
-        reason = body.error.message.trim();
-      }
-    } catch { /* body wasn't JSON, ignore */ }
-    throw new Error(
-      `HTTP Status\t${res.status}\n` +
-      (reason ? `Reason\t${reason}\n` : '') +
-      `Request URL\t${url}`
-    );
-  }
+// requestCache moved to top
 
-  const data: unknown = await res.json();
-
-  // Check for NOAA API-specific errors in response body (HTTP 200 but error field present)
-  if (typeof data === 'object' && data && 'error' in data) {
-    const err = (data as { error?: { message?: string } }).error;
-    if (err) {
-      // Log more details for debugging
-      console.error('NOAA API Internal Error:', {
-        message: err.message,
-        url,
-        params
-      });
-      throw new Error(
-        `HTTP Status\t200\n` +
-        `Reason\t${err.message?.trim() || 'unknown'}\n` +
-        `Request URL\t${url}`
-      );
+/**
+ * Canonicalizes a URL by sorting params and bucketizing timestamps
+ */
+function getCanonicalUrl(baseUrl: string, params: Record<string, string | number>): string {
+  const usp = new URLSearchParams();
+  const sortedKeys = Object.keys(params).sort();
+  
+  for (const key of sortedKeys) {
+    let val: any = params[key];
+    // Bucketize any date-like strings or time ranges to the nearest 5 minutes
+    // to maximize cache hits across slightly different 'now' values.
+    if (typeof val === 'string' && val.includes('T') && val.includes('Z')) {
+      try {
+        const d = new Date(val);
+        if (!isNaN(d.getTime())) {
+          val = new Date(Math.floor(d.getTime() / 300000) * 300000).toISOString();
+        }
+      } catch { /* ignore */ }
+    } else if (key === 'time' && typeof val === 'string' && val.includes('/')) {
+      // Handle FiMAN time range: 2026-05-03T00:00:00Z/2026-05-03T06:00:00Z
+      val = val.split('/').map(part => {
+        try {
+          const d = new Date(part);
+          return !isNaN(d.getTime()) 
+            ? new Date(Math.floor(d.getTime() / 300000) * 300000).toISOString()
+            : part;
+        } catch { return part; }
+      }).join('/');
     }
+    usp.append(key, val);
   }
 
-  
-  return data;
+  // Round cache buster to 5 minutes
+  const cacheBuster = Math.floor(Date.now() / 300000) * 300000;
+  return `${baseUrl}?${usp.toString()}&_cb=${cacheBuster}`;
+}
+
+async function requestWithCache(url: string, ttl = 30000): Promise<any> {
+  if (requestCache[url]) return requestCache[url];
+
+  const fetchPromise = (async () => {
+    const res = await fetch(url, { mode: 'cors', cache: 'default' });
+    
+    if (!res.ok) {
+      let reason = '';
+      try {
+        const body = await res.json() as { error?: { message?: string } };
+        if (body?.error?.message) {
+          reason = body.error.message.trim();
+        }
+      } catch { /* ignore */ }
+      throw new Error(`HTTP Status\t${res.status}\n${reason ? `Reason\t${reason}\n` : ''}Request URL\t${url}`);
+    }
+
+    const data: unknown = await res.json();
+    if (typeof data === 'object' && data && 'error' in data) {
+      const err = (data as { error?: { message?: string } }).error;
+      if (err) throw new Error(`API Error: ${err.message?.trim() || 'unknown'}`);
+    }
+    return data;
+  })();
+
+  requestCache[url] = fetchPromise;
+  setTimeout(() => { delete requestCache[url]; }, ttl);
+  return fetchPromise;
+}
+
+async function requestNOAA(params: Record<string, string | number>): Promise<unknown> {
+  const url = getCanonicalUrl(NOAA_BASE, params);
+  return requestWithCache(url, 60000); // 1 min TTL for NOAA
+}
+
+/**
+ * Fetches data from the Sunny Day Flooding (FiMAN) API.
+ *
+ * In development, requests go through the Vite dev server proxy.
+ * In production, requests go through our Firebase Cloud Function
+ * (via the /api/fiman hosting rewrite in firebase.json).
+ */
+async function requestFiMAN(params: Record<string, string | number>): Promise<unknown> {
+  // Build URL against our own proxy endpoint — works identically in dev
+  // (Vite server.proxy) and production (Firebase Hosting → Cloud Function).
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    usp.append(k, String(v));
+  }
+  const url = `/api/fiman/services/data.php?${usp.toString()}`;
+
+  return requestWithCache(url, 300000); // 5 min TTL
 }
 
 /**
@@ -179,45 +234,172 @@ export async function fetchObservedWaterLevels(opts: {
   interval?: number; // minutes
   datum?: string;
   units?: 'english' | 'metric';
-}): Promise<TimeSeries> {
-  const { station, start, end, interval = 6, datum = 'MLLW', units = 'english' } = opts;
+  provider?: 'fiman' | 'noaa' | 'both';
+}): Promise<ObservedWaterLevelResult> {
+  const { station, start, end, interval = 6, datum = 'MLLW', units = 'english', provider = 'both' } = opts;
   
-  // NOAA CO-OPS has a 31-day limit for water_level requests.
-  const chunks = splitDateRange(start, end, 31);
+  // 1. Try Sunny Day Flooding (FiMAN) API first if requested and within limits
+  const isFimanRequested = provider === 'fiman' || provider === 'both';
+  const isNoaaRequested = provider === 'noaa' || provider === 'both';
   
-  const fetchChunk = async (s: Date, e: Date) => {
-    const params = {
-      product: 'water_level',
-      application: 'canal-dr-flood',
-      format: 'json',
-      time_zone: 'gmt',
-      units,
-      datum,
-      station,
-      interval: String(interval),
-      begin_date: fmtBeginEnd(s),
-      end_date: fmtBeginEnd(e),
-    };
-    
-    try {
-      const data = await requestNOAA(params) as { data?: Array<{ v: string; t: string }> };
-      const chunkOut: TimeSeries = {};
-      for (const row of data?.data ?? []) {
-        const v = parseFloat(row.v);
-        const t = row.t as string;
-        if (!isFinite(v) || !t) continue;
-        const iso = t.replace(' ', 'T') + 'Z';
-        chunkOut[iso] = v;
+  // 1. Fetch NOAA CO-OPS
+  let noaaSeries: TimeSeries = {};
+  if (isNoaaRequested || isFimanRequested) {
+    const chunks = splitDateRange(start, end, 31);
+    const fetchChunk = async (s: Date, e: Date) => {
+      const params = {
+        product: 'water_level',
+        application: 'canal-dr-flood',
+        format: 'json',
+        time_zone: 'gmt',
+        units,
+        datum,
+        station,
+        interval: String(interval),
+        begin_date: fmtBeginEnd(s),
+        end_date: fmtBeginEnd(e),
+      };
+      
+      try {
+        const data = await requestNOAA(params) as { data?: Array<{ v: string; t: string }> };
+        const chunkOut: TimeSeries = {};
+        for (const row of data?.data ?? []) {
+          const v = parseFloat(row.v);
+          const t = row.t as string;
+          if (!isFinite(v) || !t) continue;
+          const iso = t.replace(' ', 'T') + 'Z';
+          chunkOut[iso] = v;
+        }
+        return chunkOut;
+      } catch (err) {
+        console.warn(`NOAA chunk fetch failed [${fmtBeginEnd(s)} - ${fmtBeginEnd(e)}]:`, err);
+        return {};
       }
-      return chunkOut;
-    } catch (err) {
-      console.warn(`Chunk fetch failed [${fmtBeginEnd(s)} - ${fmtBeginEnd(e)}]:`, err);
-      return {};
-    }
-  };
+    };
 
-  const results = await Promise.all(chunks.map(c => fetchChunk(c.s, c.e)));
-  return Object.assign({}, ...results);
+    const results = await Promise.all(chunks.map(c => fetchChunk(c.s, c.e)));
+    noaaSeries = Object.assign({}, ...results);
+  }
+
+  // 2. Try Sunny Day Flooding (FiMAN) API
+  let fimanSeries: TimeSeries | null = null;
+  const allImagery: Record<string, Record<string, string>> = {};
+  const ms = end.getTime() - start.getTime();
+  const days = Math.ceil(ms / (24 * 3600 * 1000));
+  
+  if (isFimanRequested && days <= 90) {
+    const formatFimanDate = (d: Date) => d.toISOString().split('.')[0] + 'Z';
+    const timeStr = `${formatFimanDate(start)}/${formatFimanDate(end)}`;
+    
+    // Match the user's working sample platform ID exactly (e.g., sunnyd_cb_03)
+    const sensors = WEBCAMS.map(w => w.id.toLowerCase());
+    
+    const platformResults = await Promise.all(sensors.map(async (platform) => {
+      const params = {
+        format: 'json',
+        pretty: 'true',
+        time: timeStr,
+        platform,
+        standard: 'false',
+        qcFilter: 'false',
+        health: 'summary',
+        region: '',
+        datum: datum.toUpperCase(),
+        windPrediction: 'wind speed prediction',
+        www: 'true',
+        dataView: 'less',
+        allStations: 'true'
+      };
+
+      try {
+        const data = await requestFiMAN(params) as any;
+        const properties = data.features?.[0]?.properties;
+        const parameters = properties?.parameters || [];
+        
+        const fimanParam = parameters.find((p: any) => p.id === "FIMAN (observed)");
+        const cameraParams = parameters.filter((p: any) => p.id === "Camera");
+        
+        // Extract imagery for this platform
+        cameraParams.forEach((cameraParam: any) => {
+          if (cameraParam?.observations?.times?.length > 0) {
+            const times = cameraParam.observations.times;
+            const urls = cameraParam.observations.values;
+            const platformImagery: Record<string, string> = {};
+            for (let i = 0; i < times.length; i++) {
+              const t = new Date(times[i] + 'Z').toISOString();
+              platformImagery[t] = urls[i];
+            }
+            
+            // Map to the specific camera ID derived from the filename
+            const firstUrl = urls[0];
+            const filename = firstUrl.split('/').pop() || '';
+            const derivedId = filename.split('.')[0];
+            
+            if (derivedId) {
+              const canonicalId = derivedId.toUpperCase().startsWith('SUNNYD_') 
+                ? derivedId.toUpperCase() 
+                : `SUNNYD_${derivedId.toUpperCase()}`;
+              allImagery[canonicalId] = platformImagery;
+            }
+            
+            // Backup mapping for the platform name
+            const platformKey = platform.toUpperCase().startsWith('SUNNYD_')
+              ? platform.toUpperCase()
+              : `SUNNYD_${platform.toUpperCase()}`;
+            if (!allImagery[platformKey]) {
+              allImagery[platformKey] = platformImagery;
+            }
+          }
+        });
+
+        if (fimanParam?.observations?.times?.length > 0) {
+          const out: TimeSeries = {};
+          const times = fimanParam.observations.times;
+          const values = fimanParam.observations.values;
+          
+          for (let i = 0; i < times.length; i++) {
+            const t = new Date(times[i] + 'Z');
+            let v = parseFloat(values[i]);
+            if (!isNaN(v)) {
+              if (datum.toUpperCase() === 'MLLW') {
+                const datumOffset = units === 'english'
+                  ? CAROLINA_BEACH_NAVD88_TO_MLLW_FT
+                  : CAROLINA_BEACH_NAVD88_TO_MLLW_FT * 0.3048;
+                v += datumOffset;
+              }
+              out[t.toISOString()] = v;
+            }
+          }
+          return { series: out, platform };
+        }
+      } catch (e) {
+        console.warn(`FiMAN fetch failed for ${platform}:`, e);
+      }
+      return null;
+    }));
+
+    // Find the first valid water level series (preferring CB_03)
+    const validResult = platformResults.find(r => r !== null);
+    if (validResult) {
+      fimanSeries = validResult.series;
+    }
+  }
+
+  // Determine primary and secondary data
+  if (provider === 'noaa') {
+    return { data: noaaSeries, source: 'noaa' };
+  } else if (provider === 'fiman' && fimanSeries) {
+    return { data: fimanSeries, source: 'fiman', imagery: allImagery };
+  } else if (provider === 'both') {
+    if (fimanSeries) {
+      return { data: fimanSeries, source: 'fiman', alternate: noaaSeries, imagery: allImagery };
+    } else {
+      return { data: noaaSeries, source: 'noaa' };
+    }
+  }
+
+  // Default fallback
+  return { data: noaaSeries, source: 'noaa' };
 }
 
 /**
@@ -320,28 +502,70 @@ export async function fetchPredictions(opts: {
  *   console.log(`Current surge: ${offset.toFixed(2)} feet based on ${n} observations`);
  * }
  */
-export function estimateSurgeOffset(observed: TimeSeries, predicted: TimeSeries): { offset: number; n: number } {
-  const diffs: number[] = [];
-  
-  // Find all timestamps where both observed and predicted data exist
-  for (const k of Object.keys(observed)) {
-    if (k in predicted) {
-      // Calculate difference: positive = surge above prediction, negative = below
-      diffs.push(observed[k] - predicted[k]);
+export function estimateSurgeAndTimeOffset(
+  observed: TimeSeries,
+  predicted: TimeSeries,
+  source: 'fiman' | 'noaa'
+): { offset: number; timeOffsetMins: number; n: number; source: 'fiman' | 'noaa' } {
+  const obsKeys = Object.keys(observed).sort();
+  const predKeys = Object.keys(predicted).sort();
+
+  if (obsKeys.length === 0 || predKeys.length === 0) {
+    return { offset: 0, timeOffsetMins: 0, n: 0, source };
+  }
+
+  // Helper to calculate median (non-mutating)
+  const getMedian = (arr: number[]) => {
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  };
+
+  // If source is noaa, we use the default 60 mins time offset.
+  if (source === 'noaa') {
+    const diffs: number[] = [];
+    for (const k of obsKeys) {
+      if (k in predicted) {
+        diffs.push(observed[k] - predicted[k]);
+      }
+    }
+    const offset = diffs.length > 0 ? getMedian(diffs) : 0;
+    return { offset, timeOffsetMins: 60, n: diffs.length, source };
+  }
+
+  // If source is fiman, we cross-correlate to find best time offset and vertical offset
+  let bestTimeOffset = 60; // default to 60 if correlation fails
+  let bestVerticalOffset = 0;
+  let minVariance = Infinity;
+  let maxCount = 0;
+
+  // Search from 0 to 120 mins in 6 min increments
+  for (let shiftMins = 0; shiftMins <= 120; shiftMins += 6) {
+    const shiftMs = shiftMins * 60 * 1000;
+    const diffs: number[] = [];
+
+    // shift NOAA predicted FORWARD to match FiMAN time
+    for (const fimanTimeStr of obsKeys) {
+      const fimanTime = new Date(fimanTimeStr).getTime();
+      const predTimeStr = new Date(fimanTime - shiftMs).toISOString();
+      if (predTimeStr in predicted) {
+        diffs.push(observed[fimanTimeStr] - predicted[predTimeStr]);
+      }
+    }
+
+    if (diffs.length > 0) {
+      const median = getMedian(diffs);
+      const variance = diffs.reduce((acc, val) => acc + Math.pow(val - median, 2), 0) / diffs.length;
+      if (variance < minVariance) {
+        minVariance = variance;
+        bestTimeOffset = shiftMins;
+        bestVerticalOffset = median;
+        maxCount = diffs.length;
+      }
     }
   }
-  
-  // Return zero offset if no matching data points
-  if (diffs.length === 0) return { offset: 0, n: 0 };
-  
-  // Sort differences to find median (robust against outliers)
-  diffs.sort((a, b) => a - b);
-  const mid = Math.floor(diffs.length / 2);
-  
-  // Calculate median: middle value for odd count, average of middle two for even count
-  const offset = diffs.length % 2 ? diffs[mid] : (diffs[mid - 1] + diffs[mid]) / 2;
-  
-  return { offset, n: diffs.length };
+
+  return { offset: bestVerticalOffset, timeOffsetMins: bestTimeOffset, n: maxCount, source };
 }
 
 /**
@@ -467,21 +691,32 @@ export async function buildAdjustedFuture(opts: {
   interval?: number;
   datum?: string;
   units?: 'english' | 'metric';
-}): Promise<{ adjusted: TimeSeries; offset: number; n: number }> {
-  const { station, now, lookbackHours, lookaheadHours, interval = 6, datum = 'MLLW', units = 'english' } = opts;
+  existingObserved?: TimeSeries;
+  existingPredicted?: TimeSeries;
+}): Promise<{ adjusted: TimeSeries; offset: number; timeOffsetMins: number; source: 'fiman' | 'noaa'; n: number; observations?: ObservedWaterLevelResult }> {
+  const { station, now, lookbackHours, lookaheadHours, interval = 6, datum = 'MLLW', units = 'english', existingObserved, existingPredicted } = opts;
   
   // Define time windows for analysis
   const pastStart = new Date(now.getTime() - lookbackHours * 3600_000);
   const pastEnd = now;
   
-  // Fetch historical data in parallel for efficiency
-  const [observed, predictedPast] = await Promise.all([
-    fetchObservedWaterLevels({ station, start: pastStart, end: pastEnd, interval, datum, units }),
-    fetchPredictions({ station, start: pastStart, end: pastEnd, interval, datum, units }),
+  // Fetch historical data in parallel if not provided
+  const [observedObj, predictedPast] = await Promise.all([
+    existingObserved 
+      ? Promise.resolve<ObservedWaterLevelResult>({ data: existingObserved, source: 'fiman' })
+      : fetchObservedWaterLevels({ station, start: pastStart, end: pastEnd, interval, datum, units, provider: 'both' }),
+    existingPredicted
+      ? Promise.resolve(existingPredicted)
+      : fetchPredictions({ station, start: pastStart, end: pastEnd, interval, datum, units }),
   ]);
   
-  // Calculate current storm surge offset
-  const { offset, n } = estimateSurgeOffset(observed, predictedPast);
+  // For the surge calculation used to anchor the future forecast, 
+  // we prioritize NOAA's own observations if available.
+  const surgeInput = observedObj.alternate && Object.keys(observedObj.alternate).length > 0 
+    ? { data: observedObj.alternate, source: 'noaa' as const }
+    : { data: observedObj.data, source: observedObj.source };
+
+  const { offset, timeOffsetMins, n, source } = estimateSurgeAndTimeOffset(surgeInput.data, predictedPast, surgeInput.source);
   
   // Define forecast time window
   const futStart = now;
@@ -497,13 +732,15 @@ export async function buildAdjustedFuture(opts: {
     units 
   });
   
-  // Apply surge adjustment to future predictions
+  // Apply surge and time adjustment to future predictions
   const adjusted: TimeSeries = {};
+  const shiftMs = timeOffsetMins * 60 * 1000;
   for (const [k, v] of Object.entries(predictedFuture)) {
-    adjusted[k] = v + offset; // Add current surge to harmonic prediction
+    const newTime = new Date(new Date(k).getTime() + shiftMs).toISOString();
+    adjusted[newTime] = v + offset; // Add current surge to harmonic prediction
   }
   
-  return { adjusted, offset, n };
+  return { adjusted, offset, timeOffsetMins, source, n, observations: observedObj };
 }
 
 /**
@@ -660,18 +897,27 @@ async function fetchOpenMeteoPrecipitation(lat: number, lng: number, start: Date
  * NWS strictly requires a custom User-Agent header.
  */
 async function requestNWS(url: string): Promise<any> {
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'FloodCast (floodcast-dev@googlegroups.com)',
-      'Accept': 'application/geo+json'
+  if (requestCache[url]) return requestCache[url];
+
+  const fetchPromise = (async () => {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'FloodCast (floodcast-dev@googlegroups.com)',
+        'Accept': 'application/geo+json'
+      }
+    });
+    
+    if (!res.ok) {
+      throw new Error(`NWS API error: ${res.status} ${res.statusText}`);
     }
-  });
+    
+    return res.json();
+  })();
+
+  requestCache[url] = fetchPromise;
+  setTimeout(() => { delete requestCache[url]; }, 60000); // NWS data is cacheable for 1min
   
-  if (!res.ok) {
-    throw new Error(`NWS API error: ${res.status} ${res.statusText}`);
-  }
-  
-  return res.json();
+  return fetchPromise;
 }
 
 /**

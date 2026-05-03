@@ -9,6 +9,7 @@ interface WebcamFeedCardProps {
   targetTime: Date;
   onResetToLive?: () => void;
   onClose?: () => void;
+  imagery?: Record<string, string>;
 }
 
 // Helper to truncate seconds/milliseconds to start exactly on the minute
@@ -58,34 +59,66 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
   targetTime,
   onResetToLive,
   onClose,
+  imagery,
 }) => {
   const [attemptIdx, setAttemptIdx] = useState(0);
+  const [apiFailed, setApiFailed] = useState(false);
   const [hasError, setHasError] = useState(false);
   const MAX_ATTEMPTS = FALLBACK_OFFSETS_MINUTES.length;
 
   // Reset attempts when time or camera changes
   useEffect(() => {
     setAttemptIdx(0);
+    setApiFailed(false);
     setHasError(false);
-  }, [targetTime, cameraId]);
+  }, [targetTime, cameraId, imagery]);
 
   const isFuture = (targetTime.getTime() - Date.now()) > 10 * 60 * 1000;
-  const baseDate = getBaseMinute(targetTime);
-  const offsetMinutes = FALLBACK_OFFSETS_MINUTES[attemptIdx] || 0;
-  const imageDate = new Date(baseDate.getTime() - offsetMinutes * 60 * 1000);
-  const dateString = formatDateToIsoString(imageDate);
-
-  const imageUrl = `https://wl.secoora.org/webcam/${cameraId}.${dateString}.jpg`;
   
-  const isStale = offsetMinutes > 60; // if image is older than 1 hour relative to targetTime
-  // If the image we are showing is more than 1 hour older than real-world 'now', it's historical.
-  const isHistorical = (Date.now() - imageDate.getTime()) > 60 * 60 * 1000;
+  // 1. Try to find image in API response first
+  let imageUrl = '';
+  let finalImageDate = new Date();
+  let foundInApi = false;
+
+  if (imagery && Object.keys(imagery).length > 0 && !apiFailed && !hasError) {
+    const targetMs = targetTime.getTime();
+    const sortedTimes = Object.keys(imagery)
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime()); // Latest first
+    
+    // Find nearest point <= targetTime
+    for (const iso of sortedTimes) {
+      const t = new Date(iso).getTime();
+      if (t <= targetMs) {
+        imageUrl = imagery[iso];
+        finalImageDate = new Date(iso);
+        foundInApi = true;
+        break;
+      }
+    }
+  }
+
+  // 2. Fallback to manual URL construction if not found in API or if specifically failed
+  if (!foundInApi) {
+    const baseDate = getBaseMinute(targetTime);
+    const offsetMinutes = FALLBACK_OFFSETS_MINUTES[attemptIdx] || 0;
+    finalImageDate = new Date(baseDate.getTime() - offsetMinutes * 60 * 1000);
+    const dateString = formatDateToIsoString(finalImageDate);
+    imageUrl = `https://wl.secoora.org/webcam/${cameraId}.${dateString}.jpg`;
+  }
+  
+  const isStale = (targetTime.getTime() - finalImageDate.getTime()) > 60 * 60 * 1000; // > 1h diff
+  const isHistorical = (Date.now() - finalImageDate.getTime()) > 60 * 60 * 1000;
 
   const handleError = () => {
-    if (attemptIdx < MAX_ATTEMPTS - 1) {
-      setAttemptIdx(a => a + 1);
+    if (foundInApi) {
+      setApiFailed(true);
+      setAttemptIdx(0); 
     } else {
-      setHasError(true);
+      if (attemptIdx < MAX_ATTEMPTS - 1) {
+        setAttemptIdx(a => a + 1);
+      } else {
+        setHasError(true);
+      }
     }
   };
 
@@ -98,7 +131,7 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
               <IonIcon icon={videocamOutline} />
               <span>
                 {isHistorical 
-                  ? imageDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+                  ? finalImageDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
                   : 'Live Feed'}
               </span>
             </h3>
@@ -141,6 +174,7 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
           <img 
             src={imageUrl} 
             alt={`Webcam feed from ${locationName}`} 
+            key={imageUrl}
             className="webcam-image" 
             loading="lazy"
             onError={handleError}
@@ -154,8 +188,8 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
           <div className={`webcam-overlay-badge ${isStale && !hasError ? 'stale-badge' : ''}`}>
             <span className="badge-time">
               {isStale && !hasError && <IonIcon icon={warningOutline} style={{ marginRight: '4px', verticalAlign: 'middle' }} />}
-              {isStale && !hasError ? imageDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' : ''}
-              {imageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {isStale && !hasError ? finalImageDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' : ''}
+              {finalImageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
             <span className="badge-divider">|</span>
             <span className="badge-cam">CAM: {cameraId}</span>
