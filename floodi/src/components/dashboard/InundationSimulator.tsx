@@ -11,7 +11,7 @@ interface InundationSimulatorProps {
   onLevelChange: (level: number) => void;
   thresholds: AppConfiguration['thresholds'];
   simulationContext?: {
-    time: Date;
+    targetTime: Date;
     wind?: { speed: number; dir: number };
     precip?: number;
     source?: string;
@@ -41,7 +41,7 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
 
   const now = new Date();
   // Ensure we handle potential null/undefined context gracefully
-  const simTime = simulationContext?.time ?? now;
+  const simTime = simulationContext?.targetTime ?? now;
   const diffMinutes = (simTime.getTime() - now.getTime()) / 60000;
   
   let dynamicTitle = "Water Level Simulation";
@@ -82,7 +82,7 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
               {!simulationContext.isSimulated && (
                 <span className="context-item time">
                   <IonIcon icon={timeOutline} />
-                  {simulationContext.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' })}
+                  {simulationContext.targetTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' })}
                 </span>
               )}
               {displaySource && (

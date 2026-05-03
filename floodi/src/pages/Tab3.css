@@ -1,0 +1,178 @@
+.about-content {
+  --background: var(--ion-background-color);
+}
+
+.about-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px 16px 64px 16px;
+}
+
+/* Hero Section */
+.hero-section {
+  text-align: center;
+  margin-bottom: 40px;
+  padding: 20px 0;
+}
+
+.about-logo {
+  width: 180px;
+  max-width: 50vw;
+  height: auto;
+  margin-bottom: 24px;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.1));
+}
+
+.hero-title {
+  font-size: 2.2rem;
+  font-weight: 800;
+  margin: 0 0 12px 0;
+  background: linear-gradient(135deg, var(--ion-color-primary) 0%, var(--ion-color-secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.02em;
+}
+
+.hero-subtitle {
+  font-size: 1.1rem;
+  color: var(--ion-color-medium);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Cards */
+.glass-card {
+  margin: 0 0 32px 0;
+  border-radius: 20px;
+  background: rgba(var(--ion-color-primary-rgb), 0.03);
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.1);
+  box-shadow: none;
+}
+
+.card-header-icon-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-icon {
+  font-size: 24px;
+}
+
+.section-divider {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 40px 0 20px 0;
+  padding-left: 8px;
+  border-left: 4px solid var(--ion-color-primary);
+}
+
+/* Source Grid */
+.source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.source-card {
+  margin: 0;
+  border-radius: 16px;
+  border: 1px solid var(--ion-color-light);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.source-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+}
+
+.source-icon {
+  font-size: 28px;
+  color: var(--ion-color-primary);
+  margin-bottom: 8px;
+}
+
+.source-card ion-card-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.source-card ion-card-content p {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.source-card ion-button {
+  margin: 0;
+  padding: 0;
+  --padding-start: 0;
+  font-weight: 600;
+  text-transform: none;
+}
+
+/* Methodology */
+.methodology-card {
+  margin: 0 0 40px 0;
+  border-radius: 20px;
+  background: var(--ion-color-light);
+  box-shadow: none;
+}
+
+.method-item {
+  margin-bottom: 20px;
+}
+
+.method-item:last-child {
+  margin-bottom: 0;
+}
+
+.method-item h4 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  color: var(--ion-color-primary);
+}
+
+.method-item p {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Footer */
+.about-footer {
+  text-align: center;
+  padding: 32px 0;
+  border-top: 1px solid var(--ion-color-light);
+}
+
+.about-footer p {
+  font-size: 0.9rem;
+  color: var(--ion-color-medium);
+  margin: 0 0 8px 0;
+}
+
+.version-tag {
+  font-family: ui-monospace, 'SF Mono', monospace;
+  font-size: 0.75rem !important;
+  opacity: 0.7;
+}
+
+/* Dark Mode Tweaks */
+@media (prefers-color-scheme: dark) {
+  .source-card {
+    background: #1e1e1e;
+    border-color: #333;
+  }
+  
+  .methodology-card {
+    background: #1a1a1a;
+  }
+  
+  .glass-card {
+    background: rgba(var(--ion-color-primary-rgb), 0.1);
+  }
+}

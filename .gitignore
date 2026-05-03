@@ -1,1 +1,4 @@
 node_modules
+requests.har
+*.log
+.DS_Store

@@ -43,12 +43,18 @@ interface SettingsModalProps {
   computedOffset: number | null;
   /** Number of data points used for offset calculation */
   offsetDataPoints: number;
+  /** The data source for observations */
+  dataSource?: 'fiman' | 'noaa';
+  /** The active time offset in minutes */
+  timeOffsetMins?: number;
   /** Success message to show in toast */
   successMessage?: string | null;
   /** Error message to show */
   errorMessage?: string | null;
   /** Callback to clear messages */
   onClearMessages?: () => void;
+  /** Callback to reset all settings to defaults */
+  onResetDefaults: () => void;
 }
 
 /**
@@ -71,9 +77,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onDisplayChange,
   computedOffset,
   offsetDataPoints,
+  dataSource,
+  timeOffsetMins,
   successMessage,
   errorMessage,
   onClearMessages,
+  onResetDefaults,
 }) => {
   const history = useHistory();
   /**
@@ -131,6 +140,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onOffsetConfigChange={onOffsetConfigChange}
             computedOffset={computedOffset}
             offsetDataPoints={offsetDataPoints}
+            dataSource={dataSource}
+            timeOffsetMins={timeOffsetMins}
             showDelta={config.display.showDelta}
             onShowDeltaChange={(show) => onDisplayChange({ showDelta: show })}
           />
@@ -150,6 +161,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             timezone={config.display.timezone}
             onTimezoneChange={(timezone) => onDisplayChange({ timezone })}
           />
+
+          <div style={{ padding: '24px 16px 40px' }}>
+            <IonButton 
+              expand="block" 
+              fill="outline" 
+              color="danger" 
+              onClick={() => {
+                if (window.confirm('Reset all settings to defaults? This cannot be undone.')) {
+                  onResetDefaults();
+                }
+              }}
+            >
+              Reset to Default Settings
+            </IonButton>
+          </div>
         </IonContent>
       </IonModal>
 

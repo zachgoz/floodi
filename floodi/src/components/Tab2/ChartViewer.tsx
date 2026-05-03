@@ -86,6 +86,8 @@ interface ChartViewerProps {
   warnings?: string[];
   /** View mode setting */
   viewMode?: 'basic' | 'advanced';
+  /** Optional time offset in minutes for prediction alignment */
+  timeOffsetMins?: number;
 }
 
 /**
@@ -211,6 +213,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   resetKey,
   timeRange,
   viewMode = 'basic',
+  timeOffsetMins = 0,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -901,6 +904,55 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           );
         })()}
 
+        {/* Threshold gradients for dynamic line coloring */}
+        {thresholds && (
+          <defs>
+            <linearGradient id="obs-flood-gradient" gradientUnits="userSpaceOnUse" x1="0" y1={margins.t + innerH} x2="0" y2={margins.t}>
+              {(() => {
+                const getOff = (v: number) => {
+                  const y = yOf(v);
+                  return `${Math.max(0, Math.min(100, ((margins.t + innerH - y) / innerH) * 100))}%`;
+                };
+                return (
+                  <>
+                    <stop offset="0%" stopColor="var(--line-observed, #2ecc71)" />
+                    <stop offset={getOff(thresholds.minor)} stopColor="var(--line-observed, #2ecc71)" />
+                    <stop offset={getOff(thresholds.minor)} stopColor="#fbc02d" />
+                    <stop offset={getOff(thresholds.moderate)} stopColor="#fbc02d" />
+                    <stop offset={getOff(thresholds.moderate)} stopColor="#f57c00" />
+                    <stop offset={getOff(thresholds.major)} stopColor="#f57c00" />
+                    <stop offset={getOff(thresholds.major)} stopColor="#d32f2f" />
+                    <stop offset={getOff(thresholds.extreme)} stopColor="#d32f2f" />
+                    <stop offset="100%" stopColor="#7b1fa2" />
+                  </>
+                );
+              })()}
+            </linearGradient>
+
+            <linearGradient id="adj-flood-gradient" gradientUnits="userSpaceOnUse" x1="0" y1={margins.t + innerH} x2="0" y2={margins.t}>
+              {(() => {
+                const getOff = (v: number) => {
+                  const y = yOf(v);
+                  return `${Math.max(0, Math.min(100, ((margins.t + innerH - y) / innerH) * 100))}%`;
+                };
+                return (
+                  <>
+                    <stop offset="0%" stopColor="var(--line-observed, #2ecc71)" />
+                    <stop offset={getOff(thresholds.minor)} stopColor="var(--line-observed, #2ecc71)" />
+                    <stop offset={getOff(thresholds.minor)} stopColor="#fbc02d" />
+                    <stop offset={getOff(thresholds.moderate)} stopColor="#fbc02d" />
+                    <stop offset={getOff(thresholds.moderate)} stopColor="#f57c00" />
+                    <stop offset={getOff(thresholds.major)} stopColor="#f57c00" />
+                    <stop offset={getOff(thresholds.major)} stopColor="#d32f2f" />
+                    <stop offset={getOff(thresholds.extreme)} stopColor="#d32f2f" />
+                    <stop offset="100%" stopColor="#7b1fa2" />
+                  </>
+                );
+              })()}
+            </linearGradient>
+          </defs>
+        )}
+
         {/* Plot area */}
         <rect
           x={margins.l}
@@ -962,7 +1014,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
         {/* Data series */}
 
-        {/* Surge Fill (Area between observed and predicted) */}
+        {/* Surge Fill (Area between observed and phase-aligned predicted) */}
         {viewMode === 'advanced' && observedPoints.length > 1 && predictedPoints.length > 1 && (() => {
           const maxObsT = observedPoints[observedPoints.length - 1].t.getTime();
           const matchingPredicted = predictedPoints.filter(p => p.t.getTime() <= maxObsT);
@@ -980,16 +1032,18 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           );
         })()}
 
-        {/* Observed data (segmented by threshold) */}
-        {observedPoints.length > 1 && thresholds && segmentByThreshold(observedPoints, thresholds.minor).map((segment, i) => (
+        {/* Observed data (using threshold gradient) */}
+        {observedPoints.length > 1 && (
           <polyline
-            key={`obs-${i}`}
+            key="obs-line"
             fill="none"
-            stroke={segment.above ? '#e74c3c' : '#2ecc71'}
-            strokeWidth="2"
-            points={buildPolyline(segment.points, xOf, yOf)}
+            stroke={thresholds ? "url(#obs-flood-gradient)" : "var(--line-observed, #2ecc71)"}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={observedPoints.map(p => `${xOf(p.t)},${yOf(p.v)}`).join(' ')}
           />
-        ))}
+        )}
 
         {/* Predicted data */}
         {viewMode === 'advanced' && predictedPoints.length > 1 && (
@@ -1109,20 +1163,22 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           </g>
         )}
 
-        {/* Adjusted predictions (segmented by threshold, dashed) */}
-        {adjustedPoints.length > 1 && thresholds && segmentByThreshold(adjustedPoints, thresholds.minor).map((segment, i) => (
+        {/* Adjusted predictions (using threshold gradient, dashed) */}
+        {adjustedPoints.length > 1 && (
           <polyline
-            key={`adj-${i}`}
+            key="adj-line"
             fill="none"
-            stroke={segment.above ? '#e74c3c' : '#2ecc71'}
-            strokeWidth="2"
+            stroke={thresholds ? "url(#adj-flood-gradient)" : "var(--line-observed, #2ecc71)"}
+            strokeWidth="2.5"
             strokeDasharray="5 4"
-            points={buildPolyline(segment.points, xOf, yOf)}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={adjustedPoints.map(p => `${xOf(p.t)},${yOf(p.v)}`).join(' ')}
           />
-        ))}
+        )}
 
-        {/* Delta series (past) */}
-        {showDelta && deltaPoints.length > 1 && (
+        {/* Delta series (past) - ONLY in advanced mode */}
+        {viewMode === 'advanced' && showDelta && deltaPoints.length > 1 && (
           <g>
             <line
               x1={margins.l}
@@ -1140,18 +1196,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
               points={buildPolyline(deltaPoints, xOf, yOf)}
             />
           </g>
-        )}
-
-        {/* Future surge forecast (dashed) */}
-        {showDelta && surgeForecastPoints.length > 1 && (
-          <polyline
-            fill="none"
-            stroke="#1976d2"
-            strokeWidth="2"
-            strokeDasharray="5 4"
-            opacity={0.9}
-            points={buildPolyline(surgeForecastPoints, xOf, yOf)}
-          />
         )}
 
         {/* X-axis ticks and labels at Tide Peaks */}
@@ -1210,8 +1254,9 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
                   // Get max/min values at this time across all series to avoid overlap
                   const valsAtTime = [predPoint.v];
-                  if (nearestObs && Math.abs(nearestObs.point.t.getTime() - tick.getTime()) < 300000) valsAtTime.push(nearestObs.point.v);
-                  if (nearestAdj && Math.abs(nearestAdj.point.t.getTime() - tick.getTime()) < 300000) valsAtTime.push(nearestAdj.point.v);
+                  // Look in a wider window (30 mins) to catch the peak of other series even if slightly shifted
+                  if (nearestObs && Math.abs(nearestObs.point.t.getTime() - tick.getTime()) < 1800000) valsAtTime.push(nearestObs.point.v);
+                  if (nearestAdj && Math.abs(nearestAdj.point.t.getTime() - tick.getTime()) < 1800000) valsAtTime.push(nearestAdj.point.v);
 
                   const maxV = Math.max(...valsAtTime);
                   const minV = Math.min(...valsAtTime);
@@ -1222,8 +1267,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                     const curr = predictedPoints[idx].v;
                     const prev = predictedPoints[idx - 1].v;
                     const next = predictedPoints[idx + 1].v;
-                    // Robust check: it's a high if it's not a low.
-                    // A low is strictly less than at least one neighbor and <= both.
                     const isLow = (curr <= prev && curr < next) || (curr < prev && curr <= next);
                     isHigh = !isLow;
                   } else if (idx === 0 && predictedPoints.length > 1) {
@@ -1232,7 +1275,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                     isHigh = predictedPoints[idx].v > predictedPoints[idx - 1].v;
                   }
 
-                  const finalY = isHigh ? yOf(maxV) - 10 : yOf(minV) + 20;
+                  // Clearance: -18px for high peaks, +24px for low peaks
+                  const finalY = isHigh ? yOf(maxV) - 18 : yOf(minV) + 24;
 
                   return (
                     <text
@@ -1487,10 +1531,17 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           const adjRes = findNearestPoint(adjustedPoints, centerTime);
           const predRes = findNearestPoint(predictedPoints, centerTime);
 
+          const lastObsT = observedPoints.length > 0 
+            ? Math.max(...observedPoints.map(p => p.t.getTime())) 
+            : Date.now();
+          const isAfterObs = centerTime.getTime() > lastObsT;
+
           // We'll show dots for Observed and the "main" forecast (Adjusted/Predicted)
-          const obsY = (obsRes && obsRes.dtMin < 60) ? yOf(obsRes.point.v) : null;
-          const forecastY = (adjRes && adjRes.dtMin < 60) ? yOf(adjRes.point.v) : 
-                            (predRes && predRes.dtMin < 60) ? yOf(predRes.point.v) : null;
+          // We use a tighter 15-minute window for markers on the vertical center line
+          // to ensure they accurately represent 'current' state without temporal drift.
+          const obsY = (obsRes && obsRes.dtMin <= 15 && !isAfterObs) ? yOf(obsRes.point.v) : null;
+          const adjY = (adjRes && adjRes.dtMin <= 15 && isAfterObs) ? yOf(adjRes.point.v) : null;
+          const predY = (viewMode === 'advanced' && predRes && predRes.dtMin <= 15) ? yOf(predRes.point.v) : null;
           
           return (
             <g key="viewing-time-marker">
@@ -1507,18 +1558,26 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
               {/* Intersection dots */}
               {obsY !== null && (
                 <circle 
-                  cx={x} cy={obsY} r={4.5} 
-                  fill="var(--chart-bg, #fff)" 
-                  stroke="var(--line-observed, #2ecc71)" 
-                  strokeWidth={2} 
+                   cx={x} cy={obsY} r={4.5} 
+                   fill="var(--chart-bg, #fff)" 
+                   stroke="var(--line-observed, #2ecc71)" 
+                   strokeWidth={2} 
                 />
               )}
-              {forecastY !== null && (
+              {adjY !== null && (
                 <circle 
-                  cx={x} cy={forecastY} r={4.5} 
-                  fill="var(--chart-bg, #fff)" 
-                  stroke={adjRes && adjRes.dtMin < 60 ? "var(--line-adjusted, #3498db)" : "var(--line-predicted, #95a5a6)"} 
-                  strokeWidth={2} 
+                   cx={x} cy={adjY} r={4.5} 
+                   fill="var(--chart-bg, #fff)" 
+                   stroke="var(--line-adjusted, #3498db)" 
+                   strokeWidth={2} 
+                />
+              )}
+              {predY !== null && (
+                <circle 
+                   cx={x} cy={predY} r={4} 
+                   fill="var(--chart-bg, #fff)" 
+                   stroke="var(--line-predicted, #95a5a6)" 
+                   strokeWidth={1.5} 
                 />
               )}
 

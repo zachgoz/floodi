@@ -139,22 +139,29 @@ export function useChartInteraction(): ChartInteraction & {
     const nearestDelta = findNearestPoint(deltaPoints, hoverTime);
 
     const rows: TooltipRow[] = [];
-    const isPast = hoverTime.getTime() < now.getTime() - 180000; // 3 min buffer for "now"
+    
+    // Find the latest observed timestamp to determine handover point
+    const lastObsT = observedPoints.length > 0 
+      ? Math.max(...observedPoints.map(p => p.t.getTime())) 
+      : now.getTime();
 
-    // Observed data (only show in the past and if within 9 minutes)
-    if (isPast && nearestObs && nearestObs.dtMin <= 9) {
+    const isAfterObs = hoverTime.getTime() > lastObsT;
+
+    // Observed data - Show if a point is within 60 minutes AND we are not in the forecast zone
+    const hasObs = nearestObs && nearestObs.dtMin <= 60;
+    if (hasObs && !isAfterObs) {
       const color = nearestObs.point.v >= threshold ? '#e74c3c' : '#2ecc71';
+      const sourceLabel = nearestObs.point.source ? ` (${nearestObs.point.source.toUpperCase()})` : '';
       rows.push({
-        label: 'Observed',
+        label: `Observed${sourceLabel}`,
         value: `${nearestObs.point.v.toFixed(2)} ft`,
         color,
         point: nearestObs.point,
       });
     }
 
-    // Predicted data (always show if available)
-    // NOAA Prediction
-    if (viewMode === 'advanced' && nearestPred && nearestPred.dtMin <= 9) {
+    // Predicted data (NOAA Harmonic) - ONLY in advanced mode
+    if (viewMode === 'advanced' && nearestPred && nearestPred.dtMin <= 60) {
       rows.push({
         label: 'NOAA Prediction',
         value: `${nearestPred.point.v.toFixed(2)} ft`,
@@ -163,8 +170,9 @@ export function useChartInteraction(): ChartInteraction & {
       });
     }
 
-    // Adjusted prediction data (only show in the future/present)
-    if (!isPast && nearestAdj && nearestAdj.dtMin <= 9) {
+    // Adjusted prediction data (FloodCast) - Show if within 60 minutes
+    // ONLY if we are after the last observation (forecast zone).
+    if (nearestAdj && nearestAdj.dtMin <= 60 && isAfterObs) {
       const color = nearestAdj.point.v >= threshold ? '#e74c3c' : '#2ecc71';
       rows.unshift({
         label: 'FloodCast Prediction',
@@ -175,11 +183,11 @@ export function useChartInteraction(): ChartInteraction & {
       });
     }
 
-    // Delta data (observed - predicted)
-    if (showDelta && nearestDelta) {
+    // Delta data (observed - predicted) - ONLY in advanced mode
+    if (viewMode === 'advanced' && showDelta && nearestDelta) {
       const deltaValue = nearestDelta.point.v;
       rows.push({
-        label: 'Δ obs - pred',
+        label: 'Surge (Obs-Pred)',
         value: `${deltaValue >= 0 ? '+' : ''}${deltaValue.toFixed(2)} ft`,
         color: '#1976d2',
         point: nearestDelta.point,

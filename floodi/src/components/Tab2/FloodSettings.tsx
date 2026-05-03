@@ -31,6 +31,10 @@ interface FloodSettingsProps {
   computedOffset: number | null;
   /** Number of data points used for offset calculation */
   offsetDataPoints: number;
+  /** The data source for observations */
+  dataSource?: 'fiman' | 'noaa';
+  /** The active time offset in minutes */
+  timeOffsetMins?: number;
   /** Whether to show surge offset trend (Δ obs - pred and forecast) */
   showDelta?: boolean;
   /** Callback when surge trend visibility changes */
@@ -53,6 +57,8 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
   onOffsetConfigChange,
   computedOffset,
   offsetDataPoints,
+  dataSource,
+  timeOffsetMins,
   showDelta,
   onShowDeltaChange,
 }) => {
@@ -196,15 +202,35 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
           </IonNote>
         </IonItem>
       ) : (
-        <IonItem>
-          <IonLabel position="stacked">Computed Surge Offset</IonLabel>
-          <IonNote slot="end" color="medium">
-            {formatComputedOffset()}
-          </IonNote>
-          <IonNote slot="helper" color="medium">
-            Automatically calculated from recent observation differences
-          </IonNote>
-        </IonItem>
+        <>
+          <IonItem>
+            <IonLabel position="stacked">Active Data Source</IonLabel>
+            <IonNote slot="end" color={dataSource === 'fiman' ? 'primary' : 'medium'}>
+              {dataSource === 'fiman' ? 'Live (FiMAN)' : 'Default (NOAA)'}
+            </IonNote>
+            <IonNote slot="helper" color="medium">
+              Source of observed water levels used for offset alignment
+            </IonNote>
+          </IonItem>
+          <IonItem>
+            <IonLabel position="stacked">Computed Time Offset</IonLabel>
+            <IonNote slot="end" color="medium">
+              {timeOffsetMins !== undefined ? `${timeOffsetMins} mins` : '—'}
+            </IonNote>
+            <IonNote slot="helper" color="medium">
+              Time shift applied to align predictions
+            </IonNote>
+          </IonItem>
+          <IonItem>
+            <IonLabel position="stacked">Computed Surge Offset</IonLabel>
+            <IonNote slot="end" color="medium">
+              {formatComputedOffset()}
+            </IonNote>
+            <IonNote slot="helper" color="medium">
+              Automatically calculated from recent observation differences
+            </IonNote>
+          </IonItem>
+        </>
       )}
 
       {/* Surge offset trend toggle */}

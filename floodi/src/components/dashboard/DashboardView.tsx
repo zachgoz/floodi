@@ -7,11 +7,12 @@ import AtmosphericOverlay from './AtmosphericOverlay';
 import InundationMap from './InundationMap';
 import InundationSimulator from './InundationSimulator';
 import WebcamFeedCard from './WebcamFeedCard';
-import { WEBCAMS } from './constants/webcams';
+import { WEBCAMS } from '../../constants/webcams';
 
 import './DashboardView.css';
 
 import { useChartData } from '../Tab2/hooks/useChartData';
+import { findNearestPoint } from '../Tab2/hooks/useChartInteraction';
 import type { AppConfiguration } from '../Tab2/types';
 
 const DEFAULT_CONFIG: AppConfiguration = {
@@ -40,6 +41,7 @@ const DEFAULT_CONFIG: AppConfiguration = {
   display: {
     timezone: 'local',
     showDelta: false,
+    viewMode: 'advanced',
   },
 };
 
@@ -51,6 +53,18 @@ export const DashboardView: React.FC = () => {
   const resetToLive = () => {
     setCenterRequest({ time: new Date(), id: Date.now() });
   };
+
+  if (loading || !processedData) {
+    return (
+      <IonPage>
+        <IonContent>
+          <div className="flex-center" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    );
+  }
 
   const {
     observedPoints,
@@ -68,25 +82,36 @@ export const DashboardView: React.FC = () => {
     ? windPoints.reduce((prev, curr) => 
         Math.abs(curr.t.getTime() - now.getTime()) < Math.abs(prev.t.getTime() - now.getTime()) ? curr : prev
       )
-    : { speed: 0, dir: 0 };
+    : { t: now, speed: 0, dir: 0 };
     
   // Find nearest observed/predicted point to 'now'
-  const currentObserved = observedPoints.length > 0
-    ? observedPoints.reduce((prev, curr) =>
-        Math.abs(curr.t.getTime() - now.getTime()) < Math.abs(prev.t.getTime() - now.getTime()) ? curr : prev
-      ).v
-    : predictedPoints.length > 0 
-      ? predictedPoints.reduce((prev, curr) =>
-          Math.abs(curr.t.getTime() - now.getTime()) < Math.abs(prev.t.getTime() - now.getTime()) ? curr : prev
-        ).v 
-      : 0;
-    
-  // Find nearest precip point to 'now'
-  const currentPrecip = precipPoints.length > 0 
-    ? precipPoints.reduce((prev, curr) => 
-        Math.abs(curr.t.getTime() - now.getTime()) < Math.abs(prev.t.getTime() - now.getTime()) ? curr : prev
-      ).value
-    : 0;
+  const lastObs = observedPoints.length > 0 ? observedPoints[observedPoints.length - 1] : null;
+  const isPastHandover = now.getTime() > (lastObs?.t.getTime() || 0);
+
+  const obsRes = findNearestPoint(observedPoints, now);
+  const adjRes = findNearestPoint(adjustedPoints, now);
+  const predRes = findNearestPoint(predictedPoints, now);
+  const windRes = findNearestPoint(windPoints, now);
+  const precipRes = findNearestPoint(precipPoints, now);
+
+  const isObserved = !!(obsRes && obsRes.dtMin < 60 && !isPastHandover);
+  const isAdjusted = !!(adjRes && adjRes.dtMin < 60 && isPastHandover);
+  const isPredicted = !isObserved && !isAdjusted && !!(predRes && predRes.dtMin < 60);
+
+  const wl = isObserved ? obsRes!.point.v :
+             isAdjusted ? adjRes!.point.v :
+             isPredicted ? predRes!.point.v : 0;
+
+  const sourceLabel = isObserved ? 'Observed' :
+                      isAdjusted ? 'FloodCast' :
+                      isPredicted ? 'NOAA' : 'Live Conditions';
+
+  const surge = (() => {
+    if (!predRes || predRes.dtMin > 60) return null;
+    return wl - predRes.point.v;
+  })();
+
+  const currentPrecip = precipRes && precipRes.dtMin < 60 ? precipRes.point.value : 0;
 
 
   return (
@@ -111,9 +136,12 @@ export const DashboardView: React.FC = () => {
                   precipitationAccumulation={currentPrecip}
                   windSpeed={currentWind.speed}
                   windDirection={currentWind.dir}
-                  observedWaterLevel={currentObserved}
+                  observedWaterLevel={wl}
+                  source={sourceLabel}
+                  surge={surge}
+                  prediction={predRes?.point.v}
                   isLive={true}
-                  time={now}
+                  targetTime={now}
                 />
                 
                 <HydrographChart
@@ -153,7 +181,7 @@ export const DashboardView: React.FC = () => {
                 waterLevelFt={simulationLevel}
                 onLevelChange={setSimulationLevel}
                 thresholds={{
-                  minor: 6.1,
+                  minor: 5.6,
                   moderate: 7.0,
                   major: 7.7,
                   extreme: 8.5,

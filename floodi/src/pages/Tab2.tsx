@@ -21,7 +21,7 @@ import { SettingsModal } from '../components/Tab2/SettingsModal';
 import { useSettingsStorage } from '../components/Tab2/hooks/useSettingsStorage';
 import { useChartData } from '../components/Tab2/hooks/useChartData';
 import { formatTooltipTime, findNearestPoint } from '../components/Tab2/hooks/useChartInteraction';
-import type { Station } from '../components/Tab2/types';
+import type { Station, Point } from '../components/Tab2/types';
 import { useChartComments } from '../components/Tab2/hooks/useChartComments';
 import { ChartCommentModal } from '../components/Tab2/ChartCommentModal';
 import '../components/Tab2/styles/Tab2.css';
@@ -29,10 +29,10 @@ import './Tab2.css';
 import '../components/dashboard/DashboardView.css';
 import HydrographChart from '../components/dashboard/HydrographChart';
 import AtmosphericOverlay from '../components/dashboard/AtmosphericOverlay';
-import InundationMap from '../components/dashboard/InundationMap';
+import InundationMap, { RoadProperties } from '../components/dashboard/InundationMap';
 import InundationSimulator from '../components/dashboard/InundationSimulator';
 import WebcamFeedCard from '../components/dashboard/WebcamFeedCard';
-import { WEBCAMS } from '../components/dashboard/constants/webcams';
+import { WEBCAMS } from '../constants/webcams';
 import { APIProvider } from '@vis.gl/react-google-maps';
 // Removed unused types
 
@@ -66,6 +66,7 @@ const Tab2: React.FC = () => {
     updateTimeRange,
     updateDisplay,
     resetToLive: baseResetToLive,
+    resetToDefaults,
   } = useSettingsStorage();
 
   // State declarations (moved up to avoid TDZ)
@@ -194,7 +195,7 @@ const Tab2: React.FC = () => {
 
 
   // Road elevation GeoJSON — fetched from /public/data/
-  const [roadData, setRoadData] = useState<GeoJSON.FeatureCollection | undefined>(undefined);
+  const [roadData, setRoadData] = useState<GeoJSON.FeatureCollection<GeoJSON.LineString, RoadProperties> | undefined>(undefined);
   React.useEffect(() => {
     fetch('/data/carolinaBeachRoads.geojson?v=' + new Date().getTime())
       .then(r => r.ok ? r.json() : null)
@@ -210,7 +211,7 @@ const Tab2: React.FC = () => {
   // Derive atmospheric values for the overlay pill and map visualization
   const activeAtmo = useMemo(() => {
     if (!processedData) {
-      return { wl: 0, time: null, isLive: true, source: 'Live Conditions', wind: null, precip: null };
+      return { wl: 0, targetTime: null, isLive: true, source: 'Live Conditions', wind: null, precip: null };
     }
 
     const now = processedData.timeDomain.now;
@@ -223,43 +224,51 @@ const Tab2: React.FC = () => {
       // Scroll context
     }
 
+    // Find the absolute latest measurement time to determine the handover point
+    const lastObsT = processedData.observedPoints.length > 0 
+      ? Math.max(...processedData.observedPoints.map(p => p.t.getTime())) 
+      : now.getTime();
+    const isPastHandover = targetT.getTime() > lastObsT;
+
     const obsRes = findNearestPoint(processedData.observedPoints, targetT);
     const adjRes = findNearestPoint(processedData.adjustedPoints, targetT);
     const predRes = findNearestPoint(processedData.predictedPoints, targetT);
     const windRes = findNearestPoint(processedData.windPoints, targetT);
     const precipRes = findNearestPoint(processedData.precipPoints, targetT);
 
-    const isObserved = !!(obsRes && obsRes.dtMin < 60);
-    const isAdjusted = !isObserved && !!(adjRes && adjRes.dtMin < 60);
+    const isObserved = !!(obsRes && obsRes.dtMin < 60 && !isPastHandover);
+    const isAdjusted = !!(adjRes && adjRes.dtMin < 60 && isPastHandover);
     const isPredicted = !isObserved && !isAdjusted && !!(predRes && predRes.dtMin < 60);
 
     const wl = isObserved ? obsRes!.point.v :
                isAdjusted ? adjRes!.point.v :
                isPredicted ? predRes!.point.v : 0;
 
-    const sourceLabel = isObserved ? 'Observed' :
-                        isAdjusted ? 'FloodCast' :
-                        isPredicted ? 'Predicted' : (isLive ? 'Live Conditions' : 'No Data');
+    const sourceLabel = isObserved ? `Observed (${(obsRes?.point.source || processedData.source || 'NOAA').toUpperCase()})` :
+                        isAdjusted ? 'FloodCast Prediction' :
+                        isPredicted ? 'NOAA Prediction' : (isLive ? 'Live Conditions' : 'No Data');
 
-    const surge = isObserved && predRes && predRes.dtMin < 60
-      ? (obsRes!.point.v - predRes.point.v)
-      : (isAdjusted && predRes && predRes.dtMin < 60)
-        ? (adjRes!.point.v - predRes.point.v)
-        : null;
+    const surge = (() => {
+      if (!predRes || predRes.dtMin > 60) return null;
+      
+      // predictedPoints is already phase-aligned by useChartData,
+      // so direct comparison at targetT is correct.
+      return wl - predRes.point.v;
+    })();
 
     // Use the explicit simulation flag
     const isSimulated = isUserSimulating;
 
     return { 
       wl: isSimulated ? simulationLevel : wl, 
-      time: targetT, 
+      targetTime: targetT, 
       isLive, 
       source: sourceLabel,
       surge,
       isSimulated,
       prediction: predRes && predRes.dtMin < 60 ? predRes.point.v : null,
       wind: windRes && windRes.dtMin < 60 ? { speed: windRes.point.speed, dir: windRes.point.dir } : null,
-      precip: precipRes && precipRes.dtMin < 60 ? { value: precipRes.point.value } : null,
+      precip: precipRes && precipRes.dtMin < 60 ? precipRes.point.value : null,
     };
   }, [processedData, currentViewport, manualFocusTime, simulationLevel, isUserSimulating]);
 
@@ -346,7 +355,7 @@ const Tab2: React.FC = () => {
                       locationName="Carolina Beach Tidal Flooding"
                       sentinel={
                         <AtmosphericOverlay
-                          precipitationAccumulation={activeAtmo.precip?.value ?? 0}
+                          precipitationAccumulation={activeAtmo.precip ?? 0}
                           windSpeed={activeAtmo.wind?.speed ?? 0}
                           windDirection={activeAtmo.wind?.dir ?? 0}
                           observedWaterLevel={activeAtmo.wl ?? 0}
@@ -354,17 +363,17 @@ const Tab2: React.FC = () => {
                           source={activeAtmo.source}
                           surge={activeAtmo.surge}
                           prediction={activeAtmo.prediction}
-                          viewMode={config.display.viewMode}
-                          thresholds={config.thresholds}
+                          targetTime={activeAtmo.targetTime ?? undefined}
                         />
                       }
                       isLive={activeAtmo.isLive}
-                      time={activeAtmo.time}
+                      time={activeAtmo.targetTime}
                       source={activeAtmo.source}
                       observedPoints={processedData.observedPoints}
                       predictedPoints={processedData.predictedPoints}
                       adjustedPoints={processedData.adjustedPoints}
                       deltaPoints={processedData.deltaPoints}
+                      timeOffsetMins={processedData.timeOffsetMins}
                       surgeForecastPoints={processedData.surgeForecastPoints}
                       windPoints={processedData.windPoints}
                       precipPoints={processedData.precipPoints}
@@ -403,11 +412,11 @@ const Tab2: React.FC = () => {
                     <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}>
                       <InundationMap
                         waterLevelFt={simulationLevel}
-                        // @ts-expect-error missing strict typing
                         roadData={roadData}
                         observedLevelFt={processedData?.observedPoints?.slice(-1)[0]?.v}
-                        targetTime={activeAtmo.time || new Date()}
+                        targetTime={activeAtmo.targetTime || new Date()}
                         onResetToLive={resetToLive}
+                        imagery={processedData.imagery}
                       />
                     </APIProvider>
 
@@ -420,8 +429,7 @@ const Tab2: React.FC = () => {
                         setIsUserSimulating(true);
                       }}
                       thresholds={config.thresholds}
-                      // @ts-expect-error missing strict typing
-                      simulationContext={activeAtmo}
+                      simulationContext={activeAtmo as any}
                     />
                   </>
                 ) : null}
@@ -429,13 +437,14 @@ const Tab2: React.FC = () => {
 
               <div className="dashboard-sidebar">
                 {WEBCAMS.map(cam => (
-                  <WebcamFeedCard
-                    key={cam.id}
-                    cameraId={cam.id}
-                    locationName={cam.name}
-                    targetTime={activeAtmo.time || new Date()}
-                    onResetToLive={resetToLive}
-                  />
+                    <WebcamFeedCard
+                      key={cam.id}
+                      cameraId={cam.id}
+                      locationName={cam.name}
+                      targetTime={activeAtmo.targetTime || new Date()}
+                      onResetToLive={resetToLive}
+                      imagery={processedData.imagery?.[cam.id]}
+                    />
                 ))}
               </div>
             </div>
@@ -451,10 +460,10 @@ const Tab2: React.FC = () => {
                   Next Flood Crossing ({config.display.timezone === 'gmt' ? 'GMT' : 'Local'})
                 </h2>
                 <p>
-                  {formatTime(thresholdCrossing.tCross)}
-                  <IonNote className="lead-time" color="medium">
-                    {' '}• Lead time: {thresholdCrossing.leadMinutes} minutes
-                  </IonNote>
+                  {formatTime(thresholdCrossing.time)}
+                  <span className="crossing-details">
+                    {' '}• Lead time: {Math.round((thresholdCrossing.time.getTime() - (processedData?.timeDomain.now.getTime() || Date.now())) / 60000)} minutes
+                  </span>
                 </p>
               </IonLabel>
             </IonItem>
@@ -471,8 +480,11 @@ const Tab2: React.FC = () => {
           onOffsetConfigChange={updateOffset}
           onTimeRangeChange={updateTimeRange}
           onDisplayChange={updateDisplay}
+          onResetDefaults={resetToDefaults}
           computedOffset={data?.offset || 0}
           offsetDataPoints={data?.nPoints || 0}
+          dataSource={data?.source as 'fiman' | 'noaa' | undefined}
+          timeOffsetMins={data?.timeOffsetMins}
           successMessage={messages.success}
           errorMessage={messages.error}
           onClearMessages={clearMessages}

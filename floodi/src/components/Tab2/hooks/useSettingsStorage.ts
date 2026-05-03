@@ -30,7 +30,7 @@ const DEFAULT_CONFIG: AppConfiguration = {
     state: undefined,
   },
   thresholds: {
-    minor: 6.1,
+    minor: 5.6,
     moderate: 7.0,
     major: 7.7,
     extreme: 8.5,
@@ -99,6 +99,10 @@ export function useSettingsStorage() {
         const parsed = JSON.parse(storedThresholds);
         if (parsed && typeof parsed.minor === 'number') {
           thresholds = { ...DEFAULT_CONFIG.thresholds, ...parsed };
+          // Migration: if the stored value is the old default of 6.1, update it to the new 5.6
+          if (thresholds.minor === 6.1) {
+            thresholds.minor = 5.6;
+          }
         }
       }
     } catch { /* ignore */ }
@@ -213,6 +217,19 @@ export function useSettingsStorage() {
     }));
   }, []);
 
+  const resetToDefaults = useCallback(() => {
+    // Clear all storage keys handled by this hook
+    Object.values(STORAGE_KEYS).forEach(key => {
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(key);
+        }
+      } catch { /* ignore */ }
+    });
+    // Reset state to initial defaults
+    setConfig(DEFAULT_CONFIG);
+  }, []);
+
   return {
     config,
     updateStation,
@@ -221,5 +238,6 @@ export function useSettingsStorage() {
     updateTimeRange,
     updateDisplay,
     resetToLive,
+    resetToDefaults,
   };
 }
