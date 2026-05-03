@@ -12,6 +12,10 @@
     "cleanUrls": true,
     "trailingSlash": false,
     "rewrites": [
+      {
+        "source": "/api/fiman/**",
+        "function": "fimanProxy"
+      },
       { "source": "**", "destination": "/index.html" }
     ],
     "headers": [
@@ -28,6 +32,11 @@
         ]
       }
     ]
+  },
+  "functions": {
+    "source": "functions",
+    "codebase": "default",
+    "runtime": "nodejs20"
   },
   "firestore": {
     "rules": "firestore.rules",

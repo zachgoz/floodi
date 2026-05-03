@@ -5,7 +5,6 @@ import {
   IonItem,
   IonLabel,
   IonList,
-  IonNote,
   IonPage,
   IonTitle,
   IonToolbar,
@@ -21,7 +20,7 @@ import { SettingsModal } from '../components/Tab2/SettingsModal';
 import { useSettingsStorage } from '../components/Tab2/hooks/useSettingsStorage';
 import { useChartData } from '../components/Tab2/hooks/useChartData';
 import { formatTooltipTime, findNearestPoint } from '../components/Tab2/hooks/useChartInteraction';
-import type { Station, Point } from '../components/Tab2/types';
+import type { Station } from '../components/Tab2/types';
 import { useChartComments } from '../components/Tab2/hooks/useChartComments';
 import { ChartCommentModal } from '../components/Tab2/ChartCommentModal';
 import '../components/Tab2/styles/Tab2.css';
@@ -429,7 +428,13 @@ const Tab2: React.FC = () => {
                         setIsUserSimulating(true);
                       }}
                       thresholds={config.thresholds}
-                      simulationContext={activeAtmo as any}
+                      simulationContext={{
+                        targetTime: activeAtmo.targetTime ?? new Date(),
+                        wind: activeAtmo.wind ?? undefined,
+                        precip: activeAtmo.precip ?? undefined,
+                        source: activeAtmo.source,
+                        isSimulated: activeAtmo.isSimulated,
+                      }}
                     />
                   </>
                 ) : null}

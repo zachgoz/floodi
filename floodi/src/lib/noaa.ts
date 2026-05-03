@@ -32,6 +32,24 @@ import { WEBCAMS } from '../constants/webcams';
 export type TimeSeries = Record<string, number>; // ISO minute string (UTC) -> value
 
 /**
+ * Result from fetchObservedWaterLevels, containing primary + optional alternate data.
+ */
+export interface ObservedWaterLevelResult {
+  data: TimeSeries;
+  source: 'fiman' | 'noaa';
+  alternate?: TimeSeries;
+  imagery?: Record<string, Record<string, string>>;
+}
+
+/**
+ * NAVD88-to-MLLW datum offset for Carolina Beach, NC (NOAA Station 8658163).
+ * FiMAN sensors report in NAVD88; we add this to convert to MLLW for consistency
+ * with NOAA predictions. Value is in feet.
+ * @see https://tidesandcurrents.noaa.gov/datums.html?id=8658163
+ */
+const CAROLINA_BEACH_NAVD88_TO_MLLW_FT = 2.75;
+
+/**
  * Base URL for the NOAA Tides and Currents API
  * This is the production endpoint that provides real-time and predicted data
  */
@@ -163,15 +181,23 @@ async function requestNOAA(params: Record<string, string | number>): Promise<unk
   return requestWithCache(url, 60000); // 1 min TTL for NOAA
 }
 
+/**
+ * Fetches data from the Sunny Day Flooding (FiMAN) API.
+ *
+ * In development, requests go through the Vite dev server proxy.
+ * In production, requests go through our Firebase Cloud Function
+ * (via the /api/fiman hosting rewrite in firebase.json).
+ */
 async function requestFiMAN(params: Record<string, string | number>): Promise<unknown> {
-  const baseUrl = 'https://data.sunnydayflooding.com/services/data.php';
-  const targetUrl = getCanonicalUrl(baseUrl, params);
-  
-  // Use a CORS proxy to bypass restrictions (especially on localhost)
-  // This routes requests through corsproxy.io as suggested to resolve policy blockages.
-  const url = `https://corsproxy.io/${targetUrl}`;
-  
-  return requestWithCache(url, 300000); // 5 min TTL for FiMAN
+  // Build URL against our own proxy endpoint — works identically in dev
+  // (Vite server.proxy) and production (Firebase Hosting → Cloud Function).
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    usp.append(k, String(v));
+  }
+  const url = `/api/fiman/services/data.php?${usp.toString()}`;
+
+  return requestWithCache(url, 300000); // 5 min TTL
 }
 
 /**
@@ -209,7 +235,7 @@ export async function fetchObservedWaterLevels(opts: {
   datum?: string;
   units?: 'english' | 'metric';
   provider?: 'fiman' | 'noaa' | 'both';
-}): Promise<{ data: TimeSeries; source: 'fiman' | 'noaa'; alternate?: TimeSeries; imagery?: Record<string, Record<string, string>> }> {
+}): Promise<ObservedWaterLevelResult> {
   const { station, start, end, interval = 6, datum = 'MLLW', units = 'english', provider = 'both' } = opts;
   
   // 1. Try Sunny Day Flooding (FiMAN) API first if requested and within limits
@@ -336,8 +362,10 @@ export async function fetchObservedWaterLevels(opts: {
             let v = parseFloat(values[i]);
             if (!isNaN(v)) {
               if (datum.toUpperCase() === 'MLLW') {
-                const offset = units === 'english' ? 2.75 : 2.75 * 0.3048;
-                v += offset;
+                const datumOffset = units === 'english'
+                  ? CAROLINA_BEACH_NAVD88_TO_MLLW_FT
+                  : CAROLINA_BEACH_NAVD88_TO_MLLW_FT * 0.3048;
+                v += datumOffset;
               }
               out[t.toISOString()] = v;
             }
@@ -486,11 +514,11 @@ export function estimateSurgeAndTimeOffset(
     return { offset: 0, timeOffsetMins: 0, n: 0, source };
   }
 
-  // Helper to calculate median
+  // Helper to calculate median (non-mutating)
   const getMedian = (arr: number[]) => {
-    arr.sort((a, b) => a - b);
-    const mid = Math.floor(arr.length / 2);
-    return arr.length % 2 ? arr[mid] : (arr[mid - 1] + arr[mid]) / 2;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   };
 
   // If source is noaa, we use the default 60 mins time offset.
@@ -562,9 +590,7 @@ export function estimateSurgeAndTimeOffset(
  *   const { tCross, leadMinutes } = crossing;
  *   console.log(`Flood threshold will be crossed at ${tCross}`);
  *   console.log(`Warning lead time: ${leadMinutes} minutes`);
- *   thresholdCrossing: calculateThresholdCrossing(observedPoints, adjustedPoints, thresholds),
- *   source: data.source
- * };
+ * }
  */
 export function findNextThresholdCrossing(series: TimeSeries, threshold: number, now: Date): {
   tCross: Date;
@@ -667,7 +693,7 @@ export async function buildAdjustedFuture(opts: {
   units?: 'english' | 'metric';
   existingObserved?: TimeSeries;
   existingPredicted?: TimeSeries;
-}): Promise<{ adjusted: TimeSeries; offset: number; timeOffsetMins: number; source: 'fiman' | 'noaa'; n: number; observations?: any }> {
+}): Promise<{ adjusted: TimeSeries; offset: number; timeOffsetMins: number; source: 'fiman' | 'noaa'; n: number; observations?: ObservedWaterLevelResult }> {
   const { station, now, lookbackHours, lookaheadHours, interval = 6, datum = 'MLLW', units = 'english', existingObserved, existingPredicted } = opts;
   
   // Define time windows for analysis
@@ -677,7 +703,7 @@ export async function buildAdjustedFuture(opts: {
   // Fetch historical data in parallel if not provided
   const [observedObj, predictedPast] = await Promise.all([
     existingObserved 
-      ? Promise.resolve({ data: existingObserved, source: 'fiman' as const })
+      ? Promise.resolve<ObservedWaterLevelResult>({ data: existingObserved, source: 'fiman' })
       : fetchObservedWaterLevels({ station, start: pastStart, end: pastEnd, interval, datum, units, provider: 'both' }),
     existingPredicted
       ? Promise.resolve(existingPredicted)
@@ -686,9 +712,9 @@ export async function buildAdjustedFuture(opts: {
   
   // For the surge calculation used to anchor the future forecast, 
   // we prioritize NOAA's own observations if available.
-  const surgeInput = (observedObj as any).alternate && Object.keys((observedObj as any).alternate).length > 0 
-    ? { data: (observedObj as any).alternate, source: 'noaa' as const }
-    : { data: (observedObj as any).data, source: (observedObj as any).source };
+  const surgeInput = observedObj.alternate && Object.keys(observedObj.alternate).length > 0 
+    ? { data: observedObj.alternate, source: 'noaa' as const }
+    : { data: observedObj.data, source: observedObj.source };
 
   const { offset, timeOffsetMins, n, source } = estimateSurgeAndTimeOffset(surgeInput.data, predictedPast, surgeInput.source);
   

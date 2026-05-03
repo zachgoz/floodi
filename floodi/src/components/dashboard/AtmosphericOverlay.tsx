@@ -174,9 +174,6 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
               </g>
             </svg>
           </div>
-          <span className="atmo-time">
-            {targetTime?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
           <div className="metric-details">
             <div className="metric-value-row">
               <span className="metric-value" style={{ color: arrowColor }}>{windSpeed.toFixed(0)}</span>
