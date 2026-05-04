@@ -1220,8 +1220,9 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             }
           }
 
-          // Track last label X positions to prevent overlap
-          let lastPeakLabelX = -100;
+          // Track last label X positions separately for high and low peaks to allow both to show even if horizontally close
+          let lastHighLabelX = -1000;
+          let lastLowLabelX = -1000;
           let lastDateLabelX = -100;
 
           return peaks.map((tick, i) => {
@@ -1229,10 +1230,27 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             // Relaxed boundary check to show peaks right on the edge
             if (x < margins.l - 5 || x > margins.l + innerW + 5) return null;
             
-            // Determine if we should show the time label near the peak
-            // Clutter control: minimum 70px between peak labels
-            const showPeakLabel = (x - lastPeakLabelX) > 70;
-            if (showPeakLabel) lastPeakLabelX = x;
+            // Find the peak point to determine if it's High or Low for collision detection
+            const idx = predictedPoints.findIndex(p => p.t.getTime() === tick.getTime());
+            let isHigh = true;
+            if (idx > 0 && idx < predictedPoints.length - 1) {
+              const curr = predictedPoints[idx].v;
+              const prev = predictedPoints[idx - 1].v;
+              const next = predictedPoints[idx + 1].v;
+              const isLow = (curr <= prev && curr < next) || (curr < prev && curr <= next);
+              isHigh = !isLow;
+            } else if (idx === 0 && predictedPoints.length > 1) {
+              isHigh = predictedPoints[0].v > predictedPoints[1].v;
+            } else if (idx === predictedPoints.length - 1 && idx > 0) {
+              isHigh = predictedPoints[idx].v > predictedPoints[idx - 1].v;
+            }
+
+            // Determine if we should show the label based on its type (H/L) to prevent overlap with its own kind
+            const showPeakLabel = isHigh ? (x - lastHighLabelX > 60) : (x - lastLowLabelX > 60);
+            if (showPeakLabel) {
+              if (isHigh) lastHighLabelX = x;
+              else lastLowLabelX = x;
+            }
             
             return (
               <g key={`xtick-${i}`}>
@@ -1276,25 +1294,44 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                   }
 
                   // Clearance: -18px for high peaks, +24px for low peaks
-                  const finalY = isHigh ? yOf(maxV) - 18 : yOf(minV) + 24;
+                  let finalY = isHigh ? yOf(maxV) - 18 : yOf(minV) + 24;
+
+                  // Safety: keep labels within SVG bounds (plus some padding)
+                  const minVisibleY = margins.t - 5;
+                  const maxVisibleY = margins.t + innerH + 30;
+                  if (finalY < minVisibleY) finalY = minVisibleY + 12;
+                  if (finalY > maxVisibleY) finalY = maxVisibleY - 5;
 
                   return (
-                    <text
-                      x={x}
-                      y={finalY}
-                      textAnchor="middle"
-                      fill="var(--chart-axis-text)"
-                      fontSize="11"
-                      fontWeight="700"
-                      style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3.1px' }}
-                    >
-                      {new Intl.DateTimeFormat(undefined, { 
-                        hour: 'numeric', 
-                        minute: '2-digit',
-                        hour12: true,
-                        timeZone: timezone === 'gmt' ? 'UTC' : undefined 
-                      }).format(tick).replace(/\s?[AP]M$/, (m) => m.trim().toLowerCase())}
-                    </text>
+                    <g key={`plabel-${i}`}>
+                      <text
+                        x={x}
+                        y={finalY - 12}
+                        textAnchor="middle"
+                        fill={isHigh ? "var(--ion-color-danger)" : "var(--ion-color-primary)"}
+                        fontSize="10"
+                        fontWeight="800"
+                        style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}
+                      >
+                        {isHigh ? 'High' : 'Low'}
+                      </text>
+                      <text
+                        x={x}
+                        y={finalY}
+                        textAnchor="middle"
+                        fill="var(--chart-axis-text)"
+                        fontSize="11"
+                        fontWeight="700"
+                        style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3.1px' }}
+                      >
+                        {new Intl.DateTimeFormat(undefined, { 
+                          hour: 'numeric', 
+                          minute: '2-digit',
+                          hour12: true,
+                          timeZone: timezone === 'gmt' ? 'UTC' : undefined 
+                        }).format(tick).replace(/\s?[AP]M$/, (m) => m.trim().toLowerCase())}
+                      </text>
+                    </g>
                   );
                 })()}
                 <text
