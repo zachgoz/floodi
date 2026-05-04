@@ -9,6 +9,17 @@ import type { ChartData, DataState, Point, ThresholdCrossing, AppConfiguration, 
 const dataCache: Record<string, { timestamp: number; data: any }> = {};
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
+const BUCKET_SIZE_MS = 30 * 24 * 3600 * 1000; // 30 days
+const REFRESH_THRESHOLD_MS = 5 * 60 * 1000; // Refresh "current" bucket every 5 mins
+
+/**
+ * Returns the start of the 30-day bucket for a given timestamp.
+ * We use absolute UTC buckets to ensure stable URLs across sessions/users.
+ */
+function getBucketStart(timestamp: number): number {
+  return Math.floor(timestamp / BUCKET_SIZE_MS) * BUCKET_SIZE_MS;
+}
+
 /**
  * Convert NOAA series data to Point array format
  */
@@ -16,6 +27,45 @@ function seriesToPoints(series: Record<string, number>, source?: 'fiman' | 'noaa
   return Object.entries(series)
     .map(([k, v]) => ({ t: new Date(k), v, source }))
     .sort((a, b) => a.t.getTime() - b.t.getTime());
+}
+
+/**
+ * Merges two ChartData objects by combining their time-series records.
+ * Records are indexed by ISO timestamps, so duplicates are automatically handled.
+ */
+function mergeChartData(oldData: ChartData, newData: ChartData): ChartData {
+  const mergeRecords = <T>(oldRec: Record<string, T> = {}, newRec: Record<string, T> = {}) => ({
+    ...oldRec,
+    ...newRec,
+  });
+
+  const mergeImagery = (oldImg: ChartData['imagery'] = {}, newImg: ChartData['imagery'] = {}) => {
+    const merged = { ...oldImg };
+    for (const [stationId, images] of Object.entries(newImg || {})) {
+      merged[stationId] = { ...(merged[stationId] || {}), ...images };
+    }
+    return merged;
+  };
+
+  // Preserve 'fiman' source if it exists in either set
+  const mergedSource = (oldData.source === 'fiman' || newData.source === 'fiman') ? 'fiman' : 'noaa';
+
+  return {
+    ...newData,
+    source: mergedSource,
+    observed: mergeRecords(oldData.observed, newData.observed),
+    alternate: mergeRecords(oldData.alternate, newData.alternate),
+    predicted: mergeRecords(oldData.predicted, newData.predicted),
+    // Adjusted forecast and current offset should always come from the most recent (newest) fetch
+    // as they are derived from the state of 'now'.
+    adjusted: Object.keys(newData.adjusted || {}).length > 0 ? newData.adjusted : oldData.adjusted,
+    offset: newData.offset !== null ? newData.offset : oldData.offset,
+    nPoints: newData.nPoints > 0 ? newData.nPoints : oldData.nPoints,
+    wind: mergeRecords(oldData.wind, newData.wind),
+    precip: mergeRecords(oldData.precip, newData.precip),
+    imagery: mergeImagery(oldData.imagery, newData.imagery),
+    warnings: Array.from(new Set([...(oldData.warnings || []), ...(newData.warnings || [])])),
+  };
 }
 
 /**
@@ -63,129 +113,166 @@ export function useChartData(config: AppConfiguration) {
   }, [mode, lookbackH, lookaheadH, absStart, absEnd]);
 
   const fetchRangeRef = useRef<{ start: Date; end: Date; stationId: string } | null>(null);
+  const fetchedBucketsRef = useRef<Map<number, number>>(new Map()); // bucketStart -> lastFetchTimestamp
 
   // Main data fetching logic
   const performFetch = useCallback(async (force = false) => {
     const { start, end, now } = timeDomain;
     const { station, timeRange, offset } = config;
 
-    // Buffer range: +/- 5 days to allow smooth scrolling without immediate refetch
-    const fStart = new Date(start.getTime() - 5 * 24 * 3600 * 1000);
-    const fEnd = new Date(end.getTime() + 5 * 24 * 3600 * 1000);
+    // 1. Reset buckets if station changed
+    if (fetchRangeRef.current?.stationId !== station.id) {
+      fetchedBucketsRef.current.clear();
+      fetchRangeRef.current = null;
+    }
 
-    // 1. Check if we already have this range covered in our buffer
-    if (!force && fetchRangeRef.current && fetchRangeRef.current.stationId === station.id) {
-      const buffered = fetchRangeRef.current;
-      if (start >= buffered.start && end <= buffered.end) {
-        return { data: dataState.data, fromCache: true };
+    // 2. Identify required buckets
+    const startBucket = getBucketStart(start.getTime());
+    const endBucket = getBucketStart(end.getTime());
+    const requiredBuckets: number[] = [];
+    
+    for (let b = startBucket; b <= endBucket; b += BUCKET_SIZE_MS) {
+      requiredBuckets.push(b);
+    }
+
+    // 3. Determine which buckets need fetching
+    const bucketsToFetch = requiredBuckets.filter(bStart => {
+      if (force) return true;
+      const lastFetch = fetchedBucketsRef.current.get(bStart);
+      if (!lastFetch) return true; // Never fetched
+      
+      // If this bucket contains 'now' or is in the future, refresh it periodically
+      if (bStart + BUCKET_SIZE_MS > now.getTime()) {
+        return Date.now() - lastFetch > REFRESH_THRESHOLD_MS;
       }
+      
+      return false; // Historical bucket, already fetched
+    });
+
+    if (bucketsToFetch.length === 0) {
+      return null;
     }
 
     try {
-      const lookahead = timeRange.mode === 'relative' ? (timeRange.lookaheadH + 120) : 
-        Math.max(1, Math.ceil((fEnd.getTime() - now.getTime()) / 3600_000));
-
       const warnings: string[] = [];
+      const fetchPromises = bucketsToFetch.map(async (bStart) => {
+        const bEnd = bStart + BUCKET_SIZE_MS;
+        const s = new Date(bStart);
+        const e = new Date(bEnd);
 
-      // 2. Fetch base data in parallel
-      const [observed, predicted, windData, precipData] = await Promise.all([
-        fetchObservedWaterLevels({
-          station: station.id,
-          start: fStart,
-          end: fEnd,
-          interval: 6,
-          datum: 'MLLW',
-          units: 'english',
-          provider: 'both',
-        }).catch(err => {
-          console.warn('fetchObservedWaterLevels failed:', err);
-          warnings.push('Observed water level data unavailable');
-          return { data: {}, source: 'noaa' as const, alternate: {}, imagery: {} };
-        }),
+        // Fetch everything for this chunk
+        const [obs, pred, wind, prec] = await Promise.all([
+          fetchObservedWaterLevels({
+            station: station.id,
+            start: s,
+            end: e,
+            interval: 6,
+            datum: 'MLLW',
+            units: 'english',
+            provider: 'both',
+          }).catch(() => ({ data: {}, source: 'noaa' as const, alternate: {}, imagery: {} })),
 
-        fetchPredictions({
-          station: station.id,
-          start: fStart,
-          end: fEnd,
-          interval: 6,
-          datum: 'MLLW',
-          units: 'english',
-        }).catch(err => {
-          console.warn('fetchPredictions failed:', err);
-          warnings.push('Tide predictions unavailable');
-          return {};
-        }),
+          fetchPredictions({
+            station: station.id,
+            start: s,
+            end: e,
+            interval: 6,
+            datum: 'MLLW',
+            units: 'english',
+          }).catch(() => ({})),
 
-        fetchWind({
-          station: station.id,
-          start: fStart,
-          end: fEnd,
-          units: 'english',
-        }).catch(err => {
-          console.warn('fetchWind failed:', err);
-          warnings.push('Wind data unavailable');
-          return {};
-        }),
+          fetchWind({
+            station: station.id,
+            start: s,
+            end: e,
+            units: 'english',
+          }).catch(() => ({})),
 
-        fetchPrecipitation({
-          station: station.id,
-          start: fStart,
-          end: fEnd,
-          units: 'english',
-        }).catch(err => {
-          console.warn('fetchPrecipitation failed:', err);
-          warnings.push('Precipitation data unavailable');
-          return {};
-        }),
-      ]);
+          fetchPrecipitation({
+            station: station.id,
+            start: s,
+            end: e,
+            units: 'english',
+          }).catch(() => ({})),
+        ]);
 
-      // 3. Calculate adjusted forecast
+        fetchedBucketsRef.current.set(bStart, Date.now());
+
+        return {
+          observed: obs.data,
+          alternate: obs.alternate,
+          source: obs.source,
+          predicted: pred,
+          wind,
+          precip: prec,
+          imagery: obs.imagery
+        };
+      });
+
+      const chunkResults = await Promise.all(fetchPromises);
+
+      // 4. Merge results
+      const mergedResult: ChartData = {
+        observed: {},
+        predicted: {},
+        adjusted: {},
+        offset: null,
+        nPoints: 0,
+        wind: {},
+        precip: {},
+        imagery: {},
+        warnings: [],
+        source: 'noaa',
+        timeOffsetMins: 60
+      };
+
+      for (const res of chunkResults) {
+        Object.assign(mergedResult.observed, res.observed);
+        if (res.alternate) Object.assign(mergedResult.alternate || (mergedResult.alternate = {}), res.alternate);
+        Object.assign(mergedResult.predicted, res.predicted);
+        Object.assign(mergedResult.wind!, res.wind ?? {});
+        Object.assign(mergedResult.precip!, res.precip ?? {});
+        if (res.imagery) {
+          for (const [sid, imgs] of Object.entries(res.imagery)) {
+            mergedResult.imagery![sid] = { ...(mergedResult.imagery![sid] || {}), ...imgs };
+          }
+        }
+        if (res.source === 'fiman') mergedResult.source = 'fiman';
+      }
+
+      // 5. Calculate adjusted forecast (Surge)
+      // This should always be based on the latest data across the whole set,
+      // but buildAdjustedFuture only needs a 6h lookback by default.
+      // We pass the merged data so it doesn't have to refetch.
       const adjustedResult = await buildAdjustedFuture({
         station: station.id,
         now,
         lookbackHours: 6,
-        lookaheadHours: lookahead,
+        lookaheadHours: timeRange.mode === 'relative' ? (timeRange.lookaheadH + 120) : 
+          Math.max(1, Math.ceil((end.getTime() - now.getTime()) / 3600_000)),
         interval: 6,
         datum: 'MLLW',
         units: 'english',
-        existingObserved: observed.data,
-        existingPredicted: predicted
+        existingObserved: mergedResult.observed,
+        existingPredicted: mergedResult.predicted
       }).catch(err => {
         console.warn('buildAdjustedFuture failed:', err);
-        warnings.push('Surge forecast calculation failed');
-        return { adjusted: {}, offset: 0, timeOffsetMins: 0, source: 'noaa', n: 0 };
+        return { adjusted: {}, offset: 0, timeOffsetMins: 60, source: 'noaa' as const, n: 0 };
       });
 
-      // 4. Success - Update range ref and cache
-      fetchRangeRef.current = { start: fStart, end: fEnd, stationId: station.id };
+      mergedResult.adjusted = adjustedResult.adjusted;
+      mergedResult.offset = adjustedResult.offset;
+      mergedResult.timeOffsetMins = adjustedResult.timeOffsetMins;
+      mergedResult.nPoints = adjustedResult.n;
 
-      const result: ChartData = {
-        observed: observed.data as any,
-        alternate: observed.alternate as any,
-        source: observed.source as 'fiman' | 'noaa',
-        timeOffsetMins: adjustedResult.timeOffsetMins as number,
-        predicted,
-        adjusted: adjustedResult.adjusted,
-        offset: adjustedResult.offset,
-        nPoints: adjustedResult.n,
-        wind: windData as any,
-        precip: precipData as any,
-        warnings,
-        imagery: (observed as any).imagery,
-      };
+      fetchRangeRef.current = { start: new Date(startBucket), end: new Date(endBucket + BUCKET_SIZE_MS), stationId: station.id };
 
-    const cacheKey = `${station.id}-${Math.floor(fStart.getTime() / 300000) * 300000}-${Math.floor(fEnd.getTime() / 300000) * 300000}-${offset.mode}-${offset.value}`;
-      dataCache[cacheKey] = {
-        timestamp: Date.now(),
-        data: result
-      };
-
-      return { data: result, fromCache: false };
+      return { data: mergedResult, fromCache: false };
     } catch (error) {
       console.error('[useChartData] Fetch failed:', error);
       throw error;
     }
-  }, [timeDomain, config, dataState.data]);
+  }, [timeDomain, config]);
 
   // Effect to manage the loading state and race conditions
   useEffect(() => {
@@ -193,29 +280,63 @@ export function useChartData(config: AppConfiguration) {
 
     const { start, end } = timeDomain;
     const { station, offset } = config;
-    const fetchBuffer = 5 * 24 * 3600_000;
-    const fStart = new Date(start.getTime() - fetchBuffer);
-    const fEnd = new Date(end.getTime() + fetchBuffer);
-    const cacheKey = `${station.id}-${Math.floor(fStart.getTime() / 300000) * 300000}-${Math.floor(fEnd.getTime() / 300000) * 300000}-${offset.mode}-${offset.value}`;
+    const isNewStation = !fetchRangeRef.current || fetchRangeRef.current.stationId !== station.id;
+    
+    const cacheKey = `${station.id}-${offset.mode}-${offset.value}`;
     const cached = dataCache[cacheKey];
 
     if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
       setDataState({
         loading: false,
+        fetchingMore: false,
         error: null,
         data: cached.data,
       });
+    } else if (isNewStation || !fetchRangeRef.current) {
+      // Clear data for new station or initial load
+      setDataState({
+        loading: true,
+        fetchingMore: false,
+        error: null,
+        data: {
+          observed: {},
+          predicted: {},
+          adjusted: {},
+          offset: null,
+          nPoints: 0,
+          wind: {},
+          precip: {},
+        },
+      });
     } else {
-      setDataState(prev => ({ ...prev, loading: true, error: null }));
+      // For incremental extensions, don't show the full-screen spinner
+      // This keeps the chart responsive while loading history
+      setDataState(prev => ({ ...prev, loading: false, fetchingMore: true, error: null }));
     }
 
     performFetch()
       .then(result => {
-        if (!active || !result) return;
-        setDataState({
-          loading: false,
-          error: null,
-          data: result.data,
+        if (!active) return;
+        if (!result) {
+          setDataState(prev => ({ ...prev, loading: false, fetchingMore: false }));
+          return;
+        }
+        setDataState(prev => {
+          const merged = isNewStation ? result.data : mergeChartData(prev.data, result.data);
+          
+          // Update cache with merged data
+          const cacheKey = `${station.id}-${offset.mode}-${offset.value}`;
+          dataCache[cacheKey] = {
+            timestamp: Date.now(),
+            data: merged
+          };
+          
+          return {
+            loading: false,
+            fetchingMore: false,
+            error: null,
+            data: merged,
+          };
         });
       })
       .catch(error => {
@@ -223,6 +344,7 @@ export function useChartData(config: AppConfiguration) {
         setDataState(prev => ({
           ...prev,
           loading: false,
+          fetchingMore: false,
           error: error.message || String(error),
         }));
       });
@@ -241,39 +363,48 @@ export function useChartData(config: AppConfiguration) {
     // Observed points are our ground truth at clock time.
     // We merge the primary source (usually FiMAN local sensors) with the 
     // alternate source (official NOAA station data) to bridge any gaps up to 'now'.
+    // 1. Identify FiMAN points
     const primaryPoints = seriesToPoints(data.observed, data.source);
+    const firstPrimary = primaryPoints.length > 0 ? primaryPoints[0] : null;
     const lastPrimary = primaryPoints.length > 0 ? primaryPoints[primaryPoints.length - 1] : null;
+    const firstPrimaryT = firstPrimary?.t.getTime() || Infinity;
     const lastPrimaryT = lastPrimary?.t.getTime() || 0;
     
     // To prevent "non-linear" jumps at the handover point, we calculate the 
     // vertical difference between sources at the last common or nearest timestamp.
-    let fallbackOffset = 0;
     const allAltPoints = seriesToPoints(data.alternate || {}, 'noaa');
     
-    if (lastPrimary && allAltPoints.length > 0) {
-      // Find nearest alternate point to the last primary point to compute offset
+    const findNearestOffset = (anchor: Point) => {
       let minDt = Infinity;
       let nearestV = 0;
       for (const p of allAltPoints) {
-        const dt = Math.abs(p.t.getTime() - lastPrimaryT);
+        const dt = Math.abs(p.t.getTime() - anchor.t.getTime());
         if (dt < minDt) {
           minDt = dt;
           nearestV = p.v;
         }
       }
-      // Only apply offset if the nearest point is within 15 minutes
-      if (minDt <= 15 * 60000) {
-        fallbackOffset = lastPrimary.v - nearestV;
-      }
-    }
+      return minDt <= 15 * 60000 ? anchor.v - nearestV : 0;
+    };
 
-    const alternatePoints = allAltPoints
+    // Past Handover (Historical NOAA -> FiMAN)
+    const pastFallbackOffset = firstPrimary ? findNearestOffset(firstPrimary) : 0;
+
+    // Recent Handover (FiMAN -> Future NOAA/Recent Gaps)
+    const recentFallbackOffset = lastPrimary ? findNearestOffset(lastPrimary) : 0;
+
+    // NOAA points to fill OLDER gaps (before FiMAN history)
+    const olderAltPoints = allAltPoints
+      .filter(p => p.t.getTime() < firstPrimaryT)
+      .map(p => ({ ...p, v: p.v + pastFallbackOffset }));
+
+    // NOAA points to fill NEWER gaps (if FiMAN is delayed)
+    const newerAltPoints = allAltPoints
       .filter(p => p.t.getTime() > lastPrimaryT)
-      .map(p => ({ ...p, v: p.v + fallbackOffset }));
+      .map(p => ({ ...p, v: p.v + recentFallbackOffset }));
 
-    // Combine, filter to prevent future 'observations' from NOAA, and explicitly sort
-    // to ensure lastObs is truly the latest point.
-    const observedPoints = [...primaryPoints, ...alternatePoints]
+    // Combine: [NOAA Past] + [FiMAN] + [NOAA Recent Gaps]
+    const observedPoints = [...olderAltPoints, ...primaryPoints, ...newerAltPoints]
       .filter(p => p.t.getTime() <= now.getTime() + 600000) // Max 10 mins into future
       .sort((a, b) => a.t.getTime() - b.t.getTime());
 

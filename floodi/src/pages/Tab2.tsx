@@ -71,6 +71,7 @@ const Tab2: React.FC = () => {
   // State declarations (moved up to avoid TDZ)
   const [resetCount, setResetCount] = useState(0);
   const [currentViewport, setCurrentViewport] = React.useState<{ start: Date; end: Date; focusTime: Date } | null>(null);
+  const [isScrolling, setIsScrolling] = useState(false);
   const [manualFocusTime, setManualFocusTime] = useState<Date | null>(null);
   const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
   const [simulationLevel, setSimulationLevel] = useState<number>(2.5);
@@ -396,7 +397,10 @@ const Tab2: React.FC = () => {
                       }}
                       onToggleComments={chartComments.toggleCommentOverlay}
                       commentCount={chartComments.commentCount}
-                      onViewportChange={(start: Date, end: Date, focusTime: Date) => setCurrentViewport({ start, end, focusTime })}
+                      onViewportChange={(start: Date, end: Date, focusTime: Date, scrolling: boolean) => {
+                        setCurrentViewport({ start, end, focusTime });
+                        setIsScrolling(scrolling);
+                      }}
                       onDomainChangeRequest={handleDomainChangeRequest}
                       loading={loading}
                       mode={config.timeRange.mode}
@@ -449,6 +453,7 @@ const Tab2: React.FC = () => {
                       targetTime={activeAtmo.targetTime || new Date()}
                       onResetToLive={resetToLive}
                       imagery={processedData.imagery?.[cam.id]}
+                      isScrolling={isScrolling}
                     />
                 ))}
               </div>

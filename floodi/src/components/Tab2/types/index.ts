@@ -157,6 +157,7 @@ export interface ChartConfigWithComments extends ChartConfig {
 /** Data loading and error state */
 export interface DataState {
   loading: boolean;
+  fetchingMore?: boolean;
   error: string | null;
   warnings?: string[];
   data: ChartData;

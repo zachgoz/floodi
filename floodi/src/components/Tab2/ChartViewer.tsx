@@ -64,8 +64,8 @@ interface ChartViewerProps {
   onDomainChangeRequest?: (start: Date, end: Date) => void;
   /** Fire when the hover cursor moves */
   onHoverTimeChange?: (time: Date | null) => void;
-  /** Fire when the visible viewport changes (immediate) */
-  onViewportChange?: (start: Date, end: Date, focusTime: Date) => void;
+  /** Fire when the visible viewport changes (immediate). isScrolling is true during pan/zoom. */
+  onViewportChange?: (start: Date, end: Date, focusTime: Date, isScrolling: boolean) => void;
   /** Global time range mode */
   mode?: 'relative' | 'absolute';
   /** Fire to reset to relative (live) time */
@@ -240,6 +240,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
   // Multi-touch interaction state
   const activePointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const [isScrolling, setIsScrolling] = useState(false);
 
   // Manage local view domain vs parent domain
   useEffect(() => {
@@ -319,16 +320,16 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     const timeSinceLast = nowMs - lastViewportChangeRef.current;
     
     if (timeSinceLast >= 50) {
-      onViewportChange(activeStart, activeEnd, centerTime);
+      onViewportChange(activeStart, activeEnd, centerTime, isScrolling);
       lastViewportChangeRef.current = nowMs;
     } else {
       const timer = setTimeout(() => {
-        onViewportChange(activeStart, activeEnd, centerTime);
+        onViewportChange(activeStart, activeEnd, centerTime, isScrolling);
         lastViewportChangeRef.current = Date.now();
       }, 50 - timeSinceLast);
       return () => clearTimeout(timer);
     }
-  }, [activeStart.getTime(), activeEnd.getTime(), centerTime, onViewportChange]);
+  }, [activeStart.getTime(), activeEnd.getTime(), centerTime, isScrolling, onViewportChange]);
 
   // Handle responsive resizing
   useEffect(() => {
@@ -500,6 +501,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         start: new Date(panStateRef.current.startT0 + timeShift),
         end: new Date(panStateRef.current.startT1 + timeShift)
       });
+      setIsScrolling(true);
     }
   };
 
@@ -516,6 +518,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     if (Math.abs(v0 - d0) > 1000 || Math.abs(v1 - d1) > 1000) {
       onDomainChangeRequest?.(viewDomain.start, viewDomain.end);
     }
+    setIsScrolling(false);
   }, [viewDomain, domainStart.getTime(), domainEnd.getTime(), onDomainChangeRequest]);
 
   const persistRef = useRef(persistDomainChange);
@@ -524,6 +527,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   // Automatically persist domain changes after a short debounce period (e.g. stop scrolling)
   useEffect(() => {
     if (!viewDomain) return;
+    setIsScrolling(true);
     const timer = setTimeout(() => persistRef.current(), 300);
     return () => clearTimeout(timer);
   }, [viewDomain]);
@@ -747,6 +751,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         const scaleX = rect.width / sw;
         const timeShift = (e.deltaX / scaleX) / iw * (cur1 - cur0);
         setViewDomain({ start: new Date(cur0 + timeShift), end: new Date(cur1 + timeShift) });
+        setIsScrolling(true);
         return;
       }
       if (!e.ctrlKey && Math.abs(e.deltaY) > Math.abs(e.deltaX)) return;
@@ -758,6 +763,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         start: new Date(cursorTime - (cursorTime - cur0) * zoomFactor),
         end:   new Date(cursorTime + (cur1 - cursorTime) * zoomFactor),
       });
+      setIsScrolling(true);
     };
 
     svg.addEventListener('touchstart', onTouchStart, { passive: false });

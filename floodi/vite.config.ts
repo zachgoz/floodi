@@ -26,6 +26,8 @@ export default defineConfig({
     react()
   ],
   server: {
+    port: 5174,
+    strictPort: true,
     proxy: {
       // Proxy FiMAN requests to avoid CORS issues in development
       '/api/fiman': {

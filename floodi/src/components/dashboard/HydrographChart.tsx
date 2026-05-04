@@ -25,6 +25,8 @@ interface HydrographChartProps extends ChartViewerProps {
   time?: Date | null;
   /** Source label shown in the subtitle (e.g. 'Selection', 'Scroll Context') */
   source?: string;
+  /** True when incremental history is being fetched */
+  fetchingMore?: boolean;
 }
 
 export const HydrographChart: React.FC<HydrographChartProps> = ({
@@ -33,6 +35,7 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
   loading = false,
   isLive = true,
   time,
+  fetchingMore = false,
   onViewportChange,
   onResetToLive,
   warnings,
@@ -82,7 +85,13 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
             <IonSpinner name="crescent" color="primary" />
           </div>
         )}
-        <ChartViewer {...chartProps} onViewportChange={onViewportChange} />
+        {fetchingMore && !loading && (
+          <div className="fetching-more-indicator">
+            <IonSpinner name="dots" color="primary" />
+            <span className="fetching-more-text">Loading History...</span>
+          </div>
+        )}
+        <ChartViewer {...chartProps} onViewportChange={(start, end, focus, scrolling) => onViewportChange?.(start, end, focus, scrolling)} />
       </div>
     </div>
   );

@@ -180,6 +180,39 @@
   pointer-events: none; /* Crucial: Allow interactions to pass through to the chart while loading */
 }
 
+.fetching-more-indicator {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ion-color-light, #f4f5f8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 6px 16px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.1);
+  animation: fetching-fade-in 0.3s ease-out;
+  pointer-events: none;
+}
+
+.fetching-more-text {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ion-color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+@keyframes fetching-fade-in {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
 
 /* Add a subtle indicator for live status in the header if needed */
 .hydrograph-header::after {

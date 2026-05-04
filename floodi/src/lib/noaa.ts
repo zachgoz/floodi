@@ -137,13 +137,47 @@ function getCanonicalUrl(baseUrl: string, params: Record<string, string | number
             : part;
         } catch { return part; }
       }).join('/');
+    } else if (typeof val === 'string' && /^\d{8} \d{2}:\d{2}$/.test(val)) {
+      // Bucketize NOAA dates (yyyymmdd HH:MM) to the nearest 6 minutes (matching NOAA data interval)
+      try {
+        const year = parseInt(val.substring(0, 4), 10);
+        const month = parseInt(val.substring(4, 6), 10) - 1;
+        const day = parseInt(val.substring(6, 8), 10);
+        const hour = parseInt(val.substring(9, 11), 10);
+        const minute = parseInt(val.substring(12, 14), 10);
+        
+        // Use UTC to avoid local time issues during canonicalization
+        const d = new Date(Date.UTC(year, month, day, hour, minute));
+        if (!isNaN(d.getTime())) {
+          // Round to nearest 6 minutes (360,000 ms)
+          const bucketed = new Date(Math.floor(d.getTime() / 360000) * 360000);
+          val = fmtBeginEnd(bucketed);
+        }
+      } catch { /* ignore */ }
+    } else if (typeof val === 'string' && /^\d{8}$/.test(val)) {
+      // Handle yyyymmdd only format (daily bucket)
+      // No change needed as it's already a daily bucket
     }
     usp.append(key, val);
   }
 
-  // Round cache buster to 5 minutes
-  const cacheBuster = Math.floor(Date.now() / 300000) * 300000;
-  return `${baseUrl}?${usp.toString()}&_cb=${cacheBuster}`;
+  // Only add cache buster if the range is recent or in the future (within last 24h)
+  const isRecent = Object.values(params).some(val => {
+    if (typeof val !== 'string') return false;
+    if (val.includes('now')) return true;
+    try {
+      // Check if it's a date string in the last 24h
+      const d = new Date(val.replace(' ', 'T') + 'Z');
+      return !isNaN(d.getTime()) && (Date.now() - d.getTime() < 24 * 3600 * 1000);
+    } catch { return false; }
+  });
+
+  if (isRecent) {
+    const cacheBuster = Math.floor(Date.now() / 300000) * 300000; // 5 min
+    return `${baseUrl}?${usp.toString()}&_cb=${cacheBuster}`;
+  }
+
+  return `${baseUrl}?${usp.toString()}`;
 }
 
 async function requestWithCache(url: string, ttl = 30000): Promise<any> {
@@ -245,7 +279,7 @@ export async function fetchObservedWaterLevels(opts: {
   // 1. Fetch NOAA CO-OPS
   let noaaSeries: TimeSeries = {};
   if (isNoaaRequested || isFimanRequested) {
-    const chunks = splitDateRange(start, end, 31);
+    const chunks = splitDateRange(start, end, 30);
     const fetchChunk = async (s: Date, e: Date) => {
       const params = {
         product: 'water_level',
@@ -284,104 +318,81 @@ export async function fetchObservedWaterLevels(opts: {
   // 2. Try Sunny Day Flooding (FiMAN) API
   let fimanSeries: TimeSeries | null = null;
   const allImagery: Record<string, Record<string, string>> = {};
-  const ms = end.getTime() - start.getTime();
-  const days = Math.ceil(ms / (24 * 3600 * 1000));
   
-  if (isFimanRequested && days <= 90) {
-    const formatFimanDate = (d: Date) => d.toISOString().split('.')[0] + 'Z';
-    const timeStr = `${formatFimanDate(start)}/${formatFimanDate(end)}`;
-    
-    // Match the user's working sample platform ID exactly (e.g., sunnyd_cb_03)
-    const sensors = WEBCAMS.map(w => w.id.toLowerCase());
-    
-    const platformResults = await Promise.all(sensors.map(async (platform) => {
-      const params = {
-        format: 'json',
-        pretty: 'true',
-        time: timeStr,
-        platform,
-        standard: 'false',
-        qcFilter: 'false',
-        health: 'summary',
-        region: '',
-        datum: datum.toUpperCase(),
-        windPrediction: 'wind speed prediction',
-        www: 'true',
-        dataView: 'less',
-        allStations: 'true'
+  if (isFimanRequested) {
+    // 2a. Calculate FiMAN-eligible range (capped at 90 days ago)
+    const ninetyDaysAgoMs = Date.now() - 90 * 24 * 3600 * 1000;
+    const fimanStart = new Date(Math.max(start.getTime(), ninetyDaysAgoMs));
+    const fimanEnd = end;
+
+    if (fimanEnd > fimanStart) {
+      // Chunk FiMAN requests similarly to NOAA to maximize cache hits
+      const fimanChunks = splitDateRange(fimanStart, fimanEnd, 30);
+      const primaryPlatform = WEBCAMS[0]?.id.toLowerCase() || 'sunnyd_cb_03';
+
+      const fetchFimanChunk = async (s: Date, e: Date) => {
+        const formatFimanDate = (d: Date) => d.toISOString().split('.')[0] + 'Z';
+        const timeStr = `${formatFimanDate(s)}/${formatFimanDate(e)}`;
+        
+        const params = {
+          format: 'json',
+          time: timeStr,
+          platform: primaryPlatform,
+          datum: datum.toUpperCase(),
+          www: 'true',
+          dataView: 'less',
+          allStations: 'true'
+        };
+
+        try {
+          const data = await requestFiMAN(params) as any;
+          const properties = data.features?.[0]?.properties;
+          const parameters = properties?.parameters || [];
+          const fimanParam = parameters.find((p: any) => p.id === "FIMAN (observed)");
+          const cameraParams = parameters.filter((p: any) => p.id === "Camera");
+
+          const chunkSeries: TimeSeries = {};
+          if (fimanParam?.observations?.times?.length > 0) {
+            const times = fimanParam.observations.times;
+            const values = fimanParam.observations.values;
+            for (let i = 0; i < times.length; i++) {
+              const t = new Date(times[i] + 'Z');
+              let v = parseFloat(values[i]);
+              if (!isNaN(v)) {
+                if (datum.toUpperCase() === 'MLLW') {
+                  const datumOffset = units === 'english' ? CAROLINA_BEACH_NAVD88_TO_MLLW_FT : CAROLINA_BEACH_NAVD88_TO_MLLW_FT * 0.3048;
+                  v += datumOffset;
+                }
+                chunkSeries[t.toISOString()] = v;
+              }
+            }
+          }
+
+          // Process imagery for this chunk
+          cameraParams.forEach((cameraParam: any) => {
+            if (cameraParam?.observations?.times?.length > 0) {
+              const times = cameraParam.observations.times;
+              const urls = cameraParam.observations.values;
+              WEBCAMS.forEach(webcam => {
+                const platformKey = webcam.id.toUpperCase();
+                const platformImagery = allImagery[platformKey] || (allImagery[platformKey] = {});
+                for (let i = 0; i < times.length; i++) {
+                  const t = new Date(times[i] + 'Z').toISOString();
+                  platformImagery[t] = platformKey === primaryPlatform.toUpperCase() ? urls[i] : urls[i].replace(primaryPlatform.toUpperCase(), platformKey);
+                }
+              });
+            }
+          });
+
+          return chunkSeries;
+        } catch (err) {
+          console.warn(`FiMAN chunk fetch failed [${timeStr}]:`, err);
+          return {};
+        }
       };
 
-      try {
-        const data = await requestFiMAN(params) as any;
-        const properties = data.features?.[0]?.properties;
-        const parameters = properties?.parameters || [];
-        
-        const fimanParam = parameters.find((p: any) => p.id === "FIMAN (observed)");
-        const cameraParams = parameters.filter((p: any) => p.id === "Camera");
-        
-        // Extract imagery for this platform
-        cameraParams.forEach((cameraParam: any) => {
-          if (cameraParam?.observations?.times?.length > 0) {
-            const times = cameraParam.observations.times;
-            const urls = cameraParam.observations.values;
-            const platformImagery: Record<string, string> = {};
-            for (let i = 0; i < times.length; i++) {
-              const t = new Date(times[i] + 'Z').toISOString();
-              platformImagery[t] = urls[i];
-            }
-            
-            // Map to the specific camera ID derived from the filename
-            const firstUrl = urls[0];
-            const filename = firstUrl.split('/').pop() || '';
-            const derivedId = filename.split('.')[0];
-            
-            if (derivedId) {
-              const canonicalId = derivedId.toUpperCase().startsWith('SUNNYD_') 
-                ? derivedId.toUpperCase() 
-                : `SUNNYD_${derivedId.toUpperCase()}`;
-              allImagery[canonicalId] = platformImagery;
-            }
-            
-            // Backup mapping for the platform name
-            const platformKey = platform.toUpperCase().startsWith('SUNNYD_')
-              ? platform.toUpperCase()
-              : `SUNNYD_${platform.toUpperCase()}`;
-            if (!allImagery[platformKey]) {
-              allImagery[platformKey] = platformImagery;
-            }
-          }
-        });
-
-        if (fimanParam?.observations?.times?.length > 0) {
-          const out: TimeSeries = {};
-          const times = fimanParam.observations.times;
-          const values = fimanParam.observations.values;
-          
-          for (let i = 0; i < times.length; i++) {
-            const t = new Date(times[i] + 'Z');
-            let v = parseFloat(values[i]);
-            if (!isNaN(v)) {
-              if (datum.toUpperCase() === 'MLLW') {
-                const datumOffset = units === 'english'
-                  ? CAROLINA_BEACH_NAVD88_TO_MLLW_FT
-                  : CAROLINA_BEACH_NAVD88_TO_MLLW_FT * 0.3048;
-                v += datumOffset;
-              }
-              out[t.toISOString()] = v;
-            }
-          }
-          return { series: out, platform };
-        }
-      } catch (e) {
-        console.warn(`FiMAN fetch failed for ${platform}:`, e);
-      }
-      return null;
-    }));
-
-    // Find the first valid water level series (preferring CB_03)
-    const validResult = platformResults.find(r => r !== null);
-    if (validResult) {
-      fimanSeries = validResult.series;
+      const fimanResults = await Promise.all(fimanChunks.map(c => fetchFimanChunk(c.s, c.e)));
+      fimanSeries = Object.assign({}, ...fimanResults);
     }
   }
 
@@ -440,7 +451,7 @@ export async function fetchPredictions(opts: {
   
   // While predictions have a larger limit (years), we chunk at 31 days for consistency
   // and to avoid potential timeout issues with very large payloads.
-  const chunks = splitDateRange(start, end, 31);
+  const chunks = splitDateRange(start, end, 30);
 
   const fetchChunk = async (s: Date, e: Date) => {
     const params = {
@@ -722,15 +733,32 @@ export async function buildAdjustedFuture(opts: {
   const futStart = now;
   const futEnd = new Date(now.getTime() + lookaheadHours * 3600_000);
   
-  // Get future tide predictions
-  const predictedFuture = await fetchPredictions({ 
-    station, 
-    start: futStart, 
-    end: futEnd, 
-    interval, 
-    datum, 
-    units 
-  });
+  // Reuse existing predicted data if it covers the future window
+  let predictedFuture: TimeSeries = {};
+  let covered = false;
+  
+  if (existingPredicted && Object.keys(existingPredicted).length > 0) {
+    const keys = Object.keys(existingPredicted).sort();
+    const first = new Date(keys[0]);
+    const last = new Date(keys[keys.length - 1]);
+    
+    // Allow a small margin (15 mins) for coverage check
+    if (first.getTime() <= futStart.getTime() + 900000 && last.getTime() >= futEnd.getTime() - 900000) {
+      predictedFuture = existingPredicted;
+      covered = true;
+    }
+  }
+
+  if (!covered) {
+    predictedFuture = await fetchPredictions({ 
+      station, 
+      start: futStart, 
+      end: futEnd, 
+      interval, 
+      datum, 
+      units 
+    });
+  }
   
   // Apply surge and time adjustment to future predictions
   const adjusted: TimeSeries = {};
@@ -761,7 +789,7 @@ export async function fetchWind(opts: {
   // 1. Fetch historical/current wind from NOAA CO-OPS
   if (opts.start < now) {
     const historicalEnd = new Date(Math.min(opts.end.getTime(), now.getTime()));
-    const chunks = splitDateRange(opts.start, historicalEnd, 31);
+    const chunks = splitDateRange(opts.start, historicalEnd, 30);
 
     const fetchChunk = async (s: Date, e: Date) => {
       const params = {

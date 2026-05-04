@@ -10,6 +10,7 @@ interface WebcamFeedCardProps {
   onResetToLive?: () => void;
   onClose?: () => void;
   imagery?: Record<string, string>;
+  isScrolling?: boolean;
 }
 
 // Helper to truncate seconds/milliseconds to start exactly on the minute
@@ -35,22 +36,10 @@ function formatDateToIsoString(date: Date): string {
 const FALLBACK_OFFSETS_MINUTES = [
   // First 60 minutes minute-by-minute (guarantees finding an interval regardless of drift and dropped frames)
   ...Array.from({ length: 60 }, (_, i) => i),
-  // Jump to 12h ago
+  // Probe 1-hour increments up to 12 hours to catch intermittent availability
+  ...Array.from({ length: 11 }, (_, i) => (i + 1) * 60),
+  // Final probe around the 12-hour mark
   ...Array.from({ length: 20 }, (_, i) => 12 * 60 + i),
-  // Jump to 24h ago
-  ...Array.from({ length: 20 }, (_, i) => 24 * 60 + i),
-  // Jump to 48h ago
-  ...Array.from({ length: 20 }, (_, i) => 48 * 60 + i),
-  // Jump to 3 days ago
-  ...Array.from({ length: 20 }, (_, i) => 3 * 24 * 60 + i),
-  // Jump to 4 days ago
-  ...Array.from({ length: 20 }, (_, i) => 4 * 24 * 60 + i),
-  // Jump to 5 days ago
-  ...Array.from({ length: 20 }, (_, i) => 5 * 24 * 60 + i),
-  // Jump to 6 days ago
-  ...Array.from({ length: 20 }, (_, i) => 6 * 24 * 60 + i),
-  // Jump to 7 days ago
-  ...Array.from({ length: 20 }, (_, i) => 7 * 24 * 60 + i),
 ];
 
 export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
@@ -60,7 +49,9 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
   onResetToLive,
   onClose,
   imagery,
+  isScrolling = false,
 }) => {
+  const [stableTime, setStableTime] = useState(targetTime);
   const [attemptIdx, setAttemptIdx] = useState(0);
   const [apiFailed, setApiFailed] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -68,12 +59,16 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
 
   // Reset attempts when time or camera changes
   useEffect(() => {
-    setAttemptIdx(0);
-    setApiFailed(false);
-    setHasError(false);
-  }, [targetTime, cameraId, imagery]);
+    if (!isScrolling) {
+      setStableTime(targetTime);
+      setAttemptIdx(0);
+      setApiFailed(false);
+      setHasError(false);
+    }
+  }, [targetTime, cameraId, imagery, isScrolling]);
 
-  const isFuture = (targetTime.getTime() - Date.now()) > 10 * 60 * 1000;
+  const activeTime = isScrolling ? stableTime : targetTime;
+  const isFuture = (activeTime.getTime() - Date.now()) > 10 * 60 * 1000;
   
   // 1. Try to find image in API response first
   let imageUrl = '';
@@ -81,7 +76,7 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
   let foundInApi = false;
 
   if (imagery && Object.keys(imagery).length > 0 && !apiFailed && !hasError) {
-    const targetMs = targetTime.getTime();
+    const targetMs = activeTime.getTime();
     const sortedTimes = Object.keys(imagery)
       .sort((a, b) => new Date(b).getTime() - new Date(a).getTime()); // Latest first
     
@@ -99,14 +94,14 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
 
   // 2. Fallback to manual URL construction if not found in API or if specifically failed
   if (!foundInApi) {
-    const baseDate = getBaseMinute(targetTime);
+    const baseDate = getBaseMinute(activeTime);
     const offsetMinutes = FALLBACK_OFFSETS_MINUTES[attemptIdx] || 0;
     finalImageDate = new Date(baseDate.getTime() - offsetMinutes * 60 * 1000);
     const dateString = formatDateToIsoString(finalImageDate);
     imageUrl = `https://wl.secoora.org/webcam/${cameraId}.${dateString}.jpg`;
   }
   
-  const isStale = (targetTime.getTime() - finalImageDate.getTime()) > 60 * 60 * 1000; // > 1h diff
+  const isStale = (activeTime.getTime() - finalImageDate.getTime()) > 60 * 60 * 1000; // > 1h diff
   const isHistorical = (Date.now() - finalImageDate.getTime()) > 60 * 60 * 1000;
 
   const handleError = () => {
@@ -151,7 +146,7 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
         )}
       </div>
       
-      <div className="webcam-image-wrapper">
+      <div className={`webcam-image-wrapper ${isScrolling ? 'is-scrolling' : ''}`}>
         {isFuture ? (
           <div className="webcam-image-placeholder">
             <div className="placeholder-content">
@@ -180,8 +175,24 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
             onError={handleError}
           />
         ) : (
-          <div className="webcam-image-placeholder">
-            <span>No Image Available</span>
+          <div className="webcam-image-placeholder error-state">
+            <div className="placeholder-content">
+              <IonIcon icon={warningOutline} className="placeholder-icon" style={{ fontSize: '2rem', marginBottom: '8px', opacity: 0.5 }} />
+              <span className="placeholder-text">No Image Available</span>
+              <span className="placeholder-subtext">No capture found within 12 hours of this time.</span>
+              {onResetToLive && (
+                <IonButton 
+                  onClick={onResetToLive}
+                  className="webcam-reset-button"
+                  size="small"
+                  mode="ios"
+                  style={{ marginTop: '12px' }}
+                >
+                  <IonIcon slot="start" icon={refreshOutline} />
+                  Return to Live
+                </IonButton>
+              )}
+            </div>
           </div>
         )}
         {!isFuture && (
