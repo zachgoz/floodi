@@ -1223,9 +1223,9 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             }
           }
 
-          // Track last label X positions separately for high/low to prevent them from blocking each other
-          let lastHighLabelX = -100;
-          let lastLowLabelX = -100;
+          // Track last label X positions separately for high and low peaks to allow both to show even if horizontally close
+          let lastHighLabelX = -1000;
+          let lastLowLabelX = -1000;
           let lastDateLabelX = -100;
 
           return peaks.map((tick, i) => {
@@ -1233,11 +1233,11 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             // Relaxed boundary check to show peaks right on the edge
             if (x < margins.l - 5 || x > margins.l + innerW + 5) return null;
             
-            // Determine if this is a high or low peak before the label check
-            const predPoint = predictedPoints.find(p => p.t.getTime() === tick.getTime());
-            if (!predPoint) return null;
-
+            // Find the peak point to determine if it's High or Low for collision detection
             const idx = predictedPoints.findIndex(p => p.t.getTime() === tick.getTime());
+            if (idx === -1) return null;
+            const predPoint = predictedPoints[idx];
+
             let isHigh = true;
             if (idx > 0 && idx < predictedPoints.length - 1) {
               const curr = predictedPoints[idx].v;
@@ -1285,25 +1285,44 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                   const minV = Math.min(...valsAtTime);
                   
                   // Clearance: -18px for high peaks, +24px for low peaks
-                  const finalY = isHigh ? yOf(maxV) - 18 : yOf(minV) + 24;
+                  let finalY = isHigh ? yOf(maxV) - 18 : yOf(minV) + 24;
+
+                  // Safety: keep labels within SVG bounds (plus some padding)
+                  const minVisibleY = margins.t - 5;
+                  const maxVisibleY = margins.t + innerH + 30;
+                  if (finalY < minVisibleY) finalY = minVisibleY + 12;
+                  if (finalY > maxVisibleY) finalY = maxVisibleY - 5;
 
                   return (
-                    <text
-                      x={x}
-                      y={finalY}
-                      textAnchor="middle"
-                      fill="var(--chart-axis-text)"
-                      fontSize="11"
-                      fontWeight="700"
-                      style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3.1px' }}
-                    >
-                      {new Intl.DateTimeFormat(undefined, { 
-                        hour: 'numeric', 
-                        minute: '2-digit',
-                        hour12: true,
-                        timeZone: timezone === 'gmt' ? 'UTC' : undefined 
-                      }).format(tick).replace(/\s?[AP]M$/, (m) => m.trim().toLowerCase())}
-                    </text>
+                    <g key={`plabel-${i}`}>
+                      <text
+                        x={x}
+                        y={finalY - 12}
+                        textAnchor="middle"
+                        fill={isHigh ? "var(--ion-color-danger)" : "var(--ion-color-primary)"}
+                        fontSize="10"
+                        fontWeight="800"
+                        style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}
+                      >
+                        {isHigh ? 'High' : 'Low'}
+                      </text>
+                      <text
+                        x={x}
+                        y={finalY}
+                        textAnchor="middle"
+                        fill="var(--chart-axis-text)"
+                        fontSize="11"
+                        fontWeight="700"
+                        style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3.1px' }}
+                      >
+                        {new Intl.DateTimeFormat(undefined, { 
+                          hour: 'numeric', 
+                          minute: '2-digit',
+                          hour12: true,
+                          timeZone: timezone === 'gmt' ? 'UTC' : undefined 
+                        }).format(tick).replace(/\s?[AP]M$/, (m) => m.trim().toLowerCase())}
+                      </text>
+                    </g>
                   );
                 })()}
                 <text
