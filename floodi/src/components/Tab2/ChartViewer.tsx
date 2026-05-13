@@ -1766,24 +1766,24 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                       onPointerUp={(e) => e.stopPropagation()}
                       onTouchStart={(e) => e.stopPropagation()}
                       onTouchEnd={(e) => e.stopPropagation()}
+                      onMouseEnter={() => onCommentHover?.(c)}
+                      onMouseLeave={() => onCommentHover?.(null)}
                       onClick={(e) => { 
                         e.stopPropagation(); 
                         onCommentClick?.([c]); 
                       }}
                     >
-                      {/* Smaller invisible hit target */}
+                      {/* Invisible hit target: 12px radius */}
                       <circle r={12} fill="transparent" style={{ pointerEvents: 'auto' }} data-comment-marker="true" />
                       <circle
                         className="comment-marker"
-                        r={4}
+                        r={3}
                         fill={color}
                         stroke="#000"
-                        strokeWidth={1.5}
+                        strokeWidth={1}
                         role="button"
                         aria-label={`Comment ${c.authorDisplayName || 'unknown'}`}
                         tabIndex={0}
-                        onMouseEnter={() => onCommentHover?.(c)}
-                        onMouseLeave={() => onCommentHover?.(null)}
                       />
                     </g>
                   );
@@ -1800,19 +1800,24 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                       onPointerUp={(e) => e.stopPropagation()}
                       onTouchStart={(e) => e.stopPropagation()}
                       onTouchEnd={(e) => e.stopPropagation()}
+                      onMouseEnter={() => {
+                        // For clusters, we might want to hover the first one or just indicate multiple
+                        if (arr.length > 0) onCommentHover?.(arr[0]);
+                      }}
+                      onMouseLeave={() => onCommentHover?.(null)}
                       onClick={(e) => { 
                         e.stopPropagation(); 
                         onCommentClick?.(arr); 
                       }}
                     >
-                      {/* Smaller invisible hit target */}
+                      {/* Invisible hit target: 12px radius */}
                       <circle r={12} fill="transparent" style={{ pointerEvents: 'auto' }} data-comment-marker="true" />
-                      <circle className="comment-marker" r={6.5} fill={color} stroke="#000" strokeWidth={1.5} />
+                      <circle className="comment-marker" r={5} fill={color} stroke="#000" strokeWidth={1} />
                       <text 
                         x={0} 
                         y={0} 
                         dy=".35em"
-                        fontSize="8" 
+                        fontSize="7" 
                         fontWeight="bold" 
                         fill="#fff" 
                         textAnchor="middle"
