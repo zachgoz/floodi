@@ -282,117 +282,82 @@ throw new Error(`NOAA API error: ${data.error?.message || 'unknown'}`);
 2. **Graceful Degradation**: Show cached data when API is unavailable
 3. **User Feedback**: Clear error messages with suggested actions
 4. **Fallback Data**: Use last known good data when appropriate
+## Firebase Backend Services
+
+FloodCast uses Firebase for authentication, data synchronization, and as a proxy layer for external services.
+
+### 1. FiMAN Proxy (Firebase Functions)
+
+**Endpoint**: `GET /fimanProxy`
+
+**Purpose**: Bypasses CORS restrictions for the FiMAN API and provides a centralized caching layer.
+
+**Query Parameters**:
+- `stationID`: FiMAN station identifier (e.g., `8518750`)
+- `action`: Data action (e.g., `getlatest`, `getdata`)
+- `format`: Response format (defaults to `json`)
+- *Additional parameters are forwarded to the upstream FiMAN API.*
+
+**Upstream URL**: `https://data.sunnydayflooding.com/services/data.php`
+
+**Caching**: 
+- CDN level: 5 minutes (`s-maxage=300`)
+- Browser level: 1 minute (`max-age=60`)
+
+### 2. Firestore Data Models
+
+Firestore stores synchronized data from NOAA and FiMAN, optimized for rapid retrieval and historical analysis.
+
+#### `stations` Collection
+Stores metadata for monitoring stations.
+- `id` (string): NOAA/FiMAN station ID.
+- `name` (string): Display name.
+- `lat` (number): Latitude.
+- `lng` (number): Longitude.
+- `source` (string): `noaa` or `fiman`.
+- `isActive` (boolean): Whether the station is currently monitored.
+
+#### `observations` Collection
+Sub-collection under each station document or a root collection partitioned by station.
+- `t` (timestamp): Time of measurement.
+- `v` (number): Water level value.
+- `type` (string): `observed` or `predicted`.
+
+#### `peaks` Collection
+Identified historical high-water events.
+- `stationId` (string): Reference to station.
+- `t` (timestamp): Time of peak.
+- `v` (number): Maximum water level.
+- `threshold` (string): Which flood category was triggered (Minor, Moderate, Major).
+
+### 3. Scheduled Functions (ETL)
+
+- **`syncWaterLevels`**: Runs every 15 minutes to fetch the latest observations from NOAA and FiMAN.
+- **`syncPredictions`**: Runs daily to refresh tide predictions for the next 30 days.
+- **`runBackfillData`**: Manual or periodic function to ingest historical data for new stations.
 
 ## Common Usage Patterns
 
-### 1. Real-time Monitoring
+### 1. Hybrid Data Fetching (`dataService.ts`)
+
+The application fetches data using a hybrid approach:
+1.  **Direct NOAA Fetch**: For standard tidal predictions.
+2.  **Firebase Proxy**: For hyperlocal FiMAN data.
+3.  **Firestore Query**: For historical peaks and comparison.
+
 ```typescript
-// Get current conditions with 6-hour lookback
-const forecast = await buildAdjustedFuture({
-  station: '8518750',
-  now: new Date(),
-  lookbackHours: 6,
-  lookaheadHours: 24
+// Example of fetching unified data
+const data = await dataService.fetchWaterLevels({
+  stationId: '8518750',
+  range: '48h'
 });
-
-// Check for flood warnings
-const crossing = findNextThresholdCrossing(
-  forecast.adjusted, 
-  4.5, // Flood threshold in feet
-  new Date()
-);
 ```
 
-### 2. Historical Analysis
-```typescript
-// Compare storm impact over time
-const start = new Date('2024-01-15T00:00Z');
-const end = new Date('2024-01-16T00:00Z');
+## Performance and Reliability
 
-const [observed, predicted] = await Promise.all([
-  fetchObservedWaterLevels({ station, start, end }),
-  fetchPredictions({ station, start, end })
-]);
+- **Request Batching**: The backend ETL process batches Firestore writes to reduce latency.
+- **CDN Caching**: API responses from Firebase Functions are cached globally.
+- **Graceful Failover**: If FiMAN is unavailable, the system automatically falls back to the nearest NOAA station.
 
-const { offset } = estimateSurgeOffset(observed, predicted);
-console.log(`Storm surge: ${offset.toFixed(2)} feet`);
-```
-
-## Station Selection
-
-### Popular Monitoring Stations
-- **8518750**: New London, CT
-- **8461490**: New London Ledge Light, CT
-- **8510560**: Montauk, NY
-- **8531680**: Sandy Hook, NJ
-
-### Station Selection Criteria
-1. **Data Availability**: 6-minute interval water level data
-2. **Geographic Coverage**: Strategic coastal locations
-3. **Data Quality**: High-quality, well-maintained stations
-4. **Relevance**: Proximity to flood-prone areas
-
-## Performance Considerations
-
-### 1. API Request Optimization
-- Batch requests when possible
-- Use appropriate time intervals (6 minutes is standard)
-- Limit date ranges to necessary periods
-
-### 2. Caching Strategy
-- Cache API responses temporarily to reduce redundant requests
-- Implement smart cache invalidation based on data age
-- Consider offline storage for critical data
-
-### 3. Rate Limiting
-- Implement respectful request spacing
-- Monitor API response times
-- Implement exponential backoff for failures
-
-## Data Quality and Limitations
-
-### 1. Data Quality Flags
-NOAA provides quality flags for each measurement:
-- **f**: Quality flags (1,0,0,0 format)
-- **q**: Quality assurance level
-- **s**: Standard deviation when available
-
-### 2. Known Limitations
-- **Prediction Accuracy**: Harmonic predictions don't include weather effects
-- **Real-time Delays**: Observed data may have 15-30 minute delays
-- **Station Maintenance**: Periodic outages for equipment maintenance
-- **Extreme Events**: Model accuracy decreases during severe weather
-
-### 3. Data Validation
-Always validate API responses:
-```typescript
-// Check for valid numeric values
-if (!isFinite(v) || !t) continue;
-
-// Verify reasonable value ranges
-if (v < -10 || v > 20) {
-  console.warn(`Unusual water level: ${v} feet`);
-}
-```
-
-## Future Enhancements
-
-### 1. Additional Data Products
-- **Meteorological Data**: Wind speed, barometric pressure
-- **Currents Data**: Water current speed and direction  
-- **Air Gap Data**: Bridge clearance information
-- **Datum Conversions**: Convert between different vertical references
-
-### 2. Advanced Analysis
-- **Frequency Analysis**: Return period calculations for extreme events
-- **Trend Analysis**: Long-term sea level rise detection
-- **Seasonal Adjustments**: Account for seasonal variations
-- **Multi-station Analysis**: Regional flood risk assessment
-
-### 3. Performance Improvements
-- **WebSocket Integration**: Real-time data streaming
-- **GraphQL Layer**: More efficient data fetching
-- **Edge Caching**: CDN-based response caching
-- **Background Sync**: PWA background data updates
-
-This API integration provides FloodCast with reliable, real-time flood forecasting capabilities while maintaining high performance and user experience standards.
+This API structure ensures that FloodCast remains fast and reliable even during severe weather events when external sensors might experience intermittent connectivity.
+s.

@@ -71,6 +71,7 @@ export const createComment = async (
     content: contentRes.sanitized,
     authorUid: data.authorUid,
     metadata: {
+      locationId: data.metadata.locationId,
       station: {
         id: data.metadata.station.id,
         name: data.metadata.station.name
@@ -85,6 +86,7 @@ export const createComment = async (
     isEdited: false,
     editHistory: [],
     isDeleted: false,
+    isOfficial: ctx.role === UserRole.Moderator || ctx.role === UserRole.Admin,
   } as unknown as Comment;
 
   const col = collection(db, COMMENTS_COLLECTION);
@@ -114,14 +116,14 @@ export const getComment = async (id: string): Promise<Comment | null> => {
   return snap.exists() ? ({ id: snap.id, ...(snap.data() as Omit<Comment, 'id'>) } as Comment) : null;
 };
 
-/** List comments for a station ordered by createdAt (desc) with pagination. */
-export const getCommentsByStation = async (
-  stationId: string,
+/** List comments for a location ordered by createdAt (desc) with pagination. */
+export const getCommentsByLocation = async (
+  locationId: string,
   options?: { includeDeleted?: boolean; pageSize?: number; cursor?: QueryDocumentSnapshot<DocumentData> | null }
 ): Promise<Page<Comment>> => {
   const pageSize = options?.pageSize ?? 20;
   const parts: any[] = [
-    where('metadata.station.id', '==', stationId),
+    where('metadata.locationId', '==', locationId),
     orderBy('createdAt', 'desc'),
     limit(pageSize),
   ];
@@ -134,19 +136,22 @@ export const getCommentsByStation = async (
   return { items, nextCursor };
 };
 
+/** @deprecated Use getCommentsByLocation */
+export const getCommentsByStation = getCommentsByLocation;
+
 /**
  * Query for comments overlapping a time window (partial server-side, final client-side filter).
  * Firestore supports range filters on a single field; we filter by startTime <= end and then
  * refine by endTime >= start locally.
  */
 export const getCommentsByTimeRange = async (
-  stationId: string,
+  locationId: string,
   range: CommentTimeRange,
   options?: { includeDeleted?: boolean; pageSize?: number }
 ): Promise<Comment[]> => {
   const endIso = range.endTime;
   const parts: any[] = [
-    where('metadata.station.id', '==', stationId),
+    where('metadata.locationId', '==', locationId),
     where('metadata.timeRange.startTime', '<=', endIso),
     orderBy('metadata.timeRange.startTime', 'asc'),
     limit(options?.pageSize ?? 100),
@@ -236,20 +241,20 @@ export const hardDeleteComment = async (id: string, ctx: { role: UserRole }): Pr
 
 /** Query comments overlapping range for chart usage. */
 export const getCommentsForChartTimeRange = async (
-  stationId: string,
+  locationId: string,
   range: CommentTimeRange
-): Promise<Comment[]> => getCommentsByTimeRange(stationId, range, { includeDeleted: false });
+): Promise<Comment[]> => getCommentsByTimeRange(locationId, range, { includeDeleted: false });
 
 /** Real-time subscription to comments overlapping range for chart usage. */
 export const subscribeToCommentsByTimeRange = (
-  stationId: string,
+  locationId: string,
   range: CommentTimeRange,
   opts: { includeDeleted?: boolean; pageSize?: number },
   cb: (comments: Comment[]) => void
 ): Unsubscribe => {
   const endIso = range.endTime;
   const parts: any[] = [
-    where('metadata.station.id', '==', stationId),
+    where('metadata.locationId', '==', locationId),
     where('metadata.timeRange.startTime', '<=', endIso),
     orderBy('metadata.timeRange.startTime', 'asc'),
     limit(opts?.pageSize ?? 100),
@@ -269,11 +274,13 @@ export const subscribeToCommentsByTimeRange = (
 
 /** Real-time subscription to comments (generic). */
 export const subscribeToComments = (
-  opts: { stationId?: string; authorUid?: string; includeDeleted?: boolean; pageSize?: number },
+  opts: { locationId?: string; stationId?: string; authorUid?: string; includeDeleted?: boolean; pageSize?: number },
   cb: (comments: Comment[]) => void
 ): Unsubscribe => {
   const parts: any[] = [orderBy('createdAt', 'desc'), limit(opts.pageSize ?? 50)];
-  if (opts.stationId) parts.unshift(where('metadata.station.id', '==', opts.stationId));
+  if (opts.locationId) parts.unshift(where('metadata.locationId', '==', opts.locationId));
+  else if (opts.stationId) parts.unshift(where('metadata.station.id', '==', opts.stationId));
+  
   if (opts.authorUid) parts.unshift(where('authorUid', '==', opts.authorUid));
   if (!opts.includeDeleted) parts.unshift(where('isDeleted', '==', false));
   const q = query(collection(db, COMMENTS_COLLECTION), ...parts);
@@ -291,13 +298,16 @@ export const subscribeToStationComments = (
 ): Unsubscribe => subscribeToComments({ stationId, includeDeleted: opts?.includeDeleted, pageSize: opts?.pageSize }, cb);
 
 /** Counts */
-export const countCommentsByStation = async (stationId: string, includeDeleted = false): Promise<number> => {
-  const parts: any[] = [where('metadata.station.id', '==', stationId)];
+export const countCommentsByLocation = async (locationId: string, includeDeleted = false): Promise<number> => {
+  const parts: any[] = [where('metadata.locationId', '==', locationId)];
   if (!includeDeleted) parts.push(where('isDeleted', '==', false));
   const q = query(collection(db, COMMENTS_COLLECTION), ...parts);
   const snap = await getDocs(q);
   return snap.size;
 };
+
+/** @deprecated Use countCommentsByLocation */
+export const countCommentsByStation = countCommentsByLocation;
 
 export const countCommentsByAuthor = async (authorUid: string, includeDeleted = false): Promise<number> => {
   const parts: any[] = [where('authorUid', '==', authorUid)];

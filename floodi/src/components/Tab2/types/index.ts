@@ -31,6 +31,26 @@ export interface Station {
   lon?: number;
 }
 
+/** Configuration for a specific town/location */
+export interface LocationConfig {
+  id: string;
+  name: string;
+  state: string;
+  noaaStationId: string;
+  fimanSensorId?: string;
+  webcamIds: string[];
+  thresholds: {
+    minor: number;
+    moderate: number;
+    major: number;
+    extreme: number;
+  };
+  coords: { lat: number; lon: number };
+  navd88ToMllwOffset?: number;
+}
+
+import type { FloodEvent } from 'src/types/data';
+
 /** Chart data series */
 export interface ChartData {
   observed: Record<string, number>;
@@ -44,6 +64,7 @@ export interface ChartData {
   wind?: Record<string, { speed: number; dir: number }>;
   precip?: Record<string, number>;
   imagery?: Record<string, Record<string, string>>;
+  floodEvents?: FloodEvent[];
   warnings?: string[];
 }
 
@@ -78,10 +99,16 @@ export interface OffsetConfig {
 
 /** Complete application configuration */
 export interface AppConfiguration {
+  locationId: string;
+  location: {
+    id: string;
+    name: string;
+    state: string;
+  };
+  /** The primary NOAA station associated with this location (for legacy support/comments) */
   station: {
     id: string;
     name: string;
-    state?: string;
   };
   thresholds: {
     minor: number;
@@ -96,6 +123,7 @@ export interface AppConfiguration {
     showDelta: boolean;
     theme?: 'auto' | 'light' | 'dark';
     viewMode?: 'basic' | 'advanced';
+    dataSource: 'auto' | 'fiman' | 'noaa';
   };
 }
 

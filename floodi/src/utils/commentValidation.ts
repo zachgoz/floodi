@@ -108,6 +108,7 @@ export const validateStationId = (stationId: string): boolean => NOAA_STATION_ID
 
 export const validateCommentMetadata = (meta: CommentMetadata): { ok: boolean; errors: string[] } => {
   const errors: string[] = [];
+  if (!meta?.locationId || typeof meta.locationId !== 'string') errors.push('Invalid location ID.');
   if (!meta?.station?.id || !validateStationId(meta.station.id)) errors.push('Invalid station ID.');
   if (!meta?.station?.name || typeof meta.station.name !== 'string') errors.push('Invalid station name.');
   const tr = validateTimeRange(meta.timeRange);

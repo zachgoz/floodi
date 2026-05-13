@@ -22,6 +22,10 @@ interface DisplaySettingsProps {
   viewMode: 'basic' | 'advanced' | undefined;
   /** Callback when view mode changes */
   onViewModeChange: (viewMode: 'basic' | 'advanced') => void;
+  /** Data source setting */
+  dataSource: 'auto' | 'fiman' | 'noaa' | undefined;
+  /** Callback when data source changes */
+  onDataSourceChange: (source: 'auto' | 'fiman' | 'noaa') => void;
 }
 
 /**
@@ -37,7 +41,9 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
   theme = 'auto', 
   onThemeChange,
   viewMode = 'basic',
-  onViewModeChange 
+  onViewModeChange,
+  dataSource = 'auto',
+  onDataSourceChange
 }) => {
   const handleThemeChange = (event: CustomEvent) => {
     const value = event.detail.value as 'auto' | 'light' | 'dark';
@@ -79,6 +85,21 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
           </IonSegmentButton>
           <IonSegmentButton value="dark">
             <IonLabel>Dark</IonLabel>
+          </IonSegmentButton>
+        </IonSegment>
+      </IonItem>
+
+      <IonItem>
+        <IonLabel position="stacked">Preferred Data Source</IonLabel>
+        <IonSegment value={dataSource} onIonChange={(e) => onDataSourceChange(e.detail.value as any)}>
+          <IonSegmentButton value="auto">
+            <IonLabel>Auto</IonLabel>
+          </IonSegmentButton>
+          <IonSegmentButton value="fiman">
+            <IonLabel>FiMAN</IonLabel>
+          </IonSegmentButton>
+          <IonSegmentButton value="noaa">
+            <IonLabel>NOAA</IonLabel>
           </IonSegmentButton>
         </IonSegment>
       </IonItem>

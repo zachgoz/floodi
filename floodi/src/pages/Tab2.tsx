@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   IonContent,
   IonHeader,
@@ -15,25 +15,26 @@ import {
   IonIcon,
 } from '@ionic/react';
 import { settingsOutline } from 'ionicons/icons';
-// import { ChartViewer } from '../components/Tab2/ChartViewer'; // Removed to avoid confusion with default import in HydrographChart
-import { SettingsModal } from '../components/Tab2/SettingsModal';
-import { useSettingsStorage } from '../components/Tab2/hooks/useSettingsStorage';
-import { useChartData } from '../components/Tab2/hooks/useChartData';
-import { formatTooltipTime, findNearestPoint } from '../components/Tab2/hooks/useChartInteraction';
-import type { Station } from '../components/Tab2/types';
-import { useChartComments } from '../components/Tab2/hooks/useChartComments';
-import { ChartCommentModal } from '../components/Tab2/ChartCommentModal';
-import '../components/Tab2/styles/Tab2.css';
+import { SettingsModal } from 'src/components/Tab2/SettingsModal';
+import { useSettingsStorage } from 'src/components/Tab2/hooks/useSettingsStorage';
+import { useChartData } from 'src/components/Tab2/hooks/useChartData';
+import { useAtmosphericState } from 'src/components/Tab2/hooks/useAtmosphericState';
+import { formatTooltipTime, findNearestPoint } from 'src/components/Tab2/hooks/useChartInteraction';
+import { useChartComments } from 'src/components/Tab2/hooks/useChartComments';
+import { ChartCommentModal } from 'src/components/Tab2/ChartCommentModal';
+import 'src/components/Tab2/styles/Tab2.css';
 import './Tab2.css';
-import '../components/dashboard/DashboardView.css';
-import HydrographChart from '../components/dashboard/HydrographChart';
-import AtmosphericOverlay from '../components/dashboard/AtmosphericOverlay';
-import InundationMap, { RoadProperties } from '../components/dashboard/InundationMap';
-import InundationSimulator from '../components/dashboard/InundationSimulator';
-import WebcamFeedCard from '../components/dashboard/WebcamFeedCard';
-import { WEBCAMS } from '../constants/webcams';
+import 'src/components/dashboard/DashboardView.css';
+import HydrographChart from 'src/components/dashboard/HydrographChart';
+import AtmosphericOverlay from 'src/components/dashboard/AtmosphericOverlay';
+import InundationMap, { RoadProperties } from 'src/components/dashboard/InundationMap';
+import InundationSimulator from 'src/components/dashboard/InundationSimulator';
+import WebcamFeedCard from 'src/components/dashboard/WebcamFeedCard';
+import { FloodEventSidebar } from 'src/components/Tab2/FloodEventSidebar';
+import { findLastSimilarLevel } from 'src/lib/dataService';
+import { WEBCAMS } from 'src/constants/webcams';
 import { APIProvider } from '@vis.gl/react-google-maps';
-// Removed unused types
+import type { FloodEvent, WaterLevelPeak } from 'src/types/data';
 
 /**
  * Professional FloodCast Tab2 Component
@@ -59,7 +60,7 @@ const Tab2: React.FC = () => {
   // Professional configuration management
   const {
     config,
-    updateStation,
+    updateLocation,
     updateThresholds,
     updateOffset,
     updateTimeRange,
@@ -70,28 +71,9 @@ const Tab2: React.FC = () => {
 
   // State declarations (moved up to avoid TDZ)
   const [resetCount, setResetCount] = useState(0);
-  const [currentViewport, setCurrentViewport] = React.useState<{ start: Date; end: Date; focusTime: Date } | null>(null);
+  const [currentViewport, setCurrentViewport] = useState<{ start: Date; end: Date; focusTime: Date } | null>(null);
   const [manualFocusTime, setManualFocusTime] = useState<Date | null>(null);
   const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
-  const [simulationLevel, setSimulationLevel] = useState<number>(2.5);
-
-  const [isUserSimulating, setIsUserSimulating] = useState(false);
-
-  const resetToLive = useCallback(() => {
-    baseResetToLive();
-    setCurrentViewport(null);
-    setManualFocusTime(null);
-    setIsUserSimulating(false);
-    setResetCount(c => c + 1);
-    setCenterRequest({ time: new Date(), id: Date.now() });
-  }, [baseResetToLive]);
-
-  // Reset simulation flag when the user interacts with the chart (changing focus time)
-  React.useEffect(() => {
-    if (manualFocusTime || currentViewport?.focusTime) {
-      setIsUserSimulating(false);
-    }
-  }, [manualFocusTime, currentViewport?.focusTime]);
 
   // Professional data fetching and processing
   const {
@@ -103,11 +85,36 @@ const Tab2: React.FC = () => {
     refresh,
   } = useChartData(config);
 
+  // Modularized atmospheric and simulation state
+  const {
+    activeAtmo,
+    simulationLevel,
+    setSimulationLevel,
+    isUserSimulating,
+    setIsUserSimulating,
+  } = useAtmosphericState(processedData, manualFocusTime, currentViewport);
+
+  const resetToLive = useCallback(() => {
+    baseResetToLive();
+    setCurrentViewport(null);
+    setManualFocusTime(null);
+    setIsUserSimulating(false);
+    setResetCount(c => c + 1);
+    setCenterRequest({ time: new Date(), id: Date.now() });
+  }, [baseResetToLive, setIsUserSimulating]);
+
+  // Reset simulation flag when the user interacts with the chart (changing focus time)
+  useEffect(() => {
+    if (manualFocusTime || currentViewport?.focusTime) {
+      setIsUserSimulating(false);
+    }
+  }, [manualFocusTime, currentViewport?.focusTime, setIsUserSimulating]);
+
   // Track the buffered data window so we only refetch when the user scrolls
   // outside what we've already loaded (useChartData fetches ±5 days around
   // the current domain, so minor pans should never trigger a new request).
-  const fetchedBufferRef = React.useRef<{ start: Date; end: Date } | null>(null);
-  React.useEffect(() => {
+  const fetchedBufferRef = useRef<{ start: Date; end: Date } | null>(null);
+  useEffect(() => {
     if (!processedData) return;
     const FETCH_BUFFER_MS = 5 * 24 * 3600_000;
     fetchedBufferRef.current = {
@@ -117,12 +124,12 @@ const Tab2: React.FC = () => {
   }, [processedData]);
 
   /**
-   * Handle station selection changes
+   * Handle location selection changes
    */
-  const handleStationChange = (station: Station) => {
-    updateStation(station);
+  const handleLocationChange = (locationId: string) => {
+    updateLocation(locationId);
     setMessages({
-      success: `Station updated to ${station.name} (${station.id})`,
+      success: `Location updated to ${locationId}`,
       error: null,
     });
   };
@@ -132,6 +139,31 @@ const Tab2: React.FC = () => {
    */
   const clearMessages = () => {
     setMessages({});
+  };
+
+  const [lastSimilarPeak, setLastSimilarPeak] = useState<WaterLevelPeak | null>(null);
+
+  /**
+   * Handle flood event selection
+   */
+  const handleEventSelect = (event: FloodEvent) => {
+    setCenterRequest({ time: new Date(event.peakTime), id: Date.now() });
+  };
+
+  /**
+   * Find last time water level was at the current focus level
+   */
+  const handleFindLastSimilar = async () => {
+    if (!activeAtmo.wl) return;
+    try {
+      const peak = await findLastSimilarLevel(config.location.id, activeAtmo.wl, activeAtmo.targetTime || new Date());
+      setLastSimilarPeak(peak);
+      if (peak) {
+        setCenterRequest({ time: new Date(peak.t), id: Date.now() });
+      }
+    } catch (err) {
+      console.error('Failed to find similar level:', err);
+    }
   };
 
   /**
@@ -186,7 +218,7 @@ const Tab2: React.FC = () => {
   const [chartActionLevel, setChartActionLevel] = useState<number | undefined>(undefined);
 
   // Open comment modal when a selection range or comment is clicked
-  React.useEffect(() => {
+  useEffect(() => {
     if (chartComments.selectedTimeRange || chartComments.selectedComments) {
       setCommentModalOpen(true);
     }
@@ -195,7 +227,7 @@ const Tab2: React.FC = () => {
 
   // Road elevation GeoJSON — fetched from /public/data/
   const [roadData, setRoadData] = useState<GeoJSON.FeatureCollection<GeoJSON.LineString, RoadProperties> | undefined>(undefined);
-  React.useEffect(() => {
+  useEffect(() => {
     fetch('/data/carolinaBeachRoads.geojson?v=' + new Date().getTime())
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setRoadData(data); })
@@ -207,76 +239,7 @@ const Tab2: React.FC = () => {
    */
 
 
-  // Derive atmospheric values for the overlay pill and map visualization
-  const activeAtmo = useMemo(() => {
-    if (!processedData) {
-      return { wl: 0, targetTime: null, isLive: true, source: 'Live Conditions', wind: null, precip: null };
-    }
-
-    const now = processedData.timeDomain.now;
-
-    const targetT = manualFocusTime || (currentViewport?.focusTime) || now;
-    const isLive = !manualFocusTime && (!currentViewport || Math.abs(targetT.getTime() - now.getTime()) < 60000);
-    if (manualFocusTime) {
-      // Manual focus
-    } else if (currentViewport) {
-      // Scroll context
-    }
-
-    // Find the absolute latest measurement time to determine the handover point
-    const lastObsT = processedData.observedPoints.length > 0 
-      ? Math.max(...processedData.observedPoints.map(p => p.t.getTime())) 
-      : now.getTime();
-    const isPastHandover = targetT.getTime() > lastObsT;
-
-    const obsRes = findNearestPoint(processedData.observedPoints, targetT);
-    const adjRes = findNearestPoint(processedData.adjustedPoints, targetT);
-    const predRes = findNearestPoint(processedData.predictedPoints, targetT);
-    const windRes = findNearestPoint(processedData.windPoints, targetT);
-    const precipRes = findNearestPoint(processedData.precipPoints, targetT);
-
-    const isObserved = !!(obsRes && obsRes.dtMin < 60 && !isPastHandover);
-    const isAdjusted = !!(adjRes && adjRes.dtMin < 60 && isPastHandover);
-    const isPredicted = !isObserved && !isAdjusted && !!(predRes && predRes.dtMin < 60);
-
-    const wl = isObserved ? obsRes!.point.v :
-               isAdjusted ? adjRes!.point.v :
-               isPredicted ? predRes!.point.v : 0;
-
-    const sourceLabel = isObserved ? `Observed (${(obsRes?.point.source || processedData.source || 'NOAA').toUpperCase()})` :
-                        isAdjusted ? 'FloodCast Prediction' :
-                        isPredicted ? 'NOAA Prediction' : (isLive ? 'Live Conditions' : 'No Data');
-
-    const surge = (() => {
-      if (!predRes || predRes.dtMin > 60) return null;
-      
-      // predictedPoints is already phase-aligned by useChartData,
-      // so direct comparison at targetT is correct.
-      return wl - predRes.point.v;
-    })();
-
-    // Use the explicit simulation flag
-    const isSimulated = isUserSimulating;
-
-    return { 
-      wl: isSimulated ? simulationLevel : wl, 
-      targetTime: targetT, 
-      isLive, 
-      source: sourceLabel,
-      surge,
-      isSimulated,
-      prediction: predRes && predRes.dtMin < 60 ? predRes.point.v : null,
-      wind: windRes && windRes.dtMin < 60 ? { speed: windRes.point.speed, dir: windRes.point.dir } : null,
-      precip: precipRes && precipRes.dtMin < 60 ? precipRes.point.value : null,
-    };
-  }, [processedData, currentViewport, manualFocusTime, simulationLevel, isUserSimulating]);
-
-  // Sync simulation level (for map)
-  React.useEffect(() => {
-    if (!isUserSimulating && activeAtmo.wl !== null && activeAtmo.wl !== undefined) {
-      setSimulationLevel(activeAtmo.wl);
-    }
-  }, [activeAtmo.wl, isUserSimulating]);
+  // Comments integration tied to current config
 
   return (
     <IonPage className="floodcast-page">
@@ -383,6 +346,7 @@ const Tab2: React.FC = () => {
                       showDelta={config?.display.showDelta}
                       timezone={config?.display.timezone || 'local'}
                       config={chartConfig}
+                      floodEvents={processedData.floodEvents}
                       timeRange={config?.timeRange}
                       selectedTime={manualFocusTime}
                       showComments={chartComments.showComments}
@@ -441,6 +405,16 @@ const Tab2: React.FC = () => {
               </div>
 
               <div className="dashboard-sidebar">
+                <IonButton 
+                  expand="block" 
+                  fill="outline" 
+                  className="ion-margin-bottom"
+                  onClick={handleFindLastSimilar}
+                  disabled={!activeAtmo.wl}
+                >
+                  Find Last Similar Level ({activeAtmo.wl?.toFixed(2)}')
+                </IonButton>
+
                 {WEBCAMS.map(cam => (
                     <WebcamFeedCard
                       key={cam.id}
@@ -451,6 +425,11 @@ const Tab2: React.FC = () => {
                       imagery={processedData.imagery?.[cam.id]}
                     />
                 ))}
+
+                <FloodEventSidebar 
+                  locationId={config.location.id} 
+                  onEventSelect={handleEventSelect} 
+                />
               </div>
             </div>
           </div>
@@ -480,7 +459,7 @@ const Tab2: React.FC = () => {
           isOpen={showSettings}
           onDismiss={() => setShowSettings(false)}
           config={config}
-          onStationChange={handleStationChange}
+          onLocationChange={handleLocationChange}
           onThresholdsChange={updateThresholds}
           onOffsetConfigChange={updateOffset}
           onTimeRangeChange={updateTimeRange}

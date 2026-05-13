@@ -155,5 +155,27 @@ service cloud.firestore {
       // Hard delete only for admins
       allow delete: if isAdmin();
     }
+
+    // LOCATIONS COLLECTION
+    match /locations/{locationId} {
+      // Basic station info is public
+      allow read: if true;
+
+      match /observations/{month} {
+        allow read: if true;
+      }
+
+      match /predictions/{month} {
+        allow read: if true;
+      }
+
+      match /peaks/{peakId} {
+        allow read: if true;
+      }
+
+      match /flood_events/{eventId} {
+        allow read: if true;
+      }
+    }
   }
 }

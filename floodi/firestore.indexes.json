@@ -85,8 +85,59 @@
         { "fieldPath": "metadata.station.id", "order": "ASCENDING" },
         { "fieldPath": "metadata.timeRange.startTime", "order": "ASCENDING" }
       ]
-    }
-  ],
+    },
+    {
+      "collectionGroup": "comments",
+        "queryScope": "COLLECTION",
+        "fields": [
+          { "fieldPath": "isDeleted", "order": "ASCENDING" },
+          { "fieldPath": "metadata.locationId", "order": "ASCENDING" },
+          { "fieldPath": "metadata.timeRange.startTime", "order": "ASCENDING" }
+        ]
+      },
+      {
+        "collectionGroup": "comments",
+        "queryScope": "COLLECTION",
+        "fields": [
+          { "fieldPath": "metadata.locationId", "order": "ASCENDING" },
+          { "fieldPath": "createdAt", "order": "DESCENDING" }
+        ]
+      },
+      {
+        "collectionGroup": "comments",
+        "queryScope": "COLLECTION",
+        "fields": [
+          { "fieldPath": "isDeleted", "order": "ASCENDING" },
+          { "fieldPath": "metadata.locationId", "order": "ASCENDING" },
+          { "fieldPath": "createdAt", "order": "DESCENDING" }
+        ]
+      },
+      {
+        "collectionGroup": "peaks",
+        "queryScope": "COLLECTION",
+        "fields": [
+          { "fieldPath": "type", "order": "ASCENDING" },
+          { "fieldPath": "v", "order": "ASCENDING" },
+          { "fieldPath": "t", "order": "DESCENDING" }
+        ]
+      },
+      {
+        "collectionGroup": "peaks",
+        "queryScope": "COLLECTION",
+        "fields": [
+          { "fieldPath": "source", "order": "ASCENDING" },
+          { "fieldPath": "t", "order": "ASCENDING" }
+        ]
+      },
+      {
+        "collectionGroup": "flood_events",
+        "queryScope": "COLLECTION",
+        "fields": [
+          { "fieldPath": "source", "order": "ASCENDING" },
+          { "fieldPath": "startTime", "order": "ASCENDING" }
+        ]
+      }
+    ],
   "fieldOverrides": [
     {
       "collectionGroup": "users",

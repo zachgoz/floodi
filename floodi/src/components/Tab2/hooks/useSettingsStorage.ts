@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { AppConfiguration, TimeRange, OffsetConfig } from '../types';
+import { LOCATIONS } from 'src/constants/locations';
 
 /**
  * Local storage keys for configuration persistence
  */
 const STORAGE_KEYS = {
-  STATION: 'floodi.station',
+  LOCATION_ID: 'floodi.location_id',
   THRESHOLDS: 'floodi.thresholds',
   OFFSET_MODE: 'floodi.offset.mode',
   OFFSET_VALUE: 'floodi.offset.value',
@@ -18,16 +19,22 @@ const STORAGE_KEYS = {
   SHOW_DELTA: 'floodi.delta.show',
   THEME: 'floodi.theme',
   VIEW_MODE: 'floodi.view_mode',
+  DATA_SOURCE: 'floodi.data_source',
 } as const;
 
 /**
  * Default configuration values
  */
 const DEFAULT_CONFIG: AppConfiguration = {
+  locationId: 'carolina-beach',
+  location: {
+    id: 'carolina-beach',
+    name: 'Carolina Beach',
+    state: 'NC',
+  },
   station: {
     id: '8658163',
-    name: '',
-    state: undefined,
+    name: 'Carolina Beach',
   },
   thresholds: {
     minor: 5.6,
@@ -51,6 +58,7 @@ const DEFAULT_CONFIG: AppConfiguration = {
     showDelta: false,
     theme: 'auto',
     viewMode: 'basic',
+    dataSource: 'fiman',
   },
 };
 
@@ -92,6 +100,8 @@ function safeSetStorageItem(key: string, value: string): void {
 export function useSettingsStorage() {
   // Initialize configuration from localStorage or defaults
   const [config, setConfig] = useState<AppConfiguration>(() => {
+    const locationId = safeGetStorageItem(STORAGE_KEYS.LOCATION_ID, DEFAULT_CONFIG.locationId);
+    
     const storedThresholds = safeGetStorageItem(STORAGE_KEYS.THRESHOLDS, '');
     let thresholds = DEFAULT_CONFIG.thresholds;
     try {
@@ -99,9 +109,12 @@ export function useSettingsStorage() {
         const parsed = JSON.parse(storedThresholds);
         if (parsed && typeof parsed.minor === 'number') {
           thresholds = { ...DEFAULT_CONFIG.thresholds, ...parsed };
-          // Migration: if the stored value is the old default of 6.1, update it to the new 5.6
-          if (thresholds.minor === 6.1) {
-            thresholds.minor = 5.6;
+          // Migration: if the stored value is an old default for Carolina Beach, update it
+          if (locationId === 'carolina-beach') {
+            const staleValues = [3.5, 4.0, 6.1]; // Known historical or incorrect values
+            if (staleValues.includes(thresholds.minor)) {
+              thresholds = { ...LOCATIONS['carolina-beach'].thresholds };
+            }
           }
         }
       }
@@ -114,10 +127,11 @@ export function useSettingsStorage() {
     const lookaheadH = parseInt(storedLookahead, 10);
     
     return {
+      locationId,
+      location: DEFAULT_CONFIG.location, // In a multi-town scenario, we'd lookup by locationId
       station: {
-        id: safeGetStorageItem(STORAGE_KEYS.STATION, DEFAULT_CONFIG.station.id),
-        name: DEFAULT_CONFIG.station.name,
-        state: DEFAULT_CONFIG.station.state,
+        id: LOCATIONS[locationId]?.noaaStationId || DEFAULT_CONFIG.station.id,
+        name: LOCATIONS[locationId]?.name || DEFAULT_CONFIG.station.name,
       },
       thresholds,
       offset: {
@@ -139,13 +153,14 @@ export function useSettingsStorage() {
           return (storedTheme === 'auto' || storedTheme === 'light' || storedTheme === 'dark') ? storedTheme : DEFAULT_CONFIG.display.theme;
         })(),
         viewMode: safeGetStorageItem(STORAGE_KEYS.VIEW_MODE, DEFAULT_CONFIG.display.viewMode!) as 'basic' | 'advanced',
+        dataSource: safeGetStorageItem(STORAGE_KEYS.DATA_SOURCE, DEFAULT_CONFIG.display.dataSource) as 'fiman' | 'noaa',
       },
     };
   });
 
   // Persist changes to localStorage when config updates
   useEffect(() => {
-    safeSetStorageItem(STORAGE_KEYS.STATION, config.station.id);
+    safeSetStorageItem(STORAGE_KEYS.LOCATION_ID, config.locationId);
     safeSetStorageItem(STORAGE_KEYS.THRESHOLDS, JSON.stringify(config.thresholds));
     safeSetStorageItem(STORAGE_KEYS.OFFSET_MODE, config.offset.mode);
     safeSetStorageItem(STORAGE_KEYS.OFFSET_VALUE, config.offset.value);
@@ -160,6 +175,7 @@ export function useSettingsStorage() {
     if (config.display.theme) {
       safeSetStorageItem(STORAGE_KEYS.THEME, config.display.theme);
     }
+    safeSetStorageItem(STORAGE_KEYS.DATA_SOURCE, config.display.dataSource);
   }, [config]);
 
   useEffect(() => {
@@ -175,10 +191,25 @@ export function useSettingsStorage() {
   }, [config.display.theme]);
 
   // Update functions for different configuration sections
-  const updateStation = useCallback((station: Partial<AppConfiguration['station']>) => {
+  const updateLocation = useCallback((locationId: string) => {
+    const newLoc = LOCATIONS[locationId];
+    if (!newLoc) return;
+
     setConfig(prev => ({
       ...prev,
-      station: { ...prev.station, ...station },
+      locationId,
+      location: {
+        id: newLoc.id,
+        name: newLoc.name,
+        state: newLoc.state,
+      },
+      station: {
+        id: newLoc.noaaStationId,
+        name: newLoc.name,
+      },
+      thresholds: {
+        ...newLoc.thresholds
+      }
     }));
   }, []);
 
@@ -232,7 +263,7 @@ export function useSettingsStorage() {
 
   return {
     config,
-    updateStation,
+    updateLocation,
     updateThresholds,
     updateOffset,
     updateTimeRange,

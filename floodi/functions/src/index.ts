@@ -1,4 +1,4 @@
-import * as functions from "firebase-functions";
+import { onRequest } from "firebase-functions/v2/https";
 import fetch from "node-fetch";
 
 /**
@@ -14,29 +14,9 @@ import fetch from "node-fetch";
 
 const FIMAN_BASE = "https://data.sunnydayflooding.com/services/data.php";
 
-/**
- * Allowed origins — only needed if the function is ever called directly
- * (not through the Firebase Hosting rewrite, which is same-origin).
- */
-const ALLOWED_ORIGINS = new Set([
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:5175",
-  "https://floodcastwebapp.web.app",
-  "https://floodcastwebapp.firebaseapp.com",
-]);
-
-function setCorsHeaders(req: functions.https.Request, res: import("express").Response) {
-  const origin = req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
-    res.set("Access-Control-Allow-Origin", origin);
-    res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.set("Access-Control-Max-Age", "3600");
-  }
-}
-
-export const fimanProxy = functions.https.onRequest(async (req, res) => {
-  setCorsHeaders(req, res);
+export const fimanProxy = onRequest({ cors: true, maxInstances: 10 }, async (req, res) => {
+  // Manual CORS check for specific allowed origins if needed, 
+  // but v2 { cors: true } handles the basics.
 
   // Handle preflight
   if (req.method === "OPTIONS") {
@@ -77,3 +57,7 @@ export const fimanProxy = functions.https.onRequest(async (req, res) => {
     res.status(502).json({ error: "Failed to fetch from FiMAN API" });
   }
 });
+
+export { syncWaterLevels, syncPredictions } from "./syncData";
+export { runBackfillData } from "./backfill";
+export { syncImagery } from "./syncImagery";

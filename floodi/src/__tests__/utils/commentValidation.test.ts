@@ -42,6 +42,7 @@ describe('commentValidation', () => {
 
   it('validates metadata', () => {
     const meta = {
+      locationId: 'key-west',
       station: { id: '8720218', name: 'Key West' },
       timeRange: { startTime: new Date(Date.now() - 1000).toISOString(), endTime: new Date(Date.now() + 1000).toISOString() },
       dataContext: ['observed', 'predicted'] as any,

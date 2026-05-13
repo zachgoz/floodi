@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { buildAdjustedFuture, fetchObservedWaterLevels, fetchPredictions, findNextThresholdCrossing, fetchWind, fetchPrecipitation } from '../../../lib/noaa';
+import { buildAdjustedFuture, fetchPredictions as fetchNoaaPredictions } from 'src/lib/noaa';
+import { 
+  fetchUnifiedObservations, 
+  fetchUnifiedPredictions, 
+  fetchFloodEvents, 
+  extractWeatherData 
+} from 'src/lib/dataService';
 import type { ChartData, DataState, Point, ThresholdCrossing, AppConfiguration, WindPoint, PrecipPoint } from '../types';
+import { LOCATIONS } from 'src/constants/locations';
 
 /**
  * Module-level cache to persist data across hook remounts and prevent redundant network requests.
@@ -40,7 +47,11 @@ export function useChartData(config: AppConfiguration) {
     },
   });
 
-  const { mode, lookbackH, lookaheadH, absStart, absEnd } = config.timeRange;
+  const { locationId, timeRange, offset: configOffset } = config;
+  const location = LOCATIONS[locationId] || LOCATIONS['carolina-beach'];
+  const stationId = location.noaaStationId;
+
+  const { mode, lookbackH, lookaheadH, absStart, absEnd } = timeRange;
 
   const timeDomain = useMemo(() => {
     // Round to the minute to prevent URL jitter and redundant fetches
@@ -67,16 +78,26 @@ export function useChartData(config: AppConfiguration) {
   // Main data fetching logic
   const performFetch = useCallback(async (force = false) => {
     const { start, end, now } = timeDomain;
-    const { station, timeRange, offset } = config;
+    const { timeRange, offset: configOffset } = config;
 
-    // Buffer range: +/- 5 days to allow smooth scrolling without immediate refetch
-    const fStart = new Date(start.getTime() - 5 * 24 * 3600 * 1000);
-    const fEnd = new Date(end.getTime() + 5 * 24 * 3600 * 1000);
+    // Buffer range: +/- 14 days to allow smooth scrolling.
+    // We only refetch if we move outside this 28-day window or if we get close to the edges.
+    const BUFFER_DAYS = 14;
+    const REFETCH_THRESHOLD_DAYS = 3;
+
+    const fStart = new Date(start.getTime() - BUFFER_DAYS * 24 * 3600 * 1000);
+    const fEnd = new Date(end.getTime() + BUFFER_DAYS * 24 * 3600 * 1000);
 
     // 1. Check if we already have this range covered in our buffer
-    if (!force && fetchRangeRef.current && fetchRangeRef.current.stationId === station.id) {
+    if (!force && fetchRangeRef.current && fetchRangeRef.current.stationId === stationId) {
       const buffered = fetchRangeRef.current;
-      if (start >= buffered.start && end <= buffered.end) {
+      const startEdgeDiff = (start.getTime() - buffered.start.getTime()) / (24 * 3600 * 1000);
+      const endEdgeDiff = (buffered.end.getTime() - end.getTime()) / (24 * 3600 * 1000);
+
+      // If we are within the buffer and not too close to the edges, skip fetch
+      if (start >= buffered.start && end <= buffered.end && 
+          startEdgeDiff > REFETCH_THRESHOLD_DAYS && 
+          endEdgeDiff > REFETCH_THRESHOLD_DAYS) {
         return { data: dataState.data, fromCache: true };
       }
     }
@@ -87,69 +108,63 @@ export function useChartData(config: AppConfiguration) {
 
       const warnings: string[] = [];
 
-      // 2. Fetch base data in parallel
-      const [observed, predicted, windData, precipData] = await Promise.all([
-        fetchObservedWaterLevels({
-          station: station.id,
-          start: fStart,
-          end: fEnd,
-          interval: 6,
-          datum: 'MLLW',
-          units: 'english',
-          provider: 'both',
-        }).catch(err => {
-          console.warn('fetchObservedWaterLevels failed:', err);
-          warnings.push('Observed water level data unavailable');
-          return { data: {}, source: 'noaa' as const, alternate: {}, imagery: {} };
-        }),
-
-        fetchPredictions({
-          station: station.id,
-          start: fStart,
-          end: fEnd,
-          interval: 6,
-          datum: 'MLLW',
-          units: 'english',
-        }).catch(err => {
-          console.warn('fetchPredictions failed:', err);
-          warnings.push('Tide predictions unavailable');
-          return {};
-        }),
-
-        fetchWind({
-          station: station.id,
-          start: fStart,
-          end: fEnd,
-          units: 'english',
-        }).catch(err => {
-          console.warn('fetchWind failed:', err);
-          warnings.push('Wind data unavailable');
-          return {};
-        }),
-
-        fetchPrecipitation({
-          station: station.id,
-          start: fStart,
-          end: fEnd,
-          units: 'english',
-        }).catch(err => {
-          console.warn('fetchPrecipitation failed:', err);
-          warnings.push('Precipitation data unavailable');
-          return {};
+      // 2. Fetch base data: Unified functions handle Firestore + Live fallback
+      const [unifiedObs, unifiedPred, floodEvents] = await Promise.all([
+        fetchUnifiedObservations(locationId, fStart, fEnd),
+        fetchUnifiedPredictions(locationId, fStart, fEnd),
+        fetchFloodEvents(locationId, 50).catch(err => {
+          console.warn('Firestore fetchFloodEvents failed:', err);
+          return [];
         }),
       ]);
 
+      // Process weather data using centralized logic
+      const { wind: windData, precip: precipData } = extractWeatherData({
+        weather: { ...unifiedObs.weather, ...unifiedPred.weather }
+      });
+
+      // 2.1 Data Source Selection
+      const preferredSource = config.display.dataSource === 'auto' ? 'fiman' : config.display.dataSource;
+      const fimanHasData = Object.keys(unifiedObs.fiman || {}).length > 0;
+      const noaaHasData = Object.keys(unifiedObs.noaa || {}).length > 0;
+
+      let effectiveSource: 'fiman' | 'noaa' = 
+        (preferredSource === 'fiman' && fimanHasData) ? 'fiman' :
+        (preferredSource === 'noaa' && noaaHasData) ? 'noaa' :
+        fimanHasData ? 'fiman' : 'noaa';
+
+      const observedData = {
+        data: effectiveSource === 'fiman' ? { ...unifiedObs.fiman } : { ...unifiedObs.noaa },
+        alternate: effectiveSource === 'fiman' ? { ...unifiedObs.noaa } : { ...unifiedObs.fiman },
+        imagery: { ...unifiedObs.imagery },
+        source: effectiveSource
+      };
+
+      const predictions = { ...unifiedPred.data };
+      const lastDbPredT = Math.max(...Object.keys(predictions).map(t => new Date(t).getTime()), 0);
+      
+      // Secondary gap fill for predictions if range exceeds what's in DB
+      if (fEnd.getTime() > lastDbPredT) {
+        const livePred = await fetchNoaaPredictions({
+          station: stationId,
+          start: new Date(Math.max(fStart.getTime(), lastDbPredT)),
+          end: fEnd,
+          interval: 6,
+        }).catch(() => ({}));
+        Object.assign(predictions, livePred);
+      }
+
       // 3. Calculate adjusted forecast
       const adjustedResult = await buildAdjustedFuture({
-        station: station.id,
+        station: stationId,
         now,
         lookbackHours: 6,
         lookaheadHours: lookahead,
         interval: 6,
         datum: 'MLLW',
         units: 'english',
-        existingObserved: observed.data,
-        existingPredicted: predicted
+        existingObserved: observedData.data,
+        existingPredicted: predictions
       }).catch(err => {
         console.warn('buildAdjustedFuture failed:', err);
         warnings.push('Surge forecast calculation failed');
@@ -157,24 +172,25 @@ export function useChartData(config: AppConfiguration) {
       });
 
       // 4. Success - Update range ref and cache
-      fetchRangeRef.current = { start: fStart, end: fEnd, stationId: station.id };
+      fetchRangeRef.current = { start: fStart, end: fEnd, stationId: stationId };
 
       const result: ChartData = {
-        observed: observed.data as any,
-        alternate: observed.alternate as any,
-        source: observed.source as 'fiman' | 'noaa',
+        observed: observedData.data as any,
+        alternate: observedData.alternate as any,
+        source: observedData.source as 'fiman' | 'noaa',
         timeOffsetMins: adjustedResult.timeOffsetMins as number,
-        predicted,
+        predicted: predictions,
         adjusted: adjustedResult.adjusted,
         offset: adjustedResult.offset,
         nPoints: adjustedResult.n,
         wind: windData as any,
         precip: precipData as any,
+        floodEvents,
         warnings,
-        imagery: (observed as any).imagery,
+        imagery: observedData.imagery as any,
       };
 
-    const cacheKey = `${station.id}-${Math.floor(fStart.getTime() / 300000) * 300000}-${Math.floor(fEnd.getTime() / 300000) * 300000}-${offset.mode}-${offset.value}`;
+    const cacheKey = `${stationId}-${Math.floor(fStart.getTime() / 300000) * 300000}-${Math.floor(fEnd.getTime() / 300000) * 300000}-${configOffset.mode}-${configOffset.value}`;
       dataCache[cacheKey] = {
         timestamp: Date.now(),
         data: result
@@ -185,18 +201,21 @@ export function useChartData(config: AppConfiguration) {
       console.error('[useChartData] Fetch failed:', error);
       throw error;
     }
-  }, [timeDomain, config, dataState.data]);
+  // Stabilize dependencies: use primitive values from config rather than the object reference.
+  // This prevents re-creating performFetch on every render, which caused triple-fire on mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeDomain, locationId, stationId, config.display.dataSource, config.offset.mode, config.offset.value, config.timeRange.mode, config.timeRange.lookaheadH]);
 
   // Effect to manage the loading state and race conditions
   useEffect(() => {
     let active = true;
 
     const { start, end } = timeDomain;
-    const { station, offset } = config;
+    const { offset: configOffset } = config;
     const fetchBuffer = 5 * 24 * 3600_000;
     const fStart = new Date(start.getTime() - fetchBuffer);
     const fEnd = new Date(end.getTime() + fetchBuffer);
-    const cacheKey = `${station.id}-${Math.floor(fStart.getTime() / 300000) * 300000}-${Math.floor(fEnd.getTime() / 300000) * 300000}-${offset.mode}-${offset.value}`;
+    const cacheKey = `${stationId}-${Math.floor(fStart.getTime() / 300000) * 300000}-${Math.floor(fEnd.getTime() / 300000) * 300000}-${configOffset.mode}-${configOffset.value}`;
     const cached = dataCache[cacheKey];
 
     if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
@@ -228,7 +247,7 @@ export function useChartData(config: AppConfiguration) {
       });
 
     return () => { active = false; };
-  }, [performFetch, timeDomain, config.station.id, config.offset.mode, config.offset.value]);
+  }, [performFetch, timeDomain, stationId, config.offset.mode, config.offset.value]);
 
   const processedData = useMemo(() => {
     const { data } = dataState;
@@ -333,8 +352,22 @@ export function useChartData(config: AppConfiguration) {
       .filter(p => p.t.getTime() >= now.getTime())
       .map(p => ({ t: p.t, v: effectiveOffset }));
 
+    // Compass direction lookup for legacy Firestore records where direction was stored as a string
+    // (NWS forecast API returns "E", "SE", etc. — the ETL fix now converts these, but old data may remain).
+    const COMPASS_TO_DEG_FE: Record<string, number> = {
+      N: 0, NNE: 22.5, NE: 45, ENE: 67.5,
+      E: 90, ESE: 112.5, SE: 135, SSE: 157.5,
+      S: 180, SSW: 202.5, SW: 225, WSW: 247.5,
+      W: 270, WNW: 292.5, NW: 315, NNW: 337.5,
+    };
+    const toWindDeg = (dir: unknown): number => {
+      if (typeof dir === 'number' && isFinite(dir)) return dir;
+      if (typeof dir === 'string') return COMPASS_TO_DEG_FE[dir.trim().toUpperCase()] ?? 0;
+      return 0;
+    };
+
     const windPoints: WindPoint[] = Object.entries(data.wind || {})
-      .map(([k, v]) => ({ t: new Date(k), speed: (v as any).speed, dir: (v as any).dir }))
+      .map(([k, v]) => ({ t: new Date(k), speed: (v as any).speed, dir: toWindDeg((v as any).dir) }))
       .sort((a, b) => a.t.getTime() - b.t.getTime());
 
     const precipPoints: PrecipPoint[] = Object.entries(data.precip || {})
@@ -354,6 +387,7 @@ export function useChartData(config: AppConfiguration) {
       timeDomain,
       warnings: data.warnings,
       imagery: data.imagery,
+      floodEvents: data.floodEvents,
       source: data.source,
       thresholdCrossing: ((): ThresholdCrossing | null => {
         // Use the phase-aligned adjusted points if available, otherwise fallback to phase-aligned predicted

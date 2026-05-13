@@ -30,6 +30,7 @@ export interface CommentFormValues {
 }
 
 export interface CommentFormProps {
+  locationId?: string;
   stationId?: string;
   chartDomain?: TimeRange;
   initialContent?: string;
