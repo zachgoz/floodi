@@ -96,7 +96,8 @@ export function useChartInteraction(): ChartInteraction & {
     now: Date,
     threshold: number,
     showDelta: boolean,
-    viewMode: 'basic' | 'advanced'
+    viewMode: 'basic' | 'advanced',
+    lastSimilarPeak?: { t: string; v: number } | null
   ) => TooltipData | null;
   calculateTooltipPosition: typeof calculateTooltipPosition;
   formatTooltipTime: typeof formatTooltipTime;
@@ -129,7 +130,8 @@ export function useChartInteraction(): ChartInteraction & {
     now: Date,
     threshold: number,
     showDelta: boolean,
-    viewMode: 'basic' | 'advanced'
+    viewMode: 'basic' | 'advanced',
+    lastSimilarPeak?: { t: string; v: number } | null
   ): TooltipData | null => {
     if (!hoverTime) return null;
 
@@ -197,6 +199,7 @@ export function useChartInteraction(): ChartInteraction & {
     return {
       time: hoverTime,
       rows,
+      lastSimilar: lastSimilarPeak,
     };
   }, []);
 
@@ -248,6 +251,7 @@ export function useChartInteraction(): ChartInteraction & {
 export interface TooltipData {
   time: Date;
   rows: TooltipRow[];
+  lastSimilar?: { t: string; v: number } | null;
 }
 
 /**

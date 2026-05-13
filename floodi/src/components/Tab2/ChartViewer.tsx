@@ -2,6 +2,8 @@ import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import type { Point, ChartConfig, WindPoint, PrecipPoint } from './types';
 import { useChartInteraction, formatTooltipTime, findNearestPoint } from './hooks/useChartInteraction';
 import { isCommentTimeRange, type Comment, type CommentTimeRange } from 'src/types/comment';
+import { findLastSimilarLevel } from 'src/lib/dataService';
+import type { WaterLevelPeak } from 'src/types/data';
 import { getTimeRangeFromChartSelection } from 'src/utils/timeRangeHelpers';
 import { IonBadge, IonButton, IonButtons, IonIcon, IonText } from '@ionic/react';
 import { addCircleOutline, chatbubbleOutline, eye, eyeOff, refreshOutline, syncOutline } from 'ionicons/icons';
@@ -88,6 +90,12 @@ interface ChartViewerProps {
   viewMode?: 'basic' | 'advanced';
   /** Optional time offset in minutes for prediction alignment */
   timeOffsetMins?: number;
+  /** Location ID for data queries */
+  locationId: string;
+  /** Callback to jump the chart to a specific time */
+  onJumpToTime?: (time: Date) => void;
+  /** Historical flood events to highlight on the timeline */
+  floodEvents?: FloodEvent[];
 }
 
 /**
@@ -213,13 +221,52 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   resetKey,
   timeRange,
   viewMode = 'basic',
-  timeOffsetMins = 0,
+  timeOffsetMins,
+  locationId,
+  onJumpToTime,
+  floodEvents = []
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 900, h: 420 });
 
   const { hoverT, setHoverT, calculateTooltipData, calculateCommentTooltipData } = useChartInteraction();
+  const [lastSimilarPeak, setLastSimilarPeak] = useState<WaterLevelPeak | null>(null);
+
+  const handleJumpToPeak = (peak: WaterLevelPeak) => {
+    onJumpToTime?.(new Date(peak.t));
+  };
+
+  useEffect(() => {
+    if (!hoverT) {
+      setLastSimilarPeak(null);
+      return;
+    }
+
+    // Only look for similar peaks if we are hovering on a prediction (future)
+    if (hoverT.getTime() < now.getTime()) {
+      setLastSimilarPeak(null);
+      return;
+    }
+
+    // Find the level at hoverT
+    const nearestPoint = findNearestPoint(adjustedPoints, hoverT) || findNearestPoint(predictedPoints, hoverT);
+    if (!nearestPoint || nearestPoint.point.v < thresholds.minor - 1.0) { 
+      setLastSimilarPeak(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+       try {
+         const peak = await findLastSimilarLevel(locationId, nearestPoint.point.v, now);
+         setLastSimilarPeak(peak);
+       } catch (err) {
+         console.warn('Failed to fetch similar peak:', err);
+       }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [hoverT, now, adjustedPoints, predictedPoints, locationId, thresholds.minor]);
 
   // Detect touch-primary devices (iOS / Android) once at mount
   const isTouchDeviceRef = useRef(
@@ -454,6 +501,30 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     return rects;
   }, [adjustedPoints, thresholds.minor, xOf, domainEnd]);
 
+  // Historical Flood Events highlighting
+  const historicalFloodRects = useMemo(() => {
+    return floodEvents
+      .map(event => {
+        const start = new Date(event.startTime);
+        const end = event.endTime ? new Date(event.endTime) : domainEnd;
+        
+        // Skip if entirely outside the visible domain
+        if (end < activeStart || start > activeEnd) return null;
+        
+        const x = xOf(start);
+        const width = xOf(end) - x;
+        
+        return {
+          x,
+          w: Math.max(2, width),
+          type: event.thresholdType,
+          startTime: event.startTime,
+          peakValue: event.peakValue
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+  }, [floodEvents, activeStart, activeEnd, xOf, domainEnd]);
+
   // Mouse/pointer interaction
   const computeTimeAtPointer = (event: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
@@ -557,6 +628,12 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   };
 
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    // If clicking a comment marker, ignore here
+    const target = event.target as HTMLElement;
+    if (target && target.closest && target.closest('[data-comment-marker]')) {
+      return;
+    }
+
     activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
     const t = computeTimeAtPointer(event);
@@ -636,6 +713,12 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     let pinchStartMidX = 0;
 
     const onTouchStart = (e: TouchEvent) => {
+      // If tapping a comment marker, ignore here to let React/marker handlers work exclusively
+      const target = e.target as HTMLElement;
+      if (target && target.closest && target.closest('[data-comment-marker]')) {
+        return;
+      }
+
       if (e.touches.length === 1) {
         // Single finger – start tracking. We DO NOT call preventDefault() here
         // so that vertical scrolling is allowed to start. We will conditionally
@@ -777,8 +860,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   // Tooltip data calculation
   const tooltipData = useMemo(() => {
     if (!hoverT) return null;
-    return calculateTooltipData(hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, now, thresholds.minor, showDelta, viewMode);
-  }, [hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, thresholds.minor, showDelta, viewMode, calculateTooltipData]);
+    return calculateTooltipData(hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, now, thresholds.minor, showDelta, viewMode, lastSimilarPeak);
+  }, [hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, thresholds.minor, showDelta, viewMode, calculateTooltipData, lastSimilarPeak]);
 
   /** Handle reset of both local zoom and global absolute range */
   const handleReset = () => {
@@ -840,12 +923,13 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 if (pp.value <= 0) return null;
                 const cx = xOf(pp.t);
                 if (cx < margins.l || cx > margins.l + innerW) return null;
-                const barH = Math.max(1, (pp.value / maxPrecip) * precipH * 0.85);
+                const scaledValue = Math.sqrt(pp.value / maxPrecip);
+                const barH = Math.max(2, scaledValue * precipH * 0.85);
                 const nextT = precipPoints[i + 1]?.t;
                 const barW = nextT
                   ? Math.max(2, Math.min(32, xOf(nextT) - cx - 2))
                   : 8;
-                const opacity = 0.4 + (pp.value / maxPrecip) * 0.55;
+                const opacity = 0.5 + scaledValue * 0.45;
                 return (
                   <rect
                     key={`precip-${i}`}
@@ -963,10 +1047,10 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           stroke="var(--chart-plot-stroke)"
         />
 
-        {/* Flood zones */}
+        {/* Flood zones (Active/Future) */}
         {floodRects.map((rect, i) => (
           <rect
-            key={i}
+            key={`active-flood-${i}`}
             x={rect.x}
             y={margins.t}
             width={rect.w}
@@ -974,6 +1058,28 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             fill="rgba(255,0,0,0.08)"
           />
         ))}
+
+        {/* Historical Flood Events */}
+        {historicalFloodRects.map((rect, i) => {
+          const colors: Record<string, string> = {
+            minor: 'rgba(255, 220, 30, 0.12)',
+            moderate: 'rgba(255, 165, 0, 0.12)',
+            major: 'rgba(210, 35, 35, 0.12)',
+            extreme: 'rgba(160, 32, 240, 0.12)'
+          };
+          return (
+            <rect
+              key={`hist-flood-${i}`}
+              x={rect.x}
+              y={margins.t}
+              width={rect.w}
+              height={innerH}
+              fill={colors[rect.type] || 'rgba(100, 100, 100, 0.1)'}
+              stroke={colors[rect.type]?.replace('0.12', '0.3')}
+              strokeWidth={1}
+            />
+          );
+        })}
 
         {/* Flood Visual Indicators */}
         {thresholds && [
@@ -1058,110 +1164,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
         {/* Removed selection overlay, we only use point-in-time taps now */}
 
-        {/* Comment markers */}
-        {showComments && comments.length > 0 && (
-          <g aria-label="Comment markers" className="chart-comment-markers">
-            {(() => {
-              // Stable clustering by absolute time buckets (e.g. 30 mins)
-              // rather than pixel bins which change during scroll.
-              const timeBins = new Map<number, Comment[]>();
-              const bucketMs = 30 * 60000; // 30 minute buckets
-              
-              for (const c of comments) {
-                const tr = c.metadata?.timeRange;
-                if (!isCommentTimeRange(tr)) continue;
-                const s = Date.parse(tr.startTime);
-                const e = Date.parse(tr.endTime);
-                if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
-                const midMs = (s + e) / 2;
-                const bucket = Math.floor(midMs / bucketMs);
-                const arr = timeBins.get(bucket) || [];
-                arr.push(c);
-                timeBins.set(bucket, arr);
-              }
 
-              const colorFor = (evt?: string) => evt === 'threshold-crossing' ? '#e74c3c' : evt === 'surge-event' ? '#f39c12' : '#3498db';
-
-              const getNearestObservedY = (timeMs: number) => {
-                const obsRes = findNearestPoint(observedPoints, new Date(timeMs));
-                const adjRes = findNearestPoint(adjustedPoints, new Date(timeMs));
-                const predRes = findNearestPoint(predictedPoints, new Date(timeMs));
-                
-                let v = 0;
-                if (obsRes && obsRes.dtMin < 60) v = obsRes.point.v;
-                else if (adjRes && adjRes.dtMin < 60) v = adjRes.point.v;
-                else if (predRes && predRes.dtMin < 60) v = predRes.point.v;
-                else return margins.t + 6;
-
-                return yOf(v);
-              };
-
-              const els: React.ReactElement[] = [];
-              let idx = 0;
-              timeBins.forEach((arr, bucket) => {
-                // Calculate position for the cluster or single marker
-                let displayTimeMs: number;
-                let color: string;
-                const isCluster = arr.length > 1;
-
-                if (!isCluster) {
-                  const c = arr[0];
-                  const tr = c.metadata?.timeRange;
-                  if (!tr) return;
-                  displayTimeMs = (Date.parse(tr.startTime) + Date.parse(tr.endTime)) / 2;
-                  color = colorFor(tr.eventType);
-                } else {
-                  // Center of the bucket for clusters
-                  displayTimeMs = bucket * bucketMs + bucketMs / 2;
-                  color = '#7f8c8d';
-                }
-
-                const cx = xOf(new Date(displayTimeMs));
-                // Only render if within visible horizontal range (plus small margin)
-                if (cx < margins.l - 20 || cx > margins.l + innerW + 20) return;
-
-                const cy = getNearestObservedY(displayTimeMs);
-
-                if (!isCluster) {
-                  const c = arr[0];
-                  els.push(
-                    <g key={`cm-${c.id}-${idx++}`} transform={`translate(${cx}, ${cy})`}>
-                      <circle
-                        className="comment-marker"
-                        r={5}
-                        fill={color}
-                        stroke="#000"
-                        role="button"
-                        aria-label={`Comment ${c.authorDisplayName || 'unknown'}`}
-                        tabIndex={0}
-                        onMouseEnter={() => onCommentHover?.(c)}
-                        onMouseLeave={() => onCommentHover?.(null)}
-                        onClick={(e) => { e.stopPropagation(); onCommentClick?.([c]); }}
-                        style={{ cursor: 'pointer' }}
-                      />
-                    </g>
-                  );
-                } else {
-                  els.push(
-                    <g
-                      key={`cluster-${bucket}-${idx++}`}
-                      transform={`translate(${cx}, ${cy})`}
-                      onClick={(e) => { e.stopPropagation(); onCommentClick?.(arr); }}
-                      style={{ cursor: 'pointer' }}
-                      role="button"
-                      tabIndex={0}
-                    >
-                      <circle r={8} fill={color} stroke="#000" />
-                      <text x={-3.5} y={4} fontSize="10" fill="#fff" style={{ pointerEvents: 'none' }}>{arr.length}</text>
-                    </g>
-                  );
-                }
-              });
-
-              return els;
-            })()}
-          </g>
-        )}
 
         {/* Adjusted predictions (using threshold gradient, dashed) */}
         {adjustedPoints.length > 1 && (
@@ -1232,6 +1235,9 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             
             // Find the peak point to determine if it's High or Low for collision detection
             const idx = predictedPoints.findIndex(p => p.t.getTime() === tick.getTime());
+            if (idx === -1) return null;
+            const predPoint = predictedPoints[idx];
+
             let isHigh = true;
             if (idx > 0 && idx < predictedPoints.length - 1) {
               const curr = predictedPoints[idx].v;
@@ -1245,8 +1251,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
               isHigh = predictedPoints[idx].v > predictedPoints[idx - 1].v;
             }
 
-            // Determine if we should show the label based on its type (H/L) to prevent overlap with its own kind
-            const showPeakLabel = isHigh ? (x - lastHighLabelX > 60) : (x - lastLowLabelX > 60);
+            // Clutter control: minimum 70px between labels OF THE SAME TYPE
+            const showPeakLabel = isHigh ? (x - lastHighLabelX) > 70 : (x - lastLowLabelX) > 70;
             if (showPeakLabel) {
               if (isHigh) lastHighLabelX = x;
               else lastLowLabelX = x;
@@ -1264,7 +1270,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 />
                 {showPeakLabel && (() => {
                   // Find values for this specific peak to determine Y position
-                  const predPoint = predictedPoints.find(p => p.t.getTime() === tick.getTime());
                   const nearestObs = findNearestPoint(observedPoints, tick);
                   const nearestAdj = findNearestPoint(adjustedPoints, tick);
                   
@@ -1279,20 +1284,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                   const maxV = Math.max(...valsAtTime);
                   const minV = Math.min(...valsAtTime);
                   
-                  const idx = predictedPoints.findIndex(p => p.t.getTime() === tick.getTime());
-                  let isHigh = true;
-                  if (idx > 0 && idx < predictedPoints.length - 1) {
-                    const curr = predictedPoints[idx].v;
-                    const prev = predictedPoints[idx - 1].v;
-                    const next = predictedPoints[idx + 1].v;
-                    const isLow = (curr <= prev && curr < next) || (curr < prev && curr <= next);
-                    isHigh = !isLow;
-                  } else if (idx === 0 && predictedPoints.length > 1) {
-                    isHigh = predictedPoints[0].v > predictedPoints[1].v;
-                  } else if (idx === predictedPoints.length - 1 && idx > 0) {
-                    isHigh = predictedPoints[idx].v > predictedPoints[idx - 1].v;
-                  }
-
                   // Clearance: -18px for high peaks, +24px for low peaks
                   let finalY = isHigh ? yOf(maxV) - 18 : yOf(minV) + 24;
 
@@ -1393,6 +1384,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
         {/* Legend - REMOVED per user request */}
 
+
+
         {/* Interactive tooltip – suppressed on touch devices (no cursor hover) */}
         {!isTouchDeviceRef.current && (tooltipData || (showComments && comments.length > 0)) && hoverT && (
           <g>
@@ -1447,7 +1440,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
               ];
               const extraRows = atmoItems.length;
 
-              const boxHeight = (rowsCount + 1 + commentRows + extraRows) * lineHeight + 12;
+              const similarRow = lastSimilarPeak ? 1.4 : 0;
+              const boxHeight = (rowsCount + 1 + commentRows + extraRows + similarRow) * lineHeight + 12;
               const adjustedX = Math.min(baseX, margins.l + innerW - boxWidth - 4);
 
               let baseY = margins.t + 8;
@@ -1507,6 +1501,31 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                       </text>
                     </g>
                   ))}
+
+                  {lastSimilarPeak && (
+                    <g 
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => handleJumpToPeak(lastSimilarPeak)}
+                    >
+                      <rect 
+                        x={adjustedX + 4}
+                        y={baseY + 16 + (rowsCount + 1 + extraRows) * lineHeight - 10}
+                        width={boxWidth - 8}
+                        height={lineHeight + 4}
+                        fill="rgba(52, 152, 219, 0.1)"
+                        rx={4}
+                      />
+                      <text
+                        x={adjustedX + 8}
+                        y={baseY + 16 + (rowsCount + 1 + extraRows) * lineHeight + 2}
+                        fill="#3498db"
+                        fontSize="10"
+                        fontWeight="bold"
+                      >
+                        Jump to last similar: {lastSimilarPeak.v.toFixed(1)}ft ({new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: '2-digit' }).format(new Date(lastSimilarPeak.t))})
+                      </text>
+                    </g>
+                  )}
                   {/* Atmospheric rows with icons */}
                   {atmoItems.map((item, i) => {
                     const y = baseY + 30 + (rowsCount + i) * lineHeight;
@@ -1675,6 +1694,146 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             </g>
           );
         })()}
+        {/* Comment markers (Final layer to ensure clickability) */}
+        {showComments && comments.length > 0 && (
+          <g aria-label="Comment markers" className="chart-comment-markers">
+            {(() => {
+              // Stable clustering by absolute time buckets (e.g. 30 mins)
+              const timeBins = new Map<number, Comment[]>();
+              const bucketMs = 30 * 60000; // 30 minute buckets
+              
+              for (const c of comments) {
+                const tr = c.metadata?.timeRange;
+                if (!isCommentTimeRange(tr)) continue;
+                const s = Date.parse(tr.startTime);
+                const e = Date.parse(tr.endTime);
+                if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
+                const midMs = (s + e) / 2;
+                const bucket = Math.floor(midMs / bucketMs);
+                const arr = timeBins.get(bucket) || [];
+                arr.push(c);
+                timeBins.set(bucket, arr);
+              }
+
+              const colorFor = (evt?: string) => evt === 'threshold-crossing' ? '#e74c3c' : evt === 'surge-event' ? '#f39c12' : '#3498db';
+
+              const getNearestObservedY = (timeMs: number) => {
+                const obsRes = findNearestPoint(observedPoints, new Date(timeMs));
+                const adjRes = findNearestPoint(adjustedPoints, new Date(timeMs));
+                const predRes = findNearestPoint(predictedPoints, new Date(timeMs));
+                
+                let v = 0;
+                if (obsRes && obsRes.dtMin < 60) v = obsRes.point.v;
+                else if (adjRes && adjRes.dtMin < 60) v = adjRes.point.v;
+                else if (predRes && predRes.dtMin < 60) v = predRes.point.v;
+                else return margins.t + 6;
+
+                return yOf(v);
+              };
+
+              const els: React.ReactElement[] = [];
+              let idx = 0;
+              timeBins.forEach((arr, bucket) => {
+                let displayTimeMs: number;
+                let color: string;
+                const isCluster = arr.length > 1;
+
+                if (!isCluster) {
+                  const c = arr[0];
+                  const tr = c.metadata?.timeRange;
+                  if (!tr) return;
+                  displayTimeMs = (Date.parse(tr.startTime) + Date.parse(tr.endTime)) / 2;
+                  color = colorFor(tr.eventType);
+                } else {
+                  displayTimeMs = bucket * bucketMs + bucketMs / 2;
+                  color = '#7f8c8d';
+                }
+
+                const cx = xOf(new Date(displayTimeMs));
+                if (cx < margins.l - 20 || cx > margins.l + innerW + 20) return;
+
+                const cy = getNearestObservedY(displayTimeMs);
+
+                if (!isCluster) {
+                  const c = arr[0];
+                  els.push(
+                    <g 
+                      key={`cm-${c.id}-${idx++}`} 
+                      transform={`translate(${cx}, ${cy})`}
+                      style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+                      data-comment-marker="true"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={(e) => e.stopPropagation()}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      onTouchEnd={(e) => e.stopPropagation()}
+                      onMouseEnter={() => onCommentHover?.(c)}
+                      onMouseLeave={() => onCommentHover?.(null)}
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        onCommentClick?.([c]); 
+                      }}
+                    >
+                      {/* Invisible hit target: 12px radius */}
+                      <circle r={12} fill="transparent" style={{ pointerEvents: 'auto' }} data-comment-marker="true" />
+                      <circle
+                        className="comment-marker"
+                        r={3}
+                        fill={color}
+                        stroke="#000"
+                        strokeWidth={1}
+                        role="button"
+                        aria-label={`Comment ${c.authorDisplayName || 'unknown'}`}
+                        tabIndex={0}
+                      />
+                    </g>
+                  );
+                } else {
+                  els.push(
+                    <g 
+                      key={`cluster-${bucket}-${idx++}`} 
+                      transform={`translate(${cx}, ${cy})`} 
+                      style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+                      data-comment-marker="true"
+                      role="button" 
+                      tabIndex={0}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={(e) => e.stopPropagation()}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      onTouchEnd={(e) => e.stopPropagation()}
+                      onMouseEnter={() => {
+                        // For clusters, we might want to hover the first one or just indicate multiple
+                        if (arr.length > 0) onCommentHover?.(arr[0]);
+                      }}
+                      onMouseLeave={() => onCommentHover?.(null)}
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        onCommentClick?.(arr); 
+                      }}
+                    >
+                      {/* Invisible hit target: 12px radius */}
+                      <circle r={12} fill="transparent" style={{ pointerEvents: 'auto' }} data-comment-marker="true" />
+                      <circle className="comment-marker" r={5} fill={color} stroke="#000" strokeWidth={1} />
+                      <text 
+                        x={0} 
+                        y={0} 
+                        dy=".35em"
+                        fontSize="7" 
+                        fontWeight="bold" 
+                        fill="#fff" 
+                        textAnchor="middle"
+                        style={{ pointerEvents: 'none' }}
+                      >
+                        {arr.length}
+                      </text>
+                    </g>
+                  );
+                }
+              });
+
+              return els;
+            })()}
+          </g>
+        )}
       </svg>
       <div className="chart-comment-controls" role="group" aria-label="Comment overlay controls">
         <IonButtons>
@@ -1683,20 +1842,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             {typeof commentCount === 'number' && <IonBadge color="primary" style={{ marginLeft: 6 }}>{commentCount}</IonBadge>}
           </IonButton>
         </IonButtons>
-      </div>
-
-      {/* Bottom center "Add Comment" button (replacing legend) */}
-      <div className="chart-bottom-controls">
-        <IonButton 
-          className="add-comment-fab" 
-          onClick={() => onTimePointSelect?.(centerTime, centerLevel ?? undefined)}
-          aria-label="Add comment at current time"
-        >
-          <IonIcon icon={addCircleOutline} slot="start" />
-          <span className="btn-label">
-            Comment {centerLevel !== null ? `(${centerLevel.toFixed(1)} ft)` : ''}
-          </span>
-        </IonButton>
       </div>
     </div>
   );

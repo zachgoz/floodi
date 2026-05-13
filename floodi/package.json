@@ -26,6 +26,7 @@
     "@types/react-router": "^5.1.20",
     "@types/react-router-dom": "^5.3.3",
     "@vis.gl/react-google-maps": "^1.8.3",
+    "date-fns": "^4.1.0",
     "firebase": "^12.2.1",
     "ionicons": "^7.4.0",
     "react": "19.0.0",
@@ -59,5 +60,8 @@
   "overrides": {
     "rollup": "4.44.0"
   },
-  "description": "FloodCast - Hyperlocal tide and flood insights using NOAA data"
+  "description": "FloodCast - Hyperlocal tide and flood insights using NOAA data",
+  "engines": {
+    "node": ">=20.0.0"
+  }
 }

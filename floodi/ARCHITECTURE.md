@@ -25,7 +25,7 @@ FloodCast is a modern React-based mobile and web application that provides hyper
 - **NOAA API**: Real-time tide and water level data
 - **Firebase**: Authentication, hosting, and potential data storage
 
-## Application Architecture
+### Application Architecture
 
 ### High-Level Structure
 
@@ -35,200 +35,78 @@ floodi/
 │   ├── App.tsx                 # Root application component
 │   ├── main.tsx               # Application entry point
 │   ├── components/            # Shared UI components
+│   │   ├── Tab2/              # Modularized dashboard components
+│   │   │   ├── hooks/         # Logic-heavy custom hooks (useChartData, useAtmosphericState)
+│   │   │   ├── types/         # Domain-specific TypeScript interfaces
+│   │   │   └── ...            # Sub-components (SettingsModal, ChartViewer)
+│   │   └── dashboard/         # Pure visualization components (InundationMap, HydrographChart)
 │   ├── pages/                 # Main page components
-│   ├── lib/                   # Business logic and API integrations
+│   ├── lib/                   # Business logic and API integrations (dataService, noaa)
 │   └── theme/                 # Styling and theme configuration
+├── functions/                 # Firebase Cloud Functions (ETL, Backfill, Proxy)
 ├── public/                    # Static assets
 ├── capacitor.config.ts        # Native app configuration
 └── vite.config.ts            # Build system configuration
 ```
 
-### Component Hierarchy
+### Component Hierarchy (Tab2)
 
 ```
-App
-├── IonReactRouter
-│   ├── IonTabs
-│   │   ├── IonRouterOutlet
-│   │   │   ├── Intro (first-time users)
-│   │   │   ├── Tab2 (main FloodCast functionality)
-│   │   │   └── Tab3 (about page)
-│   │   └── IonTabBar (persistent navigation)
-└── React.StrictMode wrapper
+Tab2 (Page)
+├── useSettingsStorage (Hook: Persistent config)
+├── useChartData (Hook: Data fetching/processing)
+├── useAtmosphericState (Hook: Real-time & simulation logic)
+├── DashboardView (Layout container)
+│   ├── AtmosphericOverlay (Pill indicators)
+│   ├── HydrographChart (D3-powered time-series)
+│   ├── InundationMap (Mapbox GL JS integration)
+│   ├── InundationSimulator (Manual flood control)
+│   └── WebcamFeedCard (Live visual validation)
+├── FloodEventSidebar (Historical event navigation)
+└── SettingsModal (Multi-tab configuration)
 ```
 
 ## Data Flow Architecture
 
 ### 1. Data Sources
-- **NOAA Tides and Currents API**: Primary data source for water levels and predictions
-- **LocalStorage**: User preferences and intro completion status
-- **Component State**: UI state management using React hooks
+- **NOAA Tides and Currents API**: Primary source for tidal predictions and coastal water levels.
+- **FiMAN (Sunny Day Flooding)**: Local sensor network for high-precision, hyperlocal flooding data.
+- **Firestore**: Persistent storage for synchronized observations, historical peaks, and user metadata.
+- **Firebase Functions Proxy**: CORS-bypass and caching layer for external APIs (e.g., FiMAN).
 
-### 2. Data Processing Pipeline
+### 2. Data Processing Pipeline (ETL)
 
-```
-NOAA API Data → Processing Layer → UI Components → User Interface
-     ↓                    ↓              ↓            ↓
-Observed Data    →  Surge Analysis  →  Chart Data  →  Visual Charts
-Predictions      →  Threshold Check →  Alerts      →  Flood Warnings
-```
+FloodCast employs a robust ETL pipeline running in Firebase Functions to ensure data reliability and performance:
 
-### 3. Key Data Transformations
-
-1. **Time Series Normalization**: Convert NOAA timestamps to ISO format
-2. **Surge Calculation**: Compare observed vs predicted data to estimate storm surge
-3. **Threshold Detection**: Analyze future projections for flood threshold crossings
-4. **Chart Formatting**: Transform time series data for visualization libraries
+1.  **Sync Service**: Periodic functions poll NOAA and FiMAN for new observations.
+2.  **Backfill Service**: Background jobs populate historical records in 30-day buckets.
+3.  **Peak Detection**: Algorithms identify significant water level events and store them as `peaks` for quick historical comparison.
+4.  **UI Transformation**: The `useChartData` hook merges multiple sources, aligns phases, and derives surge estimates in real-time.
 
 ## Core Modules
 
-### 1. NOAA Integration (`/src/lib/noaa.ts`)
+### 1. Data Service Layer (`/src/lib/dataService.ts`)
 
-**Purpose**: Interfaces with NOAA Tides and Currents API
+**Purpose**: Unified interface for Firestore and external data sources.
 
 **Key Functions**:
-- `fetchObservedWaterLevels()`: Retrieves actual measured water levels
-- `fetchPredictions()`: Gets harmonic tide predictions
-- `estimateSurgeOffset()`: Calculates storm surge by comparing observed vs predicted
-- `findNextThresholdCrossing()`: Predicts when flood thresholds will be exceeded
-- `buildAdjustedFuture()`: Creates surge-adjusted forecasts
+- `fetchWaterLevels()`: Merges FiMAN and NOAA data based on availability and config.
+- `findLastSimilarLevel()`: Queries historical peaks to find previous occurrences of a specific water level.
+- `fetchFloodEvents()`: Retrieves identified flood events for the sidebar.
 
-**Data Structures**:
-- `TimeSeries`: Maps ISO datetime strings to water level values
+### 2. Atmospheric Logic Hook (`/src/components/Tab2/hooks/useAtmosphericState.ts`)
 
-### 2. Main Application Pages
-
-#### Tab2 (Primary Functionality)
-- **Location**: `/src/pages/Tab2.tsx` and `/src/components/Tab2/`
-- **Purpose**: Main flood forecasting interface
-- **Components**:
-  - `StationSelector`: Choose NOAA monitoring stations
-  - `ChartViewer`: Visualize water level data and predictions
-  - `SettingsModal`: Configure time ranges, units, and flood thresholds
-  - `FloodSettings`: Set and manage flood warning levels
-
-#### Intro Screen
-- **Location**: `/src/pages/Intro.tsx`
-- **Purpose**: First-time user onboarding
-- **Features**: One-time display with localStorage persistence
-
-#### About Page (Tab3)
-- **Location**: `/src/pages/Tab3.tsx`
-- **Purpose**: App information and branding
-
-### 3. Shared Components
-
-#### ExploreContainer
-- **Location**: `/src/components/ExploreContainer.tsx`
-- **Purpose**: Development placeholder with Ionic documentation links
-
-## State Management
-
-### Local State Strategy
-FloodCast uses React's built-in state management with hooks rather than external state management libraries. This approach is suitable for the app's current scope and complexity.
-
-**State Distribution**:
-- **Component-level state**: UI interactions, form inputs, loading states
-- **Custom hooks**: Reusable state logic (settings, chart data, station search)
-- **LocalStorage**: Persistent user preferences and app state
-
-### Key State Management Patterns
-
-1. **Settings Persistence**: User preferences stored in localStorage with custom hooks
-2. **API Data Caching**: Temporary caching of NOAA API responses to reduce requests
-3. **Chart State**: Real-time chart interactions and zoom levels
-4. **Station Management**: Currently selected monitoring station and its metadata
-
-## Security & Performance
-
-### Security Measures
-- **CORS Configuration**: Proper handling of cross-origin API requests to NOAA
-- **Input Validation**: Sanitization of user inputs and API responses
-- **Error Boundaries**: Graceful handling of component failures
-- **External Link Security**: `rel="noopener noreferrer"` for external links
-
-### Performance Optimizations
-- **Code Splitting**: Route-based code splitting for faster initial loads
-- **API Request Optimization**: Efficient batching of NOAA API calls
-- **Chart Performance**: Optimized data structures for large time series
-- **Build Optimization**: Vite's tree shaking and minification
-
-## Mobile-First Design
-
-### Responsive Approach
-- **Ionic Components**: Native-style UI that adapts to platform conventions
-- **Touch-First UX**: Designed for finger navigation and gestures
-- **Offline Capability**: PWA features for limited connectivity scenarios
-
-### Native Integration
-- **Capacitor Plugins**: 
-  - Haptic feedback for alerts
-  - Status bar theming
-  - Keyboard behavior optimization
-  - App lifecycle management
-
-## Development Workflow
-
-### Build Process
-1. **Development**: `npm run dev` - Vite dev server with hot reload
-2. **Testing**: `npm run test.unit` - Vitest unit tests
-3. **Linting**: `npm run lint` - ESLint code quality checks
-4. **Building**: `npm run build` - TypeScript compilation + Vite production build
-5. **Mobile Sync**: `npx cap sync` - Update native app containers
-
-### Testing Strategy
-- **Unit Tests**: Component logic and utility functions
-- **E2E Tests**: Complete user workflows with Cypress
-- **API Integration Tests**: NOAA API response handling
-- **Mobile Testing**: Device-specific testing through Capacitor
+**Purpose**: Encapsulates the derivation of current atmospheric conditions (wind, precip, wl) and manages the interactive simulation state. This ensures that the map, chart, and overlay indicators always stay in sync regardless of whether the user is viewing live data, historical data, or a manual simulation.
 
 ## Deployment Architecture
 
-### Web Deployment
-- **Firebase Hosting**: Static site hosting with global CDN
-- **Progressive Web App**: Installable web app with service worker
-- **Domain Configuration**: Custom domain setup for production
+### Backend (Firebase)
+- **Functions (v2)**: High-performance HTTPS and Scheduled functions.
+- **Firestore**: NoSQL database for time-series and metadata.
+- **Storage**: Caching for webcam imagery and large GeoJSON assets.
+- **Hosting**: Global CDN for the React application.
 
-### Mobile Deployment
-- **iOS**: Native app through Capacitor + Xcode
-- **Android**: Native app through Capacitor + Android Studio
-- **App Store Distribution**: Standard app store publishing process
+This architecture provides a scalable, modular foundation that separates complex data logic from UI presentation, enabling rapid iteration on both the data pipeline and the user interface.
 
-## Error Handling & Monitoring
-
-### Error Handling Strategy
-- **API Failures**: Graceful degradation when NOAA API is unavailable
-- **Network Issues**: Retry logic with exponential backoff
-- **Data Validation**: Comprehensive input validation and sanitization
-- **User Feedback**: Clear error messages and recovery suggestions
-
-### Monitoring & Analytics
-- **Error Tracking**: Component error boundaries with logging
-- **API Monitoring**: Track NOAA API response times and failures
-- **User Analytics**: Firebase Analytics for usage patterns (when implemented)
-- **Performance Monitoring**: Core Web Vitals and load time tracking
-
-## Future Architecture Considerations
-
-### Scalability
-- **Data Caching**: Implement Redis or similar for API response caching
-- **User Management**: Firebase Authentication for personalized experiences
-- **Real-time Updates**: WebSocket integration for live data updates
-- **Offline Mode**: Enhanced PWA capabilities with background sync
-
-### Feature Expansion
-- **Multiple Stations**: Support for monitoring multiple locations simultaneously
-- **Historical Analysis**: Long-term trend analysis and reporting
-- **Alert System**: Push notifications for flood warnings
-- **Data Export**: CSV/JSON export capabilities for power users
-
-## Design Principles
-
-1. **Mobile-First**: Every feature designed for touch interfaces first
-2. **Offline-Capable**: Graceful degradation when connectivity is limited  
-3. **Performance-Focused**: Fast loading and smooth interactions prioritized
-4. **Accessibility**: Follows WCAG guidelines for inclusive design
-5. **Data-Driven**: All decisions based on real NOAA data and scientific methods
-6. **User-Centric**: Simple interface hiding complex flood science calculations
 
 This architecture provides a solid foundation for FloodCast's current functionality while supporting future enhancements and scaling requirements.

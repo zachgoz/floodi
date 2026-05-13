@@ -62,6 +62,7 @@ import {
 } from 'src/lib/commentService';
 
 const validMeta = {
+  locationId: 'carolina-beach',
   station: { id: '8720218', name: 'Key West' },
   timeRange: { startTime: new Date(Date.now() - 3600_000).toISOString(), endTime: new Date().toISOString() },
   dataContext: 'observed' as const,

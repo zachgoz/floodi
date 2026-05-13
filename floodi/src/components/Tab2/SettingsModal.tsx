@@ -11,11 +11,11 @@ import {
   IonToast,
 } from '@ionic/react';
 import { closeOutline } from 'ionicons/icons';
-import { StationSelector } from './StationSelector';
 import { FloodSettings } from './FloodSettings';
+import { LocationSettings } from './LocationSettings';
 import { TimeSettings } from './TimeSettings';
 import { DisplaySettings } from './DisplaySettings';
-import type { AppConfiguration, Station } from './types';
+import type { AppConfiguration } from './types';
 import { UserMenu } from 'src/components/auth';
 import { useHistory } from 'react-router-dom';
 
@@ -29,8 +29,8 @@ interface SettingsModalProps {
   onDismiss: () => void;
   /** Current application configuration */
   config: AppConfiguration;
-  /** Callback when station changes */
-  onStationChange: (station: Station) => void;
+  /** Callback when location changes */
+  onLocationChange: (locationId: string) => void;
   /** Callback when thresholds change */
   onThresholdsChange: (thresholds: Partial<AppConfiguration['thresholds']>) => void;
   /** Callback when offset configuration changes */
@@ -70,7 +70,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onDismiss,
   config,
-  onStationChange,
+  onLocationChange,
   onThresholdsChange,
   onOffsetConfigChange,
   onTimeRangeChange,
@@ -124,12 +124,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             }}
           />
 
-          {/* Station Selection */}
-          <StationSelector
-            selectedStationId={config.station.id}
-            onStationChange={onStationChange}
-            error={errorMessage}
-            successMessage={successMessage}
+          {/* Location Settings */}
+          <LocationSettings
+            currentLocationId={config.locationId}
+            onLocationChange={onLocationChange}
           />
 
           {/* Flood Settings */}
@@ -152,6 +150,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onThemeChange={(theme) => onDisplayChange({ theme })}
             viewMode={config.display.viewMode || 'basic'}
             onViewModeChange={(viewMode) => onDisplayChange({ viewMode })}
+            dataSource={config.display.dataSource || 'auto'}
+            onDataSourceChange={(dataSource) => onDisplayChange({ dataSource })}
           />
 
           {/* Time Settings */}

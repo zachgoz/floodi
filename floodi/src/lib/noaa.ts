@@ -89,7 +89,7 @@ function fmtBeginEnd(d: Date): string {
 function splitDateRange(start: Date, end: Date, maxDays: number): { s: Date; e: Date }[] {
   const chunks: { s: Date; e: Date }[] = [];
   let curr = new Date(start);
-  const maxMs = maxDays * 24 * 3600_000;
+  const maxMs = 28 * 24 * 3600_000; // Use 28 days to be safe (NOAA limit is ~31)
 
   while (curr < end) {
     let chunkEnd = new Date(curr.getTime() + maxMs);
@@ -242,9 +242,9 @@ export async function fetchObservedWaterLevels(opts: {
   const isFimanRequested = provider === 'fiman' || provider === 'both';
   const isNoaaRequested = provider === 'noaa' || provider === 'both';
   
-  // 1. Fetch NOAA CO-OPS
+  // 1. Fetch NOAA CO-OPS (only when explicitly requested, not as a side-effect of FiMAN requests)
   let noaaSeries: TimeSeries = {};
-  if (isNoaaRequested || isFimanRequested) {
+  if (isNoaaRequested) {
     const chunks = splitDateRange(start, end, 31);
     const fetchChunk = async (s: Date, e: Date) => {
       const params = {
@@ -272,7 +272,7 @@ export async function fetchObservedWaterLevels(opts: {
         }
         return chunkOut;
       } catch (err) {
-        console.warn(`NOAA chunk fetch failed [${fmtBeginEnd(s)} - ${fmtBeginEnd(e)}]:`, err);
+        console.warn(`NOAA water_level fetch failed for station ${station} [${fmtBeginEnd(s)} - ${fmtBeginEnd(e)}]:`, err);
         return {};
       }
     };
@@ -291,10 +291,13 @@ export async function fetchObservedWaterLevels(opts: {
     const formatFimanDate = (d: Date) => d.toISOString().split('.')[0] + 'Z';
     const timeStr = `${formatFimanDate(start)}/${formatFimanDate(end)}`;
     
-    // Match the user's working sample platform ID exactly (e.g., sunnyd_cb_03)
+    // Fetch all 4 sensor endpoints in parallel — each camera fires at
+    // independent intervals, so all 4 responses are needed for full imagery.
+    // All 4 share one underlying FIMAN water level sensor, so we take water
+    // level data from whichever response has it first.
     const sensors = WEBCAMS.map(w => w.id.toLowerCase());
     
-    const platformResults = await Promise.all(sensors.map(async (platform) => {
+    const fetchOnePlatform = async (platform: string): Promise<{ series: TimeSeries | null; platform: string }> => {
       const params = {
         format: 'json',
         pretty: 'true',
@@ -316,10 +319,16 @@ export async function fetchObservedWaterLevels(opts: {
         const properties = data.features?.[0]?.properties;
         const parameters = properties?.parameters || [];
         
-        const fimanParam = parameters.find((p: any) => p.id === "FIMAN (observed)");
+        const WL_PRIORITY = ["FIMAN (observed)", "Hohonu (observed)", "water_level_raw"];
+        let fimanParam = null;
+        for (const pid of WL_PRIORITY) {
+          fimanParam = parameters.find((p: any) => p.id === pid && p.observations?.times?.length > 0);
+          if (fimanParam) break;
+        }
+
         const cameraParams = parameters.filter((p: any) => p.id === "Camera");
         
-        // Extract imagery for this platform
+        // Always collect imagery for this platform
         cameraParams.forEach((cameraParam: any) => {
           if (cameraParam?.observations?.times?.length > 0) {
             const times = cameraParam.observations.times;
@@ -330,7 +339,6 @@ export async function fetchObservedWaterLevels(opts: {
               platformImagery[t] = urls[i];
             }
             
-            // Map to the specific camera ID derived from the filename
             const firstUrl = urls[0];
             const filename = firstUrl.split('/').pop() || '';
             const derivedId = filename.split('.')[0];
@@ -342,7 +350,6 @@ export async function fetchObservedWaterLevels(opts: {
               allImagery[canonicalId] = platformImagery;
             }
             
-            // Backup mapping for the platform name
             const platformKey = platform.toUpperCase().startsWith('SUNNYD_')
               ? platform.toUpperCase()
               : `SUNNYD_${platform.toUpperCase()}`;
@@ -375,13 +382,16 @@ export async function fetchObservedWaterLevels(opts: {
       } catch (e) {
         console.warn(`FiMAN fetch failed for ${platform}:`, e);
       }
-      return null;
-    }));
+      return { series: null, platform };
+    };
 
-    // Find the first valid water level series (preferring CB_03)
-    const validResult = platformResults.find(r => r !== null);
-    if (validResult) {
-      fimanSeries = validResult.series;
+    // Fetch all 4 in parallel — all share one water level sensor, so we use
+    // only the first result that has data, but we need all 4 for camera imagery.
+    const platformResults = await Promise.all(sensors.map(fetchOnePlatform));
+    const firstWithData = platformResults.find(r => r.series !== null);
+    if (firstWithData?.series) {
+      fimanSeries = firstWithData.series;
+      console.log(`[FiMAN] Got ${Object.keys(fimanSeries).length} water level points (from ${firstWithData.platform}); imagery from ${Object.keys(allImagery).length} cameras`);
     }
   }
 
@@ -468,7 +478,7 @@ export async function fetchPredictions(opts: {
       }
       return chunkOut;
     } catch (err) {
-      console.warn(`Predictions chunk fetch failed [${fmtBeginEnd(s)} - ${fmtBeginEnd(e)}]:`, err);
+      console.warn(`NOAA predictions fetch failed for station ${station} [${fmtBeginEnd(s)} - ${fmtBeginEnd(e)}]:`, err);
       return {};
     }
   };
@@ -723,14 +733,25 @@ export async function buildAdjustedFuture(opts: {
   const futEnd = new Date(now.getTime() + lookaheadHours * 3600_000);
   
   // Get future tide predictions
-  const predictedFuture = await fetchPredictions({ 
-    station, 
-    start: futStart, 
-    end: futEnd, 
-    interval, 
-    datum, 
-    units 
-  });
+  let predictedFuture: TimeSeries = {};
+  if (existingPredicted && Object.keys(existingPredicted).some(k => new Date(k) >= futStart && new Date(k) <= futEnd)) {
+    // Filter existing predicted to the future window
+    for (const [k, v] of Object.entries(existingPredicted)) {
+      const t = new Date(k);
+      if (t >= futStart && t <= futEnd) {
+        predictedFuture[k] = v;
+      }
+    }
+  } else {
+    predictedFuture = await fetchPredictions({ 
+      station, 
+      start: futStart, 
+      end: futEnd, 
+      interval, 
+      datum, 
+      units 
+    });
+  }
   
   // Apply surge and time adjustment to future predictions
   const adjusted: TimeSeries = {};

@@ -159,7 +159,10 @@ export const InundationMap: React.FC<InundationMapProps> = ({
         outlineColor: [30, 58, 138],
         pixelOffset: [0, 8], // 8px below the icon's bottom edge
         fontFamily: 'Outfit, sans-serif',
-        fontWeight: 700
+        fontWeight: 700,
+        fontSettings: {
+          sdf: true
+        }
       })
     ];
   }, [roadData, waterLevelFt]);

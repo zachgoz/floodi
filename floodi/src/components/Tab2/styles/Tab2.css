@@ -95,11 +95,13 @@
 
 /* Comment markers */
 .chart-comment-markers .comment-marker {
-  transition: transform 120ms ease, opacity 120ms ease;
+  transition: transform 120ms ease, opacity 120ms ease, filter 120ms ease;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.4));
 }
 .chart-comment-markers .comment-marker:hover,
 .chart-comment-markers .comment-marker:focus {
   transform: scale(1.2);
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
   outline: none;
 }
 

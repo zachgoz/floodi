@@ -9,15 +9,15 @@
 // Core Components
 export { ChartViewer } from './ChartViewer';
 export { SettingsModal } from './SettingsModal';
-export { StationSelector } from './StationSelector';
 export { FloodSettings } from './FloodSettings';
 export { TimeSettings } from './TimeSettings';
 export { DisplaySettings } from './DisplaySettings';
+export { FloodEventSidebar } from './FloodEventSidebar';
+export { LocationSettings } from './LocationSettings';
 
 // Custom Hooks
 export { useChartData } from './hooks/useChartData';
 export { useSettingsStorage } from './hooks/useSettingsStorage';
-export { useStationSearch } from './hooks/useStationSearch';
 export { useChartInteraction } from './hooks/useChartInteraction';
 export { useChartComments } from './hooks/useChartComments';
 export { ChartCommentModal } from './ChartCommentModal';

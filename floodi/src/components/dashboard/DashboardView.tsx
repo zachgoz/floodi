@@ -8,6 +8,7 @@ import InundationMap from './InundationMap';
 import InundationSimulator from './InundationSimulator';
 import WebcamFeedCard from './WebcamFeedCard';
 import { WEBCAMS } from '../../constants/webcams';
+import { LOCATIONS, DEFAULT_LOCATION_ID } from '../../constants/locations';
 
 import './DashboardView.css';
 
@@ -16,16 +17,18 @@ import { findNearestPoint } from '../Tab2/hooks/useChartInteraction';
 import type { AppConfiguration } from '../Tab2/types';
 
 const DEFAULT_CONFIG: AppConfiguration = {
+  locationId: DEFAULT_LOCATION_ID,
+  location: {
+    id: LOCATIONS[DEFAULT_LOCATION_ID].id,
+    name: LOCATIONS[DEFAULT_LOCATION_ID].name,
+    state: LOCATIONS[DEFAULT_LOCATION_ID].state,
+  },
   station: {
-    id: '8658163',
-    name: 'Wrightsville Beach',
-    state: 'NC',
+    id: LOCATIONS[DEFAULT_LOCATION_ID].noaaStationId,
+    name: LOCATIONS[DEFAULT_LOCATION_ID].name,
   },
   thresholds: {
-    minor: 4.0,
-    moderate: 5.0,
-    major: 6.0,
-    extreme: 7.0,
+    ...LOCATIONS[DEFAULT_LOCATION_ID].thresholds,
   },
   offset: {
     mode: 'auto',
@@ -180,12 +183,7 @@ export const DashboardView: React.FC = () => {
               <InundationSimulator 
                 waterLevelFt={simulationLevel}
                 onLevelChange={setSimulationLevel}
-                thresholds={{
-                  minor: 5.6,
-                  moderate: 7.0,
-                  major: 7.7,
-                  extreme: 8.5,
-                }}
+                thresholds={DEFAULT_CONFIG.thresholds}
               />
             </div>
 

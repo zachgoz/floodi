@@ -22,6 +22,7 @@ import {
   type Auth,
 } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
 type FirebaseConfig = {
   apiKey: string;
@@ -75,6 +76,9 @@ export const auth: Auth = initializeAuth(app, {
 
 /** Firestore database instance */
 export const db: Firestore = getFirestore(app);
+
+/** Firebase Storage instance */
+export const storage: FirebaseStorage = getStorage(app);
 
 /**
  * Usage:

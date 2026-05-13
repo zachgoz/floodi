@@ -3,8 +3,8 @@ import { vi, describe, it, expect } from 'vitest';
 import { useChartComments } from 'src/components/Tab2/hooks/useChartComments';
 
 vi.mock('src/hooks/useComments', async () => {
-  return {
-    useStationComments: () => ({ comments: [
+  const mockApi = { 
+    comments: [
       {
         id: 'c1',
         content: 'hello',
@@ -22,7 +22,14 @@ vi.mock('src/hooks/useComments', async () => {
         editHistory: [],
         isDeleted: false,
       },
-    ], loading: false, error: null, refresh: vi.fn() }),
+    ], 
+    loading: false, 
+    error: null, 
+    refresh: vi.fn() 
+  };
+  return {
+    useLocationComments: () => mockApi,
+    useStationComments: () => mockApi,
     useCommentPermissions: () => ({ canCreate: () => true, canEdit: () => true, canDelete: () => true }),
   };
 });

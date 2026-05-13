@@ -25,6 +25,8 @@ interface HydrographChartProps extends ChartViewerProps {
   time?: Date | null;
   /** Source label shown in the subtitle (e.g. 'Selection', 'Scroll Context') */
   source?: string;
+  /** Historical flood events to highlight on the timeline */
+  floodEvents?: any[];
 }
 
 export const HydrographChart: React.FC<HydrographChartProps> = ({
@@ -36,6 +38,7 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
   onViewportChange,
   onResetToLive,
   warnings,
+  floodEvents,
   ...chartProps
 }) => {
   return (
@@ -82,7 +85,11 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
             <IonSpinner name="crescent" color="primary" />
           </div>
         )}
-        <ChartViewer {...chartProps} onViewportChange={onViewportChange} />
+        <ChartViewer 
+          {...chartProps} 
+          onViewportChange={onViewportChange} 
+          floodEvents={floodEvents} 
+        />
       </div>
     </div>
   );

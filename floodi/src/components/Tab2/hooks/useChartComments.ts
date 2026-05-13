@@ -1,16 +1,16 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { AppConfiguration } from 'src/components/Tab2/types';
 import type { Comment, CommentTimeRange } from 'src/types/comment';
-import { useCommentPermissions, useStationComments } from 'src/hooks/useComments';
+import { useCommentPermissions, useLocationComments } from 'src/hooks/useComments';
 import { getCommentsInTimeRange, getTimeRangeFromChartSelection, validateChartTimeRange } from 'src/utils/timeRangeHelpers';
 
 /**
- * Hook that binds station-scoped comments to current chart domain and exposes
+ * Hook that binds location-scoped comments to current chart domain and exposes
  * overlay state, toggles, and interaction handlers for ChartViewer.
  */
 export const useChartComments = (config: AppConfiguration) => {
   const perms = useCommentPermissions();
-  const { comments, loading, error, refresh } = useStationComments(config, { realtime: true, pageSize: 100 });
+  const { comments, loading, error, refresh } = useLocationComments(config, { realtime: true, pageSize: 100 });
 
   // Overlay state
   const [showComments, setShowComments] = useState<boolean>(true);

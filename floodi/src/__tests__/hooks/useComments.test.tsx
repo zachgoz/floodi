@@ -41,11 +41,11 @@ describe('useComments', () => {
     vi.mocked(svc.getCommentsByStation).mockResolvedValueOnce({ items: [], nextCursor: null });
     const start = new Date();
     const end = new Date(start.getTime() + 1000);
-    vi.mocked(svc.createComment).mockResolvedValueOnce({ id: 'saved', content: 'Hi', authorUid: 'u1', authorDisplayName: 'T', authorPhotoURL: null, metadata: { station: { id: '8720218', name: 'X' }, timeRange: { startTime: start.toISOString(), endTime: end.toISOString() }, dataContext: 'observed' }, createdAt: { seconds: 1 } as any, updatedAt: { seconds: 1 } as any, isEdited: false, editHistory: [], isDeleted: false } as any);
+    vi.mocked(svc.createComment).mockResolvedValueOnce({ id: 'saved', content: 'Hi', authorUid: 'u1', authorDisplayName: 'T', authorPhotoURL: null, metadata: { locationId: 'carolina-beach', station: { id: '8720218', name: 'X' }, timeRange: { startTime: start.toISOString(), endTime: end.toISOString() }, dataContext: 'observed' }, createdAt: { seconds: 1 } as any, updatedAt: { seconds: 1 } as any, isEdited: false, editHistory: [], isDeleted: false } as any);
     const { result } = renderHook(() => useComments({ stationId: '8720218', realtime: false }));
     await act(async () => {});
     await act(async () => {
-      await result.current.create({ content: 'Hi', metadata: { station: { id: '8720218', name: 'X' }, timeRange: { startTime: start.toISOString(), endTime: end.toISOString() }, dataContext: 'observed' } });
+      await result.current.create({ content: 'Hi', metadata: { locationId: 'carolina-beach', station: { id: '8720218', name: 'X' }, timeRange: { startTime: start.toISOString(), endTime: end.toISOString() }, dataContext: 'observed' } });
     });
     expect(svc.createComment).toHaveBeenCalled();
     expect(result.current.comments.length).toBe(1);

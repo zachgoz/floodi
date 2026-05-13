@@ -159,7 +159,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
               viewBox="-9 -9 18 18"
               className="wind-arrow-svg"
             >
-              <g transform={`rotate(${windDirection + 180})`}>
+              <g transform={`rotate(${(typeof windDirection === 'number' ? windDirection : 0) + 180})`}>
                 <line
                   x1={0} y1={arrowLen / 2}
                   x2={0} y2={-arrowLen / 2}

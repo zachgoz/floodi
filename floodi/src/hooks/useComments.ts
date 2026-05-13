@@ -4,6 +4,7 @@ import {
   createComment as svcCreate,
   deleteComment as svcDelete,
   getCommentsByAuthor,
+  getCommentsByLocation,
   getCommentsByStation,
   getCommentsByTimeRange,
   subscribeToComments,
@@ -18,6 +19,7 @@ import { useChartData } from 'src/components/Tab2/hooks/useChartData';
 import type { AppConfiguration } from 'src/components/Tab2/types';
 
 export interface UseCommentsOptions {
+  locationId?: string;
   stationId?: string;
   timeRange?: CommentTimeRange;
   authorUid?: string;
@@ -44,8 +46,12 @@ export const useComments = (opts: UseCommentsOptions = {}) => {
     setError(null);
     try {
       let items: Comment[] = [];
-      if (opts.stationId && opts.timeRange) {
-        items = await getCommentsByTimeRange(opts.stationId, opts.timeRange, { includeDeleted, pageSize });
+      if (opts.locationId && opts.timeRange) {
+        items = await getCommentsByTimeRange(opts.locationId, opts.timeRange, { includeDeleted, pageSize });
+      } else if (opts.locationId) {
+        const res = await getCommentsByLocation(opts.locationId, { includeDeleted, pageSize });
+        items = res.items;
+        setCursor(res.nextCursor);
       } else if (opts.stationId) {
         const res = await getCommentsByStation(opts.stationId, { includeDeleted, pageSize });
         items = res.items;
@@ -59,7 +65,7 @@ export const useComments = (opts: UseCommentsOptions = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [opts.stationId, opts.timeRange?.startTime, opts.timeRange?.endTime, opts.authorUid, includeDeleted, pageSize]);
+  }, [opts.locationId, opts.stationId, opts.timeRange?.startTime, opts.timeRange?.endTime, opts.authorUid, includeDeleted, pageSize]);
 
   useEffect(() => {
     // initial load
@@ -67,20 +73,21 @@ export const useComments = (opts: UseCommentsOptions = {}) => {
   }, [refresh]);
 
   useEffect(() => {
-    // realtime subscription if requested and station scoped
+    // realtime subscription if requested and location/station/author scoped
     if (!opts.realtime) return;
-    if (!opts.stationId && !opts.authorUid) return;
+    if (!opts.locationId && !opts.stationId && !opts.authorUid) return;
     if (unsubRef.current) unsubRef.current();
-    if (opts.stationId && opts.timeRange) {
+    
+    if (opts.locationId && opts.timeRange) {
       unsubRef.current = subscribeToCommentsByTimeRange(
-        opts.stationId,
+        opts.locationId,
         opts.timeRange,
         { includeDeleted, pageSize },
         (items) => setComments(items)
       );
     } else {
       unsubRef.current = subscribeToComments(
-        { stationId: opts.stationId, authorUid: opts.authorUid, includeDeleted, pageSize },
+        { locationId: opts.locationId, stationId: opts.stationId, authorUid: opts.authorUid, includeDeleted, pageSize },
         (items) => setComments(items)
       );
     }
@@ -88,15 +95,15 @@ export const useComments = (opts: UseCommentsOptions = {}) => {
       if (unsubRef.current) unsubRef.current();
       unsubRef.current = null;
     };
-  }, [opts.stationId, opts.authorUid, includeDeleted, pageSize, opts.realtime]);
+  }, [opts.locationId, opts.stationId, opts.authorUid, includeDeleted, pageSize, opts.realtime]);
 
   const loadMore = useCallback(async () => {
-    if (!opts.stationId || !cursor) return { hasMore: false };
-    const res = await getCommentsByStation(opts.stationId, { includeDeleted, pageSize, cursor: cursor as any });
+    if (!opts.locationId || !cursor) return { hasMore: false };
+    const res = await getCommentsByLocation(opts.locationId, { includeDeleted, pageSize, cursor: cursor as any });
     setComments((prev) => [...prev, ...res.items]);
     setCursor(res.nextCursor);
     return { hasMore: !!res.nextCursor };
-  }, [opts.stationId, cursor, includeDeleted, pageSize]);
+  }, [opts.locationId, cursor, includeDeleted, pageSize]);
 
   const create = useCallback(
     async (payload: Omit<CreateCommentData, 'authorUid' | 'authorDisplayName' | 'authorPhotoURL'>) => {
@@ -179,17 +186,23 @@ export const useComments = (opts: UseCommentsOptions = {}) => {
   };
 };
 
-/** Station-scoped helper integrating with chart time domain. */
-export const useStationComments = (config: AppConfiguration, opts?: { realtime?: boolean; pageSize?: number }) => {
+/** Location-scoped helper integrating with chart time domain. */
+export function useLocationComments(
+  config: AppConfiguration,
+  opts?: { realtime?: boolean; pageSize?: number }
+) {
   const { processedData } = useChartData(config);
   const timeRange: CommentTimeRange = useMemo(() => ({
     startTime: processedData.timeDomain.start.toISOString(),
     endTime: processedData.timeDomain.end.toISOString(),
   }), [processedData.timeDomain.start, processedData.timeDomain.end]);
 
-  const api = useComments({ stationId: config.station.id, timeRange, realtime: opts?.realtime ?? true, pageSize: opts?.pageSize });
+  const api = useComments({ locationId: config.locationId, timeRange, realtime: opts?.realtime ?? true, pageSize: opts?.pageSize });
   return api;
-};
+}
+
+/** @deprecated Use useLocationComments */
+export const useStationComments = useLocationComments;
 
 /** Permission helpers bound to current user. */
 export const useCommentPermissions = () => {

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonModal, IonTitle, IonToolbar } from '@ionic/react';
-import { closeOutline } from 'ionicons/icons';
+import { closeOutline, shieldCheckmark } from 'ionicons/icons';
 import { CommentForm, type CommentFormValues } from 'src/components/comments/CommentForm';
 import type { Comment, CommentTimeRange } from 'src/types/comment';
 import type { AppConfiguration } from './types';
@@ -22,10 +22,10 @@ export interface ChartCommentModalProps {
 }
 
 export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, onDismiss, range, existingComments = [], config, waterLevel }) => {
-  const { create, loading } = useComments({ stationId: config.station.id, realtime: false });
+  const { create, loading } = useComments({ locationId: config?.locationId, realtime: false });
   const { user } = useAuth();
 
-  const rangeDisplay = useMemo(() => (range ? formatTimeRangeForDisplay(range, config.display.timezone) : null), [range, config.display.timezone]);
+  const rangeDisplay = useMemo(() => (range ? formatTimeRangeForDisplay(range, config?.display?.timezone || 'local') : null), [range, config?.display?.timezone]);
   const commentCount = existingComments.length;
   
   const levelSuffix = waterLevel !== undefined && waterLevel !== null ? ` (${waterLevel.toFixed(1)} ft)` : '';
@@ -40,7 +40,11 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
     await create({
       content: values.content,
       metadata: {
-        station: { id: config.station.id, name: config.station.name || `Station ${config.station.id}` },
+        locationId: config?.locationId || '',
+        station: { 
+          id: config?.station?.id || '', 
+          name: config?.station?.name || '' 
+        },
         timeRange: { ...range, eventType: values.eventType },
         dataContext: values.dataContexts,
         thresholdValue: values.threshold ?? null,
@@ -161,8 +165,31 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
           .thread-header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: center;
             margin-bottom: 6px;
+          }
+          .author-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+          .official-badge {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            background: #eefbff;
+            color: #0076a8;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 0.6rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            border: 1px solid #cceeff;
+            box-shadow: 0 1px 2px rgba(0, 118, 168, 0.05);
+          }
+          .badge-icon {
+            font-size: 0.8rem;
           }
           .thread-author {
             font-family: 'Inter', sans-serif;
@@ -230,27 +257,39 @@ export const ChartCommentModal: React.FC<ChartCommentModalProps> = ({ isOpen, on
       <IonContent className="ion-padding">
         {commentCount > 0 && (
           <div className="thread-container">
-            {existingComments.map((c) => (
-              <div key={c.id} className="thread-comment">
-                <div className="thread-header">
-                  <span className="thread-author">Station Watcher</span>
-                  <span className="thread-time">
-                    {(c.createdAt?.toDate?.() || (c.createdAt?.seconds ? new Date(c.createdAt.seconds * 1000) : new Date())).toLocaleDateString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                  </span>
+            {existingComments.map((c) => {
+              if (!c) return null;
+              return (
+                <div key={c.id || Math.random()} className="thread-comment">
+                  <div className="thread-header">
+                    <div className="author-wrapper">
+                      <span className="thread-author">{c.authorDisplayName || 'Anonymous User'}</span>
+                      {c.isOfficial && (
+                        <div className="official-badge">
+                          <IonIcon icon={shieldCheckmark} className="badge-icon" />
+                          <span>Official</span>
+                        </div>
+                      )}
+                    </div>
+                    <span className="thread-time">
+                      {(c.createdAt?.toDate?.() || (c.createdAt?.seconds ? new Date(c.createdAt.seconds * 1000) : new Date())).toLocaleDateString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="thread-content-text">{c.content}</p>
+                  {(Array.isArray(c.metadata?.dataContext) ? c.metadata.dataContext : [c.metadata?.dataContext]).filter(Boolean).map((ctx, idx) => (
+                    <span key={`${c.id}-ctx-${ctx}-${idx}`} className="thread-pill">{ctx}</span>
+                  ))}
                 </div>
-                <p className="thread-content-text">{c.content}</p>
-                {(Array.isArray(c.metadata.dataContext) ? c.metadata.dataContext : [c.metadata.dataContext]).filter(Boolean).map((ctx, idx) => (
-                  <span key={`${c.id}-ctx-${ctx}-${idx}`} className="thread-pill">{ctx}</span>
-                ))}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
         
         {commentCount > 0 && <div className="divider-label">Reply or add observation</div>}
         
         <CommentForm
-          stationId={config.station.id}
+          locationId={config?.locationId}
+          stationId={config?.station?.id}
           initialRange={range ? { start: new Date(range.startTime).toISOString(), end: new Date(range.endTime).toISOString() } : undefined}
           loading={loading}
           onSubmit={handleSubmit}

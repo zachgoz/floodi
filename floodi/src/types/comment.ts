@@ -32,6 +32,7 @@ export interface CommentStationInfo {
  * Comment metadata links a comment to chart data context and station.
  */
 export interface CommentMetadata {
+  locationId: string; // The location identifier (e.g. 'carolina-beach')
   station: CommentStationInfo;
   timeRange: CommentTimeRange;
   dataContext: CommentDataContext | CommentDataContext[];
@@ -61,6 +62,7 @@ export interface Comment {
   isEdited: boolean;
   editHistory: CommentEditRecord[];
   isDeleted: boolean;
+  isOfficial?: boolean;
 }
 
 /** Payload for creating a comment. */
@@ -84,6 +86,7 @@ export interface UpdateCommentData {
 
 /** Query helpers */
 export interface CommentFilter {
+  locationId?: string;
   stationId?: string;
   authorUid?: string;
   timeRange?: CommentTimeRange;
@@ -105,7 +108,7 @@ export const isCommentTimeRange = (v: unknown): v is CommentTimeRange => {
 export const isCommentMetadata = (v: unknown): v is CommentMetadata => {
   if (!v || typeof v !== 'object') return false;
   const r = v as any;
-  return !!r.station?.id && !!r.timeRange?.startTime && !!r.timeRange?.endTime;
+  return !!r.locationId && !!r.station?.id && !!r.timeRange?.startTime && !!r.timeRange?.endTime;
 };
 
 /**
