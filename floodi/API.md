@@ -360,4 +360,3 @@ const data = await dataService.fetchWaterLevels({
 - **Graceful Failover**: If FiMAN is unavailable, the system automatically falls back to the nearest NOAA station.
 
 This API structure ensures that FloodCast remains fast and reliable even during severe weather events when external sensors might experience intermittent connectivity.
-s.
