@@ -343,7 +343,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     const t1 = activeEnd.getTime();
     if (!Number.isFinite(t0) || !Number.isFinite(t1)) return now;
     return new Date(t0 + (t1 - t0) * nowRatio);
-  }, [activeStart, activeEnd, nowRatio, now]);
+  }, [activeStart.getTime(), activeEnd.getTime(), nowRatio, now.getTime()]);
 
   // Find water level at the center point for the button label
   const centerLevel = useMemo(() => {
@@ -358,24 +358,42 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   }, [centerTime, observedPoints, adjustedPoints, predictedPoints]);
 
   const lastViewportChangeRef = useRef<number>(0);
+  const lastEmittedViewportRef = useRef<{ start: number; end: number; center: number } | null>(null);
 
   // Immediate notification of viewport changes to parent for simulation sync
   useEffect(() => {
     if (!onViewportChange) return;
+
+    const s = activeStart.getTime();
+    const e = activeEnd.getTime();
+    const c = centerTime.getTime();
+
+    // Safeguard: Only emit if the viewport has shifted by more than a small threshold (1s).
+    // This breaks the infinite feedback loop when parent state updates trigger child re-renders.
+    const last = lastEmittedViewportRef.current;
+    if (last && 
+        Math.abs(last.start - s) < 1000 && 
+        Math.abs(last.end - e) < 1000 && 
+        Math.abs(last.center - c) < 1000) {
+      return;
+    }
+
     const nowMs = Date.now();
     const timeSinceLast = nowMs - lastViewportChangeRef.current;
     
-    if (timeSinceLast >= 50) {
+    const notify = () => {
       onViewportChange(activeStart, activeEnd, centerTime);
-      lastViewportChangeRef.current = nowMs;
+      lastViewportChangeRef.current = Date.now();
+      lastEmittedViewportRef.current = { start: s, end: e, center: c };
+    };
+
+    if (timeSinceLast >= 50) {
+      notify();
     } else {
-      const timer = setTimeout(() => {
-        onViewportChange(activeStart, activeEnd, centerTime);
-        lastViewportChangeRef.current = Date.now();
-      }, 50 - timeSinceLast);
+      const timer = setTimeout(notify, 50 - timeSinceLast);
       return () => clearTimeout(timer);
     }
-  }, [activeStart.getTime(), activeEnd.getTime(), centerTime, onViewportChange]);
+  }, [activeStart.getTime(), activeEnd.getTime(), centerTime.getTime(), onViewportChange]);
 
   // Handle responsive resizing
   useEffect(() => {

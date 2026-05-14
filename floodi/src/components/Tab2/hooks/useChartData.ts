@@ -29,10 +29,6 @@ function seriesToPoints(series: Record<string, number>, source?: 'fiman' | 'noaa
  * Custom hook for fetching and processing NOAA chart data
  */
 export function useChartData(config: AppConfiguration) {
-  // ... (lines 25-220 same)
-  // ... (skipping to line 222 in current file)
-  
-  // (Wait, I need to provide the context correctly)
   const [dataState, setDataState] = useState<DataState>({
     loading: true,
     error: null,
@@ -46,6 +42,7 @@ export function useChartData(config: AppConfiguration) {
       precip: {},
     },
   });
+
 
   const { locationId, timeRange, offset: configOffset } = config;
   const location = LOCATIONS[locationId] || LOCATIONS['carolina-beach'];
@@ -404,7 +401,7 @@ export function useChartData(config: AppConfiguration) {
         };
       })()
     };
-  }, [dataState.data, timeDomain, config.offset, config.thresholds.minor]);
+  }, [dataState.data, timeDomain, config.offset.mode, config.offset.value, config.thresholds.minor]);
 
   return {
     ...dataState,

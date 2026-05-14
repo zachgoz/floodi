@@ -15,7 +15,6 @@ import { useAuth } from 'src/contexts/AuthContext';
 import { useUserPermissions } from 'src/hooks/useUserPermissions';
 import { UserRole } from 'src/types/user';
 import { validateCommentContent, validateCommentMetadata, validateCommentPermissions } from 'src/utils/commentValidation';
-import { useChartData } from 'src/components/Tab2/hooks/useChartData';
 import type { AppConfiguration } from 'src/components/Tab2/types';
 
 export interface UseCommentsOptions {
@@ -191,13 +190,35 @@ export function useLocationComments(
   config: AppConfiguration,
   opts?: { realtime?: boolean; pageSize?: number }
 ) {
-  const { processedData } = useChartData(config);
-  const timeRange: CommentTimeRange = useMemo(() => ({
-    startTime: processedData.timeDomain.start.toISOString(),
-    endTime: processedData.timeDomain.end.toISOString(),
-  }), [processedData.timeDomain.start, processedData.timeDomain.end]);
+  const timeRange: CommentTimeRange = useMemo(() => {
+    const { mode, lookbackH, lookaheadH, absStart, absEnd } = config.timeRange;
+    const now = new Date();
+    now.setSeconds(0, 0);
+    now.setMilliseconds(0);
 
-  const api = useComments({ locationId: config.locationId, timeRange, realtime: opts?.realtime ?? true, pageSize: opts?.pageSize });
+    let start, end;
+    if (mode === 'relative') {
+      start = new Date(now.getTime() - lookbackH * 3600_000);
+      end = new Date(now.getTime() + lookaheadH * 3600_000);
+    } else {
+      const startMs = Math.min(new Date(absStart).getTime(), new Date(absEnd).getTime());
+      const endMs = Math.max(new Date(absStart).getTime(), new Date(absEnd).getTime(), startMs + 60_000);
+      start = new Date(startMs);
+      end = new Date(endMs);
+    }
+
+    return {
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+    };
+  }, [config.timeRange]);
+
+  const api = useComments({ 
+    locationId: config.locationId, 
+    timeRange, 
+    realtime: opts?.realtime ?? true, 
+    pageSize: opts?.pageSize 
+  });
   return api;
 }
 

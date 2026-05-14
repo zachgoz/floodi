@@ -19,7 +19,7 @@ import { SettingsModal } from 'src/components/Tab2/SettingsModal';
 import { useSettingsStorage } from 'src/components/Tab2/hooks/useSettingsStorage';
 import { useChartData } from 'src/components/Tab2/hooks/useChartData';
 import { useAtmosphericState } from 'src/components/Tab2/hooks/useAtmosphericState';
-import { formatTooltipTime, findNearestPoint } from 'src/components/Tab2/hooks/useChartInteraction';
+import { formatTooltipTime } from 'src/components/Tab2/hooks/useChartInteraction';
 import { useChartComments } from 'src/components/Tab2/hooks/useChartComments';
 import { ChartCommentModal } from 'src/components/Tab2/ChartCommentModal';
 import 'src/components/Tab2/styles/Tab2.css';
@@ -90,7 +90,6 @@ const Tab2: React.FC = () => {
     activeAtmo,
     simulationLevel,
     setSimulationLevel,
-    isUserSimulating,
     setIsUserSimulating,
   } = useAtmosphericState(processedData, manualFocusTime, currentViewport);
 
@@ -141,7 +140,6 @@ const Tab2: React.FC = () => {
     setMessages({});
   };
 
-  const [lastSimilarPeak, setLastSimilarPeak] = useState<WaterLevelPeak | null>(null);
 
   /**
    * Handle flood event selection
@@ -157,7 +155,6 @@ const Tab2: React.FC = () => {
     if (!activeAtmo.wl) return;
     try {
       const peak = await findLastSimilarLevel(config.location.id, activeAtmo.wl, activeAtmo.targetTime || new Date());
-      setLastSimilarPeak(peak);
       if (peak) {
         setCenterRequest({ time: new Date(peak.t), id: Date.now() });
       }
@@ -213,16 +210,46 @@ const Tab2: React.FC = () => {
   }, [updateTimeRange]);
 
   // Comments integration tied to current config
-  const chartComments = useChartComments(config);
+  const {
+    comments: visibleComments,
+    commentCount,
+    showComments,
+    toggleCommentOverlay,
+    handleCommentHover: onCommentHoverAction,
+    handleCommentClick: onCommentClickAction,
+    handleTimeRangeSelect: onTimeRangeSelectAction,
+    selectedTimeRange,
+    selectedComments,
+    clearSelected
+  } = useChartComments(config);
+
+  // Stable event handlers to prevent infinite loops in ChartViewer
+  const handleViewportChange = useCallback((start: Date, end: Date, focusTime: Date) => {
+    setCurrentViewport({ start, end, focusTime });
+  }, []);
+
+  const handleCommentHover = useCallback((c: any) => {
+    onCommentHoverAction(c);
+  }, [onCommentHoverAction]);
+ 
+  const handleCommentClick = useCallback((cs: any) => {
+    onCommentClickAction(cs);
+  }, [onCommentClickAction]);
+ 
+  const handleTimePointSelect = useCallback((time: Date, level?: number) => {
+    // Skip the action sheet and go straight to comment form
+    setChartActionLevel(level);
+    onTimeRangeSelectAction({ at: time });
+  }, [onTimeRangeSelectAction]);
   const [commentModalOpen, setCommentModalOpen] = useState(false);
   const [chartActionLevel, setChartActionLevel] = useState<number | undefined>(undefined);
 
   // Open comment modal when a selection range or comment is clicked
   useEffect(() => {
-    if (chartComments.selectedTimeRange || chartComments.selectedComments) {
+    if (selectedTimeRange || selectedComments) {
       setCommentModalOpen(true);
     }
-  }, [chartComments.selectedTimeRange, chartComments.selectedComments]);
+  }, [selectedTimeRange, selectedComments]);
 
 
   // Road elevation GeoJSON — fetched from /public/data/
@@ -233,13 +260,6 @@ const Tab2: React.FC = () => {
       .then(data => { if (data) setRoadData(data); })
       .catch(() => { /* file not yet generated — map shows notice */ });
   }, []);
-
-  /**
-   * Focus helpers for specific data points
-   */
-
-
-  // Comments integration tied to current config
 
   return (
     <IonPage className="floodcast-page">
@@ -349,18 +369,14 @@ const Tab2: React.FC = () => {
                       floodEvents={processedData.floodEvents}
                       timeRange={config?.timeRange}
                       selectedTime={manualFocusTime}
-                      showComments={chartComments.showComments}
-                      comments={chartComments.comments}
-                      onCommentHover={(c) => chartComments.handleCommentHover(c)}
-                      onCommentClick={(cs) => chartComments.handleCommentClick(cs)}
-                      onTimePointSelect={(time: Date, level?: number) => {
-                        // Skip the action sheet and go straight to comment form
-                        setChartActionLevel(level);
-                        chartComments.handleTimeRangeSelect({ at: time });
-                      }}
-                      onToggleComments={chartComments.toggleCommentOverlay}
-                      commentCount={chartComments.commentCount}
-                      onViewportChange={(start: Date, end: Date, focusTime: Date) => setCurrentViewport({ start, end, focusTime })}
+                      showComments={showComments}
+                      comments={visibleComments}
+                      onCommentHover={handleCommentHover}
+                      onCommentClick={handleCommentClick}
+                      onTimePointSelect={handleTimePointSelect}
+                      onToggleComments={toggleCommentOverlay}
+                      commentCount={commentCount}
+                      onViewportChange={handleViewportChange}
                       onDomainChangeRequest={handleDomainChangeRequest}
                       loading={loading}
                       mode={config.timeRange.mode}
@@ -477,9 +493,9 @@ const Tab2: React.FC = () => {
         {/* Chart comment creation modal */}
         <ChartCommentModal
           isOpen={commentModalOpen}
-          onDismiss={() => { setCommentModalOpen(false); chartComments.clearSelected(); }}
-          range={chartComments.selectedTimeRange || (chartComments.selectedComments?.[0]?.metadata.timeRange ?? null)}
-          existingComments={chartComments.selectedComments || []}
+          onDismiss={() => { setCommentModalOpen(false); clearSelected(); }}
+          range={selectedTimeRange || (selectedComments?.[0]?.metadata.timeRange ?? null)}
+          existingComments={selectedComments || []}
           config={config}
           waterLevel={chartActionLevel}
         />
