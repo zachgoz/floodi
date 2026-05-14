@@ -27,6 +27,7 @@ export function useAtmosphericState(
   const [simulationLevel, setSimulationLevel] = useState<number>(initialSimulationLevel);
   const [isUserSimulating, setIsUserSimulating] = useState(false);
 
+
   const activeAtmo = useMemo((): AtmosphericState => {
     if (!processedData) {
       return { 
