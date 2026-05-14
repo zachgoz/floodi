@@ -34,6 +34,8 @@ interface InundationMapProps {
   onResetToLive?: () => void;
   /** Consolidated imagery map for data-driven webcam photos */
   imagery?: Record<string, Record<string, string>>;
+  /** Callback to update global time from webcam scroll */
+  onTimeChange?: (time: Date) => void;
 }
 
 // ── FIMAN colour ramp ────────────────────────────────────────────────────────
@@ -77,6 +79,7 @@ export const InundationMap: React.FC<InundationMapProps> = ({
   targetTime,
   onResetToLive,
   imagery,
+  onTimeChange
 }) => {
   const [pinnedRoad, setPinnedRoad] = useState<{feature: RoadFeature, x: number, y: number} | null>(null);
   const [selectedCamera, setSelectedCamera] = useState<typeof WEBCAMS[0] | null>(null);
@@ -276,7 +279,9 @@ export const InundationMap: React.FC<InundationMapProps> = ({
             cameraId={selectedCamera.id}
             locationName={selectedCamera.name}
             targetTime={targetTime || new Date()}
+            isLive={!targetTime || Math.abs(targetTime.getTime() - Date.now()) < 10 * 60 * 1000}
             onResetToLive={onResetToLive}
+            onTimeChange={onTimeChange}
             onClose={() => setSelectedCamera(null)}
             imagery={imagery?.[selectedCamera.id]}
           />

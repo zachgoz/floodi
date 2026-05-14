@@ -74,6 +74,7 @@ const Tab2: React.FC = () => {
   const [currentViewport, setCurrentViewport] = useState<{ start: Date; end: Date; focusTime: Date } | null>(null);
   const [manualFocusTime, setManualFocusTime] = useState<Date | null>(null);
   const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>(WEBCAMS[0].id);
 
   // Professional data fetching and processing
   const {
@@ -95,12 +96,16 @@ const Tab2: React.FC = () => {
 
   const resetToLive = useCallback(() => {
     baseResetToLive();
-    setCurrentViewport(null);
     setManualFocusTime(null);
     setIsUserSimulating(false);
     setResetCount(c => c + 1);
     setCenterRequest({ time: new Date(), id: Date.now() });
   }, [baseResetToLive, setIsUserSimulating]);
+
+  const handleTimeChange = useCallback((time: Date) => {
+    setManualFocusTime(time);
+    setCenterRequest({ time, id: Date.now() });
+  }, []);
 
   // Reset simulation flag when the user interacts with the chart (changing focus time)
   useEffect(() => {
@@ -225,6 +230,7 @@ const Tab2: React.FC = () => {
 
   // Stable event handlers to prevent infinite loops in ChartViewer
   const handleViewportChange = useCallback((start: Date, end: Date, focusTime: Date) => {
+    setManualFocusTime(null);
     setCurrentViewport({ start, end, focusTime });
   }, []);
 
@@ -470,6 +476,7 @@ const Tab2: React.FC = () => {
                         observedLevelFt={processedData?.observedPoints?.slice(-1)[0]?.v}
                         targetTime={activeAtmo.targetTime || new Date()}
                         onResetToLive={resetToLive}
+                        onTimeChange={handleTimeChange}
                         imagery={processedData.imagery}
                       />
                     </APIProvider>
@@ -506,16 +513,16 @@ const Tab2: React.FC = () => {
                   Find Last Similar Level ({activeAtmo.wl?.toFixed(2)}')
                 </IonButton>
 
-                {WEBCAMS.map(cam => (
-                    <WebcamFeedCard
-                      key={cam.id}
-                      cameraId={cam.id}
-                      locationName={cam.name}
-                      targetTime={activeAtmo.targetTime || new Date()}
-                      onResetToLive={resetToLive}
-                      imagery={processedData.imagery?.[cam.id]}
-                    />
-                ))}
+                <WebcamFeedCard
+                  cameraId={selectedCameraId}
+                  locationName={WEBCAMS.find(c => c.id === selectedCameraId)?.name || ''}
+                  targetTime={activeAtmo.targetTime || new Date()}
+                  isLive={activeAtmo.isLive}
+                  onResetToLive={resetToLive}
+                  onTimeChange={handleTimeChange}
+                  onCameraChange={setSelectedCameraId}
+                  imagery={processedData?.imagery?.[selectedCameraId]}
+                />
 
                 <FloodEventSidebar 
                   locationId={config.location.id} 

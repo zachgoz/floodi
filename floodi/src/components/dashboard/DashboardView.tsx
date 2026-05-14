@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { IonPage, IonContent, IonHeader, IonToolbar, IonTitle, IonSpinner } from '@ionic/react';
 import { APIProvider } from '@vis.gl/react-google-maps';
 
@@ -15,6 +15,8 @@ import './DashboardView.css';
 import { useChartData } from '../Tab2/hooks/useChartData';
 import { findNearestPoint } from '../Tab2/hooks/useChartInteraction';
 import type { AppConfiguration } from '../Tab2/types';
+
+const LIVE_TOLERANCE_MS = 60 * 1000;
 
 const DEFAULT_CONFIG: AppConfiguration = {
   locationId: DEFAULT_LOCATION_ID,
@@ -45,6 +47,7 @@ const DEFAULT_CONFIG: AppConfiguration = {
     timezone: 'local',
     showDelta: false,
     viewMode: 'advanced',
+    dataSource: 'auto',
   },
 };
 
@@ -52,10 +55,36 @@ export const DashboardView: React.FC = () => {
   const [simulationLevel, setSimulationLevel] = useState<number>(3.5);
   const { processedData, loading } = useChartData(DEFAULT_CONFIG);
   const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
+  const [selectedTime, setSelectedTime] = useState<Date | null>(null);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>(WEBCAMS[0].id);
+  const liveTimeMs = processedData?.timeDomain.now.getTime();
 
-  const resetToLive = () => {
+  const resetToLive = useCallback(() => {
+    setSelectedTime(null);
     setCenterRequest({ time: new Date(), id: Date.now() });
-  };
+  }, []);
+
+  const handleTimeChange = useCallback((newTime: Date) => {
+    // Round to nearest minute for stability
+    const rounded = new Date(newTime);
+    rounded.setSeconds(0, 0);
+    setSelectedTime(rounded);
+
+    // Unified sync: Ensure hydrograph centers on this specific time
+    // whenever it is changed via an external control (Webcam, Map, or Pill).
+    setCenterRequest({ time: rounded, id: Date.now() });
+  }, []);
+
+  const handleViewportChange = useCallback((start: Date, end: Date, focusTime: Date) => {
+    // Round to nearest minute for stability
+    const rounded = new Date(focusTime);
+    rounded.setSeconds(0, 0);
+
+    // Update selectedTime to sync labels and webcam, but DO NOT set centerRequest
+    // because the chart is already being moved by the user.
+    const isNearLive = liveTimeMs !== undefined && Math.abs(rounded.getTime() - liveTimeMs) < LIVE_TOLERANCE_MS;
+    setSelectedTime(isNearLive ? null : rounded);
+  }, [liveTimeMs]);
 
   if (loading || !processedData) {
     return (
@@ -79,23 +108,24 @@ export const DashboardView: React.FC = () => {
   } = processedData;
 
   const { start, end, now } = timeDomain;
+  const isLive = !selectedTime || Math.abs(selectedTime.getTime() - now.getTime()) < LIVE_TOLERANCE_MS;
+  const targetTime = isLive ? now : selectedTime;
 
-  // Find nearest wind point to 'now'
-  const currentWind = windPoints.length > 0 
-    ? windPoints.reduce((prev, curr) => 
-        Math.abs(curr.t.getTime() - now.getTime()) < Math.abs(prev.t.getTime() - now.getTime()) ? curr : prev
+  // Find nearest wind point to targetTime
+  const currentWind = windPoints.length > 0
+    ? windPoints.reduce((prev, curr) =>
+        Math.abs(curr.t.getTime() - targetTime.getTime()) < Math.abs(prev.t.getTime() - targetTime.getTime()) ? curr : prev
       )
-    : { t: now, speed: 0, dir: 0 };
-    
-  // Find nearest observed/predicted point to 'now'
-  const lastObs = observedPoints.length > 0 ? observedPoints[observedPoints.length - 1] : null;
-  const isPastHandover = now.getTime() > (lastObs?.t.getTime() || 0);
+    : { t: targetTime, speed: 0, dir: 0 };
 
-  const obsRes = findNearestPoint(observedPoints, now);
-  const adjRes = findNearestPoint(adjustedPoints, now);
-  const predRes = findNearestPoint(predictedPoints, now);
-  const windRes = findNearestPoint(windPoints, now);
-  const precipRes = findNearestPoint(precipPoints, now);
+  // Find nearest observed/predicted point to targetTime
+  const lastObs = observedPoints.length > 0 ? observedPoints[observedPoints.length - 1] : null;
+  const isPastHandover = targetTime.getTime() > (lastObs?.t.getTime() || 0);
+
+  const obsRes = findNearestPoint(observedPoints, targetTime);
+  const adjRes = findNearestPoint(adjustedPoints, targetTime);
+  const predRes = findNearestPoint(predictedPoints, targetTime);
+  const precipRes = findNearestPoint(precipPoints, targetTime);
 
   const isObserved = !!(obsRes && obsRes.dtMin < 60 && !isPastHandover);
   const isAdjusted = !!(adjRes && adjRes.dtMin < 60 && isPastHandover);
@@ -115,7 +145,6 @@ export const DashboardView: React.FC = () => {
   })();
 
   const currentPrecip = precipRes && precipRes.dtMin < 60 ? precipRes.point.value : 0;
-
 
   const sourceId = isObserved ? 'noaa' : 
                    isAdjusted ? 'floodcast' :
@@ -149,8 +178,8 @@ export const DashboardView: React.FC = () => {
                   statusLabel={statusLabel}
                   surge={surge}
                   prediction={predRes?.point.v}
-                  isLive={true}
-                  targetTime={now}
+                  isLive={isLive}
+                  targetTime={targetTime}
                 />
                 
                 <HydrographChart
@@ -162,12 +191,18 @@ export const DashboardView: React.FC = () => {
                   domainStart={start}
                   domainEnd={end}
                   now={now}
+                  isLive={isLive}
+                  time={targetTime}
+                  selectedTime={selectedTime}
+                  timeRange={DEFAULT_CONFIG.timeRange}
                   thresholds={DEFAULT_CONFIG.thresholds}
                   showDelta={false}
                   timezone="local"
                   showComments={true}
                   comments={[]}
                   centerRequest={centerRequest}
+                  onViewportChange={handleViewportChange}
+                  onResetToLive={resetToLive}
                 />
                 
                 {loading && (
@@ -180,11 +215,11 @@ export const DashboardView: React.FC = () => {
               {/* Secure Google Maps wrapper */}
               <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}>
                 <InundationMap
-                  locationId={DEFAULT_LOCATION_ID}
                   waterLevelFt={simulationLevel}
                   roadData={undefined}
-                  targetTime={now}
+                  targetTime={targetTime}
                   onResetToLive={resetToLive}
+                  onTimeChange={handleTimeChange}
                 />
               </APIProvider>
 
@@ -196,15 +231,16 @@ export const DashboardView: React.FC = () => {
             </div>
 
             <div className="dashboard-sidebar">
-              {WEBCAMS.map(cam => (
-                <WebcamFeedCard 
-                  key={cam.id}
-                  cameraId={cam.id}
-                  locationName={cam.name}
-                  targetTime={now}
-                  onResetToLive={resetToLive}
-                />
-              ))}
+              <WebcamFeedCard
+                cameraId={selectedCameraId}
+                locationName={WEBCAMS.find(c => c.id === selectedCameraId)?.name || ''}
+                targetTime={targetTime}
+                isLive={isLive}
+                onResetToLive={resetToLive}
+                onTimeChange={handleTimeChange}
+                onCameraChange={setSelectedCameraId}
+                imagery={processedData.imagery?.[selectedCameraId]}
+              />
             </div>
           </div>
 

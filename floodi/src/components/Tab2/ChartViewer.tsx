@@ -359,6 +359,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
   const lastViewportChangeRef = useRef<number>(0);
   const lastEmittedViewportRef = useRef<{ start: number; end: number; center: number } | null>(null);
+  const viewportTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Immediate notification of viewport changes to parent for simulation sync
   useEffect(() => {
@@ -385,14 +386,23 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
       onViewportChange(activeStart, activeEnd, centerTime);
       lastViewportChangeRef.current = Date.now();
       lastEmittedViewportRef.current = { start: s, end: e, center: c };
+      viewportTimeoutRef.current = null;
     };
+
+    // Clear any pending notification so we always schedule the LATEST viewport state
+    if (viewportTimeoutRef.current) {
+      clearTimeout(viewportTimeoutRef.current);
+    }
 
     if (timeSinceLast >= 50) {
       notify();
     } else {
-      const timer = setTimeout(notify, 50 - timeSinceLast);
-      return () => clearTimeout(timer);
+      viewportTimeoutRef.current = setTimeout(notify, 50 - timeSinceLast);
     }
+
+    return () => {
+      if (viewportTimeoutRef.current) clearTimeout(viewportTimeoutRef.current);
+    };
   }, [activeStart.getTime(), activeEnd.getTime(), centerTime.getTime(), onViewportChange]);
 
   // Handle responsive resizing
