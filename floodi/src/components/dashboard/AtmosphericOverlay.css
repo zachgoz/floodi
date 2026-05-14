@@ -158,10 +158,28 @@
 }
 
 .legend-dashed-line {
-  width: 12px;
-  height: 0;
-  border-top: 2px dashed;
+  height: 3px;
   flex-shrink: 0;
+  mask-image: linear-gradient(to right, #000 60%, transparent 60%);
+  mask-size: 8px 100%;
+  -webkit-mask-image: linear-gradient(to right, #000 60%, transparent 60%);
+  -webkit-mask-size: 8px 100%;
+}
+
+.legend-solid-line {
+  height: 3px;
+  flex-shrink: 0;
+  border-radius: 1px;
+}
+
+.metric-status-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  margin-left: 4px;
+  background: var(--sentinel-border);
+  color: #000;
+  padding: 0 4px;
+  border-radius: 4px;
 }
 
 .metric-label {
@@ -196,7 +214,7 @@
 .metric-dir {
   font-size: 0.65rem;
   font-weight: 800;
-  color: var(--sentinel-text-muted);
+  color: #000;
   margin-left: 4px;
   background: var(--sentinel-border);
   padding: 0 4px;
@@ -211,6 +229,15 @@
 
 .wind-arrow-svg {
   filter: drop-shadow(0 0 4px rgba(0,0,0,0.3));
+}
+
+.meteo-group {
+  gap: 12px;
+}
+
+.meteo-group .metric-divider {
+  height: 24px;
+  opacity: 0.3;
 }
 
 
@@ -296,4 +323,285 @@
     gap: 8px;
     padding: 0 4px;
   }
+
+  .meteo-group {
+    background: rgba(var(--ion-color-step-100-rgb), 0.05);
+    border-style: dashed;
+    gap: 6px;
+  }
+
+  .metric-label {
+    white-space: normal;
+    line-height: 1.1;
+    max-width: 80px;
+  }
+
+  .metric-item.highlight .metric-label {
+    max-width: 120px;
+  }
+}
+
+/* Interactive Water Level Pill */
+.metric-item.interactive {
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.metric-item.interactive:hover {
+  background: rgba(var(--ion-color-primary-rgb), 0.25) !important;
+  border-color: rgba(var(--ion-color-primary-rgb), 0.5) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(var(--ion-color-primary-rgb), 0.15);
+}
+
+.metric-item.interactive:active {
+  transform: translateY(0);
+  background: rgba(var(--ion-color-primary-rgb), 0.3) !important;
+}
+
+.metric-help-icon {
+  font-size: 0.9rem;
+  opacity: 0.5;
+  margin-left: 2px;
+  color: var(--ion-color-primary);
+  transition: opacity 0.2s;
+}
+
+.metric-item.interactive:hover .metric-help-icon {
+  opacity: 1;
+}
+
+/* Datum Info Modal Styles */
+.datum-info-modal {
+  --background: var(--dash-card-bg);
+  --border-radius: 24px 24px 0 0;
+}
+
+.datum-info-content {
+  color: var(--sentinel-text-main);
+  line-height: 1.6;
+}
+
+.datum-info-content p {
+  margin-bottom: 16px;
+  font-size: 0.95rem;
+}
+
+.datum-info-content h4 {
+  color: var(--ion-color-primary);
+  margin-bottom: 12px;
+}
+
+.datum-info-content ul {
+  padding-left: 20px;
+  margin-bottom: 24px;
+}
+
+.datum-info-content li {
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.datum-info-content strong {
+  color: var(--ion-color-primary);
+}
+
+.datum-insight-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(var(--ion-color-primary-rgb), 0.05);
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.1);
+  margin-bottom: 24px;
+}
+
+.insight-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(var(--sentinel-text-dim-rgb), 0.1);
+  padding-bottom: 8px;
+}
+
+.insight-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.insight-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--sentinel-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.insight-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--sentinel-text-main);
+  font-family: 'Inter', sans-serif;
+}
+
+.insight-time-value {
+  font-size: 0.95rem;
+  text-align: right;
+}
+
+.flooding-label-group {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.flooding-combined-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+.flooding-category-value {
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.flooding-peak-time {
+  color: var(--sentinel-text-dim);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.flooding-depth-value {
+  color: var(--sentinel-text-dim);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.flooding-depth-value strong {
+  color: var(--sentinel-text-main);
+  font-weight: 800;
+}
+
+.insight-paragraph {
+  padding: 0 4px;
+  margin-bottom: 24px;
+}
+
+.insight-paragraph p {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--sentinel-text-main);
+  opacity: 0.9;
+}
+
+.datum-source-footer {
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.datum-source-footer h4 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: var(--sentinel-text-dim);
+}
+
+.datum-source-link {
+  color: var(--ion-color-primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.datum-source-link:hover {
+  text-decoration: underline;
+}
+
+.datum-source-footer p {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin-bottom: 0;
+  opacity: 0.7;
+}
+
+
+.insight-modal-title,
+.insight-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.insight-modal-title {
+  flex-wrap: wrap;
+  line-height: 1.2;
+}
+
+.insight-modal-title > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.viewing-time-pill {
+  background: rgba(var(--ion-color-primary-rgb), 0.1);
+  color: var(--ion-color-primary);
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.2);
+  margin-left: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.is-live .viewing-time-pill {
+  background: rgba(var(--ion-color-success-rgb), 0.1);
+  color: var(--ion-color-success);
+  border-color: rgba(var(--ion-color-success-rgb), 0.2);
+}
+
+.modal-summary-section {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.insight-observation-section {
+  display: flex;
+  min-width: fit-content;
+}
+
+.modal-summary-section .sentinel-metrics {
+  width: fit-content;
+  max-width: 100%;
 }

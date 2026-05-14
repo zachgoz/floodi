@@ -28,6 +28,7 @@ describe('ChartViewer with comments', () => {
     ];
     render(
       <ChartViewer
+        locationId="L1"
         observedPoints={[pt(start, 0), pt(now, 1)]}
         predictedPoints={[pt(start, 0.1), pt(end, 0.2)]}
         adjustedPoints={[pt(now, 1.1), pt(end, 1.2)]}

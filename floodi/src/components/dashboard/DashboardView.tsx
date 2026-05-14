@@ -105,9 +105,9 @@ export const DashboardView: React.FC = () => {
              isAdjusted ? adjRes!.point.v :
              isPredicted ? predRes!.point.v : 0;
 
-  const sourceLabel = isObserved ? 'Observed' :
-                      isAdjusted ? 'FloodCast' :
-                      isPredicted ? 'NOAA' : 'Live Conditions';
+  const statusLabel = isObserved ? 'Observed' : 'Predicted';
+  const sourceLabel = isAdjusted ? 'FloodCast' : 
+                      isObserved ? 'Fiman' : 'NOAA';
 
   const surge = (() => {
     if (!predRes || predRes.dtMin > 60) return null;
@@ -116,6 +116,10 @@ export const DashboardView: React.FC = () => {
 
   const currentPrecip = precipRes && precipRes.dtMin < 60 ? precipRes.point.value : 0;
 
+
+  const sourceId = isObserved ? 'noaa' : 
+                   isAdjusted ? 'floodcast' :
+                   isPredicted ? 'noaa' : 'live';
 
   return (
     <IonPage>
@@ -141,6 +145,8 @@ export const DashboardView: React.FC = () => {
                   windDirection={currentWind.dir}
                   observedWaterLevel={wl}
                   source={sourceLabel}
+                  sourceId={sourceId}
+                  statusLabel={statusLabel}
                   surge={surge}
                   prediction={predRes?.point.v}
                   isLive={true}
@@ -148,6 +154,7 @@ export const DashboardView: React.FC = () => {
                 />
                 
                 <HydrographChart
+                  locationId={DEFAULT_LOCATION_ID}
                   observedPoints={observedPoints}
                   predictedPoints={predictedPoints}
                   adjustedPoints={adjustedPoints}
@@ -173,6 +180,7 @@ export const DashboardView: React.FC = () => {
               {/* Secure Google Maps wrapper */}
               <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}>
                 <InundationMap
+                  locationId={DEFAULT_LOCATION_ID}
                   waterLevelFt={simulationLevel}
                   roadData={undefined}
                   targetTime={now}

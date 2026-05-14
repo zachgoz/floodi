@@ -48,6 +48,8 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
   if (simulationContext) {
     if (simulationContext.isSimulated) {
       dynamicTitle = "User Simulated Water Level";
+    } else if (simulationContext.source && simulationContext.source !== 'Live Conditions' && simulationContext.source !== 'No Data') {
+      dynamicTitle = simulationContext.source;
     } else if (Math.abs(diffMinutes) < 5) {
       dynamicTitle = "Live Water Level";
     } else if (diffMinutes <= -5) {
@@ -56,16 +58,6 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
       dynamicTitle = "FloodCast Water Level";
     }
   }
-
-  const displaySource = useMemo(() => {
-    if (!simulationContext?.source) return null;
-    if (simulationContext.isSimulated) return null;
-    // For future predictions, we want to label it as Predicted even if the underlying data source is the standard observed track
-    if (diffMinutes > 5) {
-      return '(Predicted)';
-    }
-    return `(${simulationContext.source})`;
-  }, [simulationContext?.source, simulationContext?.isSimulated, diffMinutes]);
 
   return (
     <div className="simulator-container" style={{
@@ -84,9 +76,6 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
                   <IonIcon icon={timeOutline} />
                   {simulationContext.targetTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' })}
                 </span>
-              )}
-              {displaySource && (
-                <span className="context-source">{displaySource}</span>
               )}
               {simulationContext.precip !== undefined && simulationContext.precip > 0 && (
                 <span className="context-item precip">

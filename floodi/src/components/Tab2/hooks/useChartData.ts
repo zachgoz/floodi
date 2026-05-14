@@ -125,7 +125,7 @@ export function useChartData(config: AppConfiguration) {
       const fimanHasData = Object.keys(unifiedObs.fiman || {}).length > 0;
       const noaaHasData = Object.keys(unifiedObs.noaa || {}).length > 0;
 
-      let effectiveSource: 'fiman' | 'noaa' = 
+      const effectiveSource: 'fiman' | 'noaa' = 
         (preferredSource === 'fiman' && fimanHasData) ? 'fiman' :
         (preferredSource === 'noaa' && noaaHasData) ? 'noaa' :
         fimanHasData ? 'fiman' : 'noaa';
@@ -380,7 +380,7 @@ export function useChartData(config: AppConfiguration) {
       precipPoints,
       effectiveOffset,
       timeOffsetMins: data.timeOffsetMins,
-      surgeForecastPoints: adjustedPoints, // For Tab2.tsx compatibility
+      surgeForecastPoints, // For Tab2.tsx compatibility
       timeDomain,
       warnings: data.warnings,
       imagery: data.imagery,

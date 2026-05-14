@@ -261,6 +261,70 @@ const Tab2: React.FC = () => {
       .catch(() => { /* file not yet generated — map shows notice */ });
   }, []);
 
+  // Approximate flooding time calculation
+  const floodWindow = useMemo(() => {
+    if (!processedData || !config.thresholds) return null;
+    
+    const minor = config.thresholds.minor;
+    const points = [...processedData.observedPoints, ...processedData.adjustedPoints];
+    const target = activeAtmo.targetTime || new Date();
+    const targetTime = target.getTime();
+
+    // 1. Find the point in the series nearest to targetTime
+    let nearestIdx = -1;
+    let minDiff = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const diff = Math.abs(points[i].t.getTime() - targetTime);
+      if (diff < minDiff) {
+        minDiff = diff;
+        nearestIdx = i;
+      }
+    }
+
+    if (nearestIdx === -1) return null;
+
+    // 2. Search backward and forward to find the continuous period above threshold
+    let startIdx = nearestIdx;
+    while (startIdx > 0 && points[startIdx].v >= minor) {
+      startIdx--;
+    }
+    // If we're below threshold at startIdx, the actual start is startIdx + 1
+    const actualStartIdx = points[startIdx].v >= minor ? startIdx : startIdx + 1;
+
+    let endIdx = nearestIdx;
+    while (endIdx < points.length - 1 && points[endIdx].v >= minor) {
+      endIdx++;
+    }
+    // If we're below threshold at endIdx, the actual end is endIdx - 1
+    const actualEndIdx = points[endIdx].v >= minor ? endIdx : endIdx - 1;
+
+    // 3. Validate if target is actually in/near a flood event
+    if (points[actualStartIdx].v < minor) return null;
+
+    const startTime = points[actualStartIdx].t;
+    const endTimeRaw = points[actualEndIdx].t;
+    const peakPoint = points
+      .slice(actualStartIdx, actualEndIdx + 1)
+      .reduce((peak, point) => point.v > peak.v ? point : peak, points[actualStartIdx]);
+    
+    // User requirement: "end about an hour after it falls back below the 5.6' threshold"
+    const endTime = new Date(endTimeRaw.getTime() + 3600_000);
+    
+    const durationMs = endTime.getTime() - startTime.getTime();
+    const hours = Math.floor(durationMs / 3600_000);
+    const mins = Math.round((durationMs % 3600_000) / 60_000);
+    const duration = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+    return {
+      startTime,
+      endTime,
+      duration,
+      maxRoadFloodDepth: Math.max(0, peakPoint.v - minor),
+      maxWaterLevel: peakPoint.v,
+      maxWaterLevelTime: peakPoint.t,
+    };
+  }, [processedData, activeAtmo.targetTime, config.thresholds]);
+
   return (
     <IonPage className="floodcast-page">
       <IonHeader>
@@ -343,9 +407,19 @@ const Tab2: React.FC = () => {
                           observedWaterLevel={activeAtmo.wl ?? 0}
                           isLive={activeAtmo.isLive}
                           source={activeAtmo.source}
+                          fullSource={activeAtmo.fullSource}
+                          sourceId={activeAtmo.sourceId}
                           surge={activeAtmo.surge}
                           prediction={activeAtmo.prediction}
+                          statusLabel={activeAtmo.statusLabel}
                           targetTime={activeAtmo.targetTime ?? undefined}
+                          thresholds={config.thresholds}
+                          maxRoadFloodDepth={floodWindow?.maxRoadFloodDepth ?? Math.max(0, (activeAtmo.wl ?? 0) - (config.thresholds?.minor || 5.6))}
+                          maxWaterLevel={floodWindow?.maxWaterLevel}
+                          maxWaterLevelTime={floodWindow?.maxWaterLevelTime}
+                          floodStartTime={floodWindow?.startTime}
+                          floodEndTime={floodWindow?.endTime}
+                          floodDuration={floodWindow?.duration}
                         />
                       }
                       isLive={activeAtmo.isLive}
@@ -385,6 +459,7 @@ const Tab2: React.FC = () => {
                       resetKey={resetCount}
                       warnings={processedData.warnings}
                       viewMode={config.display.viewMode}
+                      locationId={config.locationId}
                     />
 
                     {/* Google Maps inundation map — FIMAN-style road coloring */}
@@ -412,7 +487,7 @@ const Tab2: React.FC = () => {
                         targetTime: activeAtmo.targetTime ?? new Date(),
                         wind: activeAtmo.wind ?? undefined,
                         precip: activeAtmo.precip ?? undefined,
-                        source: activeAtmo.source,
+                        source: activeAtmo.fullSource,
                         isSimulated: activeAtmo.isSimulated,
                       }}
                     />

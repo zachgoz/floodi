@@ -2,6 +2,7 @@ import React from 'react';
 import { IonSpinner } from '@ionic/react';
 import './HydrographChart.css';
 import ChartViewer from '../Tab2/ChartViewer';
+import { ViewingTimePill } from './ViewingTimePill';
 
 /**
  * HydrographChart wraps ChartViewer with a styled card shell that adds a
@@ -49,11 +50,7 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
           <div className={`hydrograph-subtitle ${isLive ? 'is-live' : 'is-historical'}`}>
             {isLive && <span className="subtitle-dot" />}
             {isLive && <span className="subtitle-text">Live</span>}
-            {time && (
-              <span className="viewing-time-pill">
-                {time.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-              </span>
-            )}
+            <ViewingTimePill time={time} />
             {!isLive && onResetToLive && (
               <button
                 className="reset-to-live-btn"
