@@ -7,11 +7,14 @@ export interface AtmosphericState {
   targetTime: Date | null;
   isLive: boolean;
   source: string;
+  fullSource: string;
+  sourceId: 'fiman' | 'noaa' | 'floodcast' | 'live' | 'none';
   surge: number | null;
   isSimulated: boolean;
   prediction: number | null;
   wind: { speed: number; dir: number } | null;
   precip: number | null;
+  statusLabel: 'Observed' | 'Predicted';
 }
 
 /**
@@ -35,11 +38,14 @@ export function useAtmosphericState(
         targetTime: null, 
         isLive: true, 
         source: 'Live Conditions', 
+        fullSource: 'Live Conditions',
+        sourceId: 'live',
         wind: null, 
         precip: null, 
         surge: null, 
         isSimulated: false, 
-        prediction: null 
+        prediction: null,
+        statusLabel: 'Observed'
       };
     }
 
@@ -53,9 +59,9 @@ export function useAtmosphericState(
       : now.getTime();
     const isPastHandover = targetT.getTime() > lastObsT;
 
-    const obsRes = findNearestPoint(processedData.observedPoints, targetT);
-    const adjRes = findNearestPoint(processedData.adjustedPoints, targetT);
-    const predRes = findNearestPoint(processedData.predictedPoints, targetT);
+    const obsRes = findNearestPoint<Point>(processedData.observedPoints, targetT);
+    const adjRes = findNearestPoint<Point>(processedData.adjustedPoints, targetT);
+    const predRes = findNearestPoint<Point>(processedData.predictedPoints, targetT);
     const windRes = findNearestPoint<WindPoint>(processedData.windPoints, targetT);
     const precipRes = findNearestPoint<PrecipPoint>(processedData.precipPoints, targetT);
 
@@ -67,9 +73,19 @@ export function useAtmosphericState(
                isAdjusted ? adjRes!.point.v :
                isPredicted ? predRes!.point.v : 0;
 
-    const sourceLabel = isObserved ? `Observed (${(obsRes?.point.source || processedData.source || 'NOAA').toUpperCase()})` :
-                        isAdjusted ? 'FloodCast Prediction' :
+    const sourceName = (obsRes?.point.source || processedData.source || 'NOAA').toUpperCase() === 'FIMAN' ? 'Fiman' : 'NOAA';
+
+    const sourceShort = isObserved ? `Water Level (${sourceName})` :
+                        isAdjusted ? 'Predicted Water Level' :
                         isPredicted ? 'NOAA Prediction' : (isLive ? 'Live Conditions' : 'No Data');
+
+    const sourceFull = isObserved ? `Observed Water Level (${sourceName})` :
+                        isAdjusted ? 'FloodCast Water Level' :
+                        isPredicted ? 'NOAA Predicted Water Level' : (isLive ? 'Live Conditions' : 'No Data');
+
+    const sourceId = isObserved ? (sourceName.toLowerCase() === 'fiman' ? 'fiman' : 'noaa') :
+                     isAdjusted ? 'floodcast' :
+                     isPredicted ? 'noaa' : (isLive ? 'live' : 'none');
 
     const surge = (() => {
       if (!predRes || predRes.dtMin > 60) return null;
@@ -82,12 +98,15 @@ export function useAtmosphericState(
       wl: isSimulated ? simulationLevel : wl, 
       targetTime: targetT, 
       isLive, 
-      source: sourceLabel,
+      source: sourceShort,
+      fullSource: sourceFull,
+      sourceId,
       surge,
       isSimulated,
       prediction: predRes && predRes.dtMin < 60 ? predRes.point.v : null,
       wind: windRes && windRes.dtMin < 60 ? { speed: windRes.point.speed, dir: windRes.point.dir } : null,
       precip: precipRes && precipRes.dtMin < 60 ? precipRes.point.value : null,
+      statusLabel: isPredicted || isAdjusted ? 'Predicted' : 'Observed',
     };
   }, [processedData, currentViewport, manualFocusTime, simulationLevel, isUserSimulating]);
 

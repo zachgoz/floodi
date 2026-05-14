@@ -3,7 +3,7 @@ import type { Point, ChartConfig, WindPoint, PrecipPoint } from './types';
 import { useChartInteraction, formatTooltipTime, findNearestPoint } from './hooks/useChartInteraction';
 import { isCommentTimeRange, type Comment, type CommentTimeRange } from 'src/types/comment';
 import { findLastSimilarLevel } from 'src/lib/dataService';
-import type { WaterLevelPeak } from 'src/types/data';
+import type { WaterLevelPeak, FloodEvent } from 'src/types/data';
 import { getTimeRangeFromChartSelection } from 'src/utils/timeRangeHelpers';
 import { IonBadge, IonButton, IonButtons, IonIcon, IonText } from '@ionic/react';
 import { addCircleOutline, chatbubbleOutline, eye, eyeOff, refreshOutline, syncOutline } from 'ionicons/icons';
@@ -1216,6 +1216,16 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
               strokeWidth="2"
               points={buildPolyline(deltaPoints, xOf, yOf)}
             />
+            {surgeForecastPoints.length > 1 && (
+              <polyline
+                fill="none"
+                stroke="#1976d2"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+                opacity={0.7}
+                points={buildPolyline(surgeForecastPoints, xOf, yOf)}
+              />
+            )}
           </g>
         )}
 
