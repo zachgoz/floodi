@@ -75,6 +75,7 @@ const Tab2: React.FC = () => {
   const [manualFocusTime, setManualFocusTime] = useState<Date | null>(null);
   const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
   const [selectedCameraId, setSelectedCameraId] = useState<string>(WEBCAMS[0].id);
+  const lastPersistedDomainRef = useRef<string | null>(null);
 
   // Professional data fetching and processing
   const {
@@ -96,6 +97,8 @@ const Tab2: React.FC = () => {
 
   const resetToLive = useCallback(() => {
     baseResetToLive();
+    lastPersistedDomainRef.current = null;
+    setCurrentViewport(null);
     setManualFocusTime(null);
     setIsUserSimulating(false);
     setResetCount(c => c + 1);
@@ -115,8 +118,8 @@ const Tab2: React.FC = () => {
   }, [manualFocusTime, currentViewport?.focusTime, setIsUserSimulating]);
 
   // Track the buffered data window so we only refetch when the user scrolls
-  // outside what we've already loaded (useChartData fetches ±5 days around
-  // the current domain, so minor pans should never trigger a new request).
+  // outside what we've already loaded (useChartData fetches a broad buffer
+  // around the current domain, so minor pans should never trigger a request).
   const fetchedBufferRef = useRef<{ start: Date; end: Date } | null>(null);
   useEffect(() => {
     if (!processedData) return;
@@ -198,8 +201,22 @@ const Tab2: React.FC = () => {
     timezone: config.display.timezone,
   }), [config.thresholds, config.display.showDelta, config.display.timezone]);
 
-  // Stable domain change request handler — only triggers a refetch when the
-  // user has scrolled outside the already-fetched ±5-day buffer window.
+  const persistViewedDomain = useCallback((start: Date, end: Date) => {
+    const absStart = start.toISOString();
+    const absEnd = end.toISOString();
+    const domainKey = `${absStart}:${absEnd}`;
+    if (lastPersistedDomainRef.current === domainKey) return;
+    lastPersistedDomainRef.current = domainKey;
+
+    updateTimeRange({
+      mode: 'absolute',
+      absStart,
+      absEnd
+    });
+  }, [updateTimeRange]);
+
+  // Stable data range request handler. Persistence happens separately via
+  // persistViewedDomain; this only expands the data window when needed.
   const handleDomainChangeRequest = useCallback((start: Date, end: Date) => {
     const buf = fetchedBufferRef.current;
     if (buf && start >= buf.start && end <= buf.end) {
@@ -207,12 +224,8 @@ const Tab2: React.FC = () => {
       // already has all the data it needs locally.
       return;
     }
-    updateTimeRange({
-      mode: 'absolute',
-      absStart: start.toISOString(),
-      absEnd: end.toISOString()
-    });
-  }, [updateTimeRange]);
+    persistViewedDomain(start, end);
+  }, [persistViewedDomain]);
 
   // Comments integration tied to current config
   const {
@@ -457,6 +470,7 @@ const Tab2: React.FC = () => {
                       onToggleComments={toggleCommentOverlay}
                       commentCount={commentCount}
                       onViewportChange={handleViewportChange}
+                      onViewportDomainCommit={persistViewedDomain}
                       onDomainChangeRequest={handleDomainChangeRequest}
                       loading={loading}
                       mode={config.timeRange.mode}

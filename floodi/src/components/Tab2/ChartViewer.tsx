@@ -64,6 +64,8 @@ interface ChartViewerProps {
   commentCount?: number;
   /** Fire when domain needs to change due to pan/zoom out of bounds */
   onDomainChangeRequest?: (start: Date, end: Date) => void;
+  /** Fire when a user interaction commits the current visible domain */
+  onViewportDomainCommit?: (start: Date, end: Date) => void;
   /** Fire when the hover cursor moves */
   onHoverTimeChange?: (time: Date | null) => void;
   /** Fire when the visible viewport changes (immediate) */
@@ -212,6 +214,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   onToggleComments,
   commentCount,
   onDomainChangeRequest,
+  onViewportDomainCommit,
   onHoverTimeChange,
   onViewportChange,
   mode,
@@ -609,13 +612,14 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     const d0 = domainStart.getTime();
     const d1 = domainEnd.getTime();
 
-    // Notify parent about the domain change. 
-    // We simply request the exact view domain we are looking at (shifting).
-    // The useChartData hook will handle fetching extra buffer for us.
+    onViewportDomainCommit?.(viewDomain.start, viewDomain.end);
+
+    // Notify parent separately when the visible domain moved away from props.
+    // The parent decides whether this should expand the fetched data range.
     if (Math.abs(v0 - d0) > 1000 || Math.abs(v1 - d1) > 1000) {
       onDomainChangeRequest?.(viewDomain.start, viewDomain.end);
     }
-  }, [viewDomain, domainStart.getTime(), domainEnd.getTime(), onDomainChangeRequest]);
+  }, [viewDomain, domainStart.getTime(), domainEnd.getTime(), onDomainChangeRequest, onViewportDomainCommit]);
 
   const persistRef = useRef(persistDomainChange);
   persistRef.current = persistDomainChange;
