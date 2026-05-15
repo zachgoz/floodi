@@ -15,6 +15,7 @@
 import React from 'react';
 import { IonButton, IonContent, IonPage, IonText } from '@ionic/react';
 import { useHistory } from 'react-router-dom';
+import { AppLogo } from 'src/components/common/AppLogo';
 import './Intro.css';
 
 /**
@@ -81,19 +82,15 @@ const Intro: React.FC = () => {
         {/* Centered container for all intro elements */}
         <div className="intro-center">
           {/* App logo with responsive sizing via Vite's asset handling */}
-          <img
-            src={new URL('../assets/floodcast-logo.svg', import.meta.url).toString()}
-            alt="FloodCast"
-            className="intro-logo"
-          />
+          <AppLogo className="intro-logo" />
           
           {/* Primary app title with light color for contrast */}
-          <IonText color="light">
+          <IonText>
             <h1 className="intro-title">FloodCast</h1>
           </IonText>
           
           {/* App tagline/description with medium color for hierarchy */}
-          <IonText color="medium">
+          <IonText>
             <p className="intro-sub">Hyperlocal tide and flood insights at a glance.</p>
           </IonText>
           

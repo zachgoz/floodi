@@ -104,6 +104,10 @@
   --sentinel-text-dim: rgba(30,30,50,0.5);
   --sentinel-pill-bg: #0077b6;
   --sentinel-pill-text: #ffffff;
+
+  /* Logo Theme Variables (Default to Light) */
+  --logo-bg: transparent;
+  --logo-text: var(--ion-color-primary);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -146,37 +150,16 @@
     --dash-card-border: none;
     --dash-header-divider: rgba(255,255,255,0.06);
     --dash-title-color: #ffffff;
-    .sim-tick-minor {
-  color: #ffdc1e;
-}
-.sim-tick-minor::before {
-  background: #ffdc1e;
-}
-
-.sim-tick-moderate {
-  color: #ffa500;
-}
-.sim-tick-moderate::before {
-  background: #ffa500;
-}
-
-.sim-tick-major {
-  color: #d22323;
-}
-.sim-tick-major::before {
-  background: #d22323;
-}
-
-.sim-tick-extreme {
-  color: #a020f0;
-}
-.sim-tick-extreme::before {
-  background: #a020f0;
-}
     --sentinel-text-main: #ffffff;
     --sentinel-text-dim: rgba(255,255,255,0.4);
     --sentinel-pill-bg: #48b6f3;
     --sentinel-pill-text: #000000;
+
+    /* Simulation tick colors - Dark Mode */
+    --sim-tick-minor: #ffdc1e;
+    --sim-tick-moderate: #ffa500;
+    --sim-tick-major: #d22323;
+    --sim-tick-extreme: #a020f0;
   }
 }
 
@@ -189,6 +172,12 @@
   --ion-color-primary-contrast-rgb: 255, 255, 255;
   --ion-color-primary-shade: #0069a0;
   --ion-color-primary-tint: #1a85bd;
+
+  /* Simulation tick colors - Light Mode (More saturated for contrast) */
+  --sim-tick-minor: #eab308;
+  --sim-tick-moderate: #ea580c;
+  --sim-tick-major: #dc2626;
+  --sim-tick-extreme: #9333ea;
 
   --ion-color-secondary: #00b4d8;
   --ion-color-secondary-rgb: 0, 180, 216;
@@ -239,7 +228,16 @@
   --ion-background-color-rgb: 244, 245, 248;
   --ion-text-color: #000000;
   --ion-text-color-rgb: 0, 0, 0;
-  .context-item.time {
+
+  --ion-item-background: #ffffff;
+  --ion-toolbar-background: rgba(255,255,255,0.85);
+  --ion-card-background: #ffffff;
+  /* Logo light mode - redundant if default in :root but kept for safety */
+  --logo-bg: transparent;
+  --logo-text: var(--ion-color-primary);
+}
+
+.context-item.time {
   color: var(--sentinel-time-text);
 }
 
@@ -257,10 +255,6 @@
   color: var(--sentinel-text-dim, rgba(127, 127, 127, 0.4));
   text-transform: uppercase;
   letter-spacing: 0.05em;
-}
-  --ion-item-background: #ffffff;
-  --ion-toolbar-background: rgba(255,255,255,0.85);
-  --ion-card-background: #ffffff;
 }
 .time-pill {
   font-size: 0.65rem;
@@ -328,6 +322,10 @@
   --sentinel-pill-text: #ff4d4d;
   --sentinel-time-bg: rgba(0, 0, 0, 0.4);
   --sentinel-time-text: #4cc9f0;
+
+  /* Logo dark mode overrides */
+  --logo-bg: #0b1b2b;
+  --logo-text: #e3f2fd;
 }
 
 /* Glassmorphism overrides */

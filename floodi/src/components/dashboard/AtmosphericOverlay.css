@@ -100,7 +100,7 @@
     gap: 10px;
     padding: 0 8px;
   }
-  
+
   .metric-label {
     font-size: 0.55rem;
   }
@@ -303,12 +303,12 @@
   .tidal-group {
     gap: 6px;
   }
-  
+
   .tidal-operator {
     font-size: 0.8rem;
     margin: 0 1px;
   }
-  
+
   .metric-item.prediction .metric-label,
   .metric-item .metric-label {
     display: block; /* Ensure they are visible as requested */
@@ -318,7 +318,7 @@
   .metric-item.highlight {
     padding: 2px 4px;
   }
-  
+
   .sentinel-metrics {
     gap: 8px;
     padding: 0 4px;
@@ -378,9 +378,20 @@
   --border-radius: 24px 24px 0 0;
 }
 
+.datum-info-modal ion-title {
+  padding-inline: 8px;
+}
+
 .datum-info-content {
   color: var(--sentinel-text-main);
   line-height: 1.6;
+}
+
+/* Remove blue highlight background from pills in the modal */
+.modal-summary-section .metric-item.highlight {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
 }
 
 .datum-info-content p {
@@ -560,13 +571,17 @@
 }
 
 .insight-modal-title {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   line-height: 1.2;
+  width: 100%;
 }
 
 .insight-modal-title > span:first-child {
+  flex-shrink: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .viewing-time-pill {
@@ -580,6 +595,41 @@
   margin-left: 0;
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+/* Mobile specific fixes for modal header */
+@media (max-width: 480px) {
+  .insight-modal-title {
+    gap: 8px;
+  }
+
+  .insight-modal-title > span:first-child {
+    font-size: 1.1rem;
+  }
+
+  .viewing-time-pill {
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    letter-spacing: -0.01em;
+  }
+}
+
+@media (max-width: 360px) {
+  .insight-modal-title {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .insight-modal-title > span:first-child {
+    width: 100%;
+    font-size: 1rem;
+  }
+
+  .viewing-time-pill {
+    margin-left: 0;
+  }
 }
 
 .is-live .viewing-time-pill {
@@ -602,6 +652,9 @@
 }
 
 .modal-summary-section .sentinel-metrics {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   width: fit-content;
   max-width: 100%;
 }

@@ -134,6 +134,7 @@ const applyTheme = (mode: 'auto' | 'light' | 'dark') => {
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   const shouldDark = mode === 'dark' || (mode === 'auto' && prefersDark);
   root.classList.toggle('ion-palette-dark', shouldDark);
+  root.classList.toggle('ion-palette-light', !shouldDark);
 };
 
 const App: React.FC = () => (

@@ -22,6 +22,7 @@ import {
   cameraOutline
 } from 'ionicons/icons';
 
+import { AppLogo } from 'src/components/common/AppLogo';
 import React from 'react';
 import './Tab3.css';
 
@@ -34,34 +35,22 @@ import './Tab3.css';
 const Tab3: React.FC = () => {
   return (
     <IonPage>
-      <IonHeader>
+      <IonHeader className="ion-no-border">
         <IonToolbar>
           <IonTitle>About Floodi</IonTitle>
         </IonToolbar>
       </IonHeader>
       
-      <IonContent fullscreen className="about-content">
-        <IonHeader collapse="condense">
-          <IonToolbar>
-            <IonTitle size="large">About Floodi</IonTitle>
-          </IonToolbar>
-        </IonHeader>
-
+      <IonContent className="about-content">
         <div className="about-container">
-          {/* Hero Section */}
-          <section className="hero-section">
-            <img
-              src={new URL('../assets/floodcast-logo.svg', import.meta.url).toString()}
-              alt="Floodi"
-              className="about-logo"
-            />
-            <IonText>
-              <h2 className="hero-title">Hyperlocal Flood Intelligence</h2>
-              <p className="hero-subtitle">
-                Bridging the gap between regional tide tables and local reality in Carolina Beach.
-              </p>
-            </IonText>
-          </section>
+          {/* Hero Branding */}
+          <div className="hero-section">
+            <AppLogo className="about-logo" />
+            <h1 className="hero-title">Hyperlocal Flood Intelligence</h1>
+            <p className="hero-subtitle">
+              Bridging the gap between regional tide tables and local reality in Carolina Beach.
+            </p>
+          </div>
 
           {/* Mission Section */}
           <IonCard className="glass-card">

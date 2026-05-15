@@ -4,6 +4,7 @@ import { DeckGL } from '@deck.gl/react';
 import { PathLayer } from '@deck.gl/layers';
 import type { PickingInfo } from '@deck.gl/core';
 import { IconLayer, TextLayer } from '@deck.gl/layers';
+import { IonSpinner, IonSkeletonText } from '@ionic/react';
 import { WEBCAMS } from '../../constants/webcams';
 import WebcamFeedCard from './WebcamFeedCard';
 import './InundationMap.css';
@@ -34,6 +35,10 @@ interface InundationMapProps {
   onResetToLive?: () => void;
   /** Consolidated imagery map for data-driven webcam photos */
   imagery?: Record<string, Record<string, string>>;
+  /** Callback to update global time from webcam scroll */
+  onTimeChange?: (time: Date) => void;
+  /** Loading state */
+  loading?: boolean;
 }
 
 // ── FIMAN colour ramp ────────────────────────────────────────────────────────
@@ -77,6 +82,8 @@ export const InundationMap: React.FC<InundationMapProps> = ({
   targetTime,
   onResetToLive,
   imagery,
+  onTimeChange,
+  loading = false,
 }) => {
   const [pinnedRoad, setPinnedRoad] = useState<{feature: RoadFeature, x: number, y: number} | null>(null);
   const [selectedCamera, setSelectedCamera] = useState<typeof WEBCAMS[0] | null>(null);
@@ -224,7 +231,13 @@ export const InundationMap: React.FC<InundationMapProps> = ({
   }, [targetTime]);
 
   return (
-    <div className="inundation-map-wrapper">
+    <div className={`inundation-map-wrapper ${loading ? 'is-loading' : ''}`}>
+      {loading && (
+        <div className="map-loading-overlay">
+          <IonSpinner name="crescent" />
+          <span>Syncing Water Levels...</span>
+        </div>
+      )}
       <DeckGL
         initialViewState={INITIAL_VIEW_STATE}
         controller={{
@@ -276,7 +289,9 @@ export const InundationMap: React.FC<InundationMapProps> = ({
             cameraId={selectedCamera.id}
             locationName={selectedCamera.name}
             targetTime={targetTime || new Date()}
+            isLive={!targetTime || Math.abs(targetTime.getTime() - Date.now()) < 10 * 60 * 1000}
             onResetToLive={onResetToLive}
+            onTimeChange={onTimeChange}
             onClose={() => setSelectedCamera(null)}
             imagery={imagery?.[selectedCamera.id]}
           />
@@ -310,11 +325,22 @@ export const InundationMap: React.FC<InundationMapProps> = ({
       {/* Water level badge */}
       <div className="inundation-level-badge">
         <span className="inundation-level-sim">
-          {timeLabel}: <strong style={{ color: '#fff' }}>{waterLevelFt.toFixed(2)} ft</strong>
+          {timeLabel}: <strong style={{ color: '#fff' }}>
+            {loading ? (
+              <IonSkeletonText animated style={{ width: '40px', height: '16px', display: 'inline-block', verticalAlign: 'middle', margin: '0 4px' }} />
+            ) : (
+              `${waterLevelFt.toFixed(2)} ft`
+            )}
+          </strong>
         </span>
-        {floodedCount > 0 && (
+        {floodedCount > 0 && !loading && (
           <span className="inundation-level-flooded">
             {floodedCount} roads flooded
+          </span>
+        )}
+        {loading && (
+          <span className="inundation-level-flooded">
+             <IonSkeletonText animated style={{ width: '80px', height: '14px' }} />
           </span>
         )}
       </div>

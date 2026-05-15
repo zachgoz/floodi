@@ -5,8 +5,8 @@ import { isCommentTimeRange, type Comment, type CommentTimeRange } from 'src/typ
 import { findLastSimilarLevel } from 'src/lib/dataService';
 import type { WaterLevelPeak, FloodEvent } from 'src/types/data';
 import { getTimeRangeFromChartSelection } from 'src/utils/timeRangeHelpers';
-import { IonBadge, IonButton, IonButtons, IonIcon, IonText } from '@ionic/react';
-import { addCircleOutline, chatbubbleOutline, eye, eyeOff, refreshOutline, syncOutline } from 'ionicons/icons';
+import { IonButton, IonIcon, IonText } from '@ionic/react';
+import { addCircleOutline, refreshOutline, syncOutline } from 'ionicons/icons';
 
 /** Convert a meteorological bearing (0° = N, clockwise) to a compass label */
 const COMPASS_DIRS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
@@ -64,6 +64,8 @@ interface ChartViewerProps {
   commentCount?: number;
   /** Fire when domain needs to change due to pan/zoom out of bounds */
   onDomainChangeRequest?: (start: Date, end: Date) => void;
+  /** Fire when a user interaction commits the current visible domain */
+  onViewportDomainCommit?: (start: Date, end: Date) => void;
   /** Fire when the hover cursor moves */
   onHoverTimeChange?: (time: Date | null) => void;
   /** Fire when the visible viewport changes (immediate) */
@@ -210,8 +212,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   onCommentClick,
   onTimePointSelect,
   onToggleComments,
-  commentCount,
   onDomainChangeRequest,
+  onViewportDomainCommit,
   onHoverTimeChange,
   onViewportChange,
   mode,
@@ -359,6 +361,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
   const lastViewportChangeRef = useRef<number>(0);
   const lastEmittedViewportRef = useRef<{ start: number; end: number; center: number } | null>(null);
+  const viewportTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Immediate notification of viewport changes to parent for simulation sync
   useEffect(() => {
@@ -385,14 +388,23 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
       onViewportChange(activeStart, activeEnd, centerTime);
       lastViewportChangeRef.current = Date.now();
       lastEmittedViewportRef.current = { start: s, end: e, center: c };
+      viewportTimeoutRef.current = null;
     };
+
+    // Clear any pending notification so we always schedule the LATEST viewport state
+    if (viewportTimeoutRef.current) {
+      clearTimeout(viewportTimeoutRef.current);
+    }
 
     if (timeSinceLast >= 50) {
       notify();
     } else {
-      const timer = setTimeout(notify, 50 - timeSinceLast);
-      return () => clearTimeout(timer);
+      viewportTimeoutRef.current = setTimeout(notify, 50 - timeSinceLast);
     }
+
+    return () => {
+      if (viewportTimeoutRef.current) clearTimeout(viewportTimeoutRef.current);
+    };
   }, [activeStart.getTime(), activeEnd.getTime(), centerTime.getTime(), onViewportChange]);
 
   // Handle responsive resizing
@@ -521,16 +533,25 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
   // Historical Flood Events highlighting
   const historicalFloodRects = useMemo(() => {
+    const nowMs = now.getTime();
+
     return floodEvents
       .map(event => {
         const start = new Date(event.startTime);
         const end = event.endTime ? new Date(event.endTime) : domainEnd;
+
+        // Historical event shading should never bleed into the forecast area.
+        if (start.getTime() >= nowMs) return null;
         
         // Skip if entirely outside the visible domain
         if (end < activeStart || start > activeEnd) return null;
         
-        const x = xOf(start);
-        const width = xOf(end) - x;
+        const clippedStart = new Date(Math.max(start.getTime(), activeStart.getTime()));
+        const clippedEnd = new Date(Math.min(end.getTime(), activeEnd.getTime(), nowMs));
+        if (clippedEnd <= clippedStart) return null;
+
+        const x = xOf(clippedStart);
+        const width = xOf(clippedEnd) - x;
         
         return {
           x,
@@ -541,7 +562,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
-  }, [floodEvents, activeStart, activeEnd, xOf, domainEnd]);
+  }, [floodEvents, activeStart, activeEnd, xOf, domainEnd, now]);
 
   // Mouse/pointer interaction
   const computeTimeAtPointer = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -599,13 +620,14 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     const d0 = domainStart.getTime();
     const d1 = domainEnd.getTime();
 
-    // Notify parent about the domain change. 
-    // We simply request the exact view domain we are looking at (shifting).
-    // The useChartData hook will handle fetching extra buffer for us.
+    onViewportDomainCommit?.(viewDomain.start, viewDomain.end);
+
+    // Notify parent separately when the visible domain moved away from props.
+    // The parent decides whether this should expand the fetched data range.
     if (Math.abs(v0 - d0) > 1000 || Math.abs(v1 - d1) > 1000) {
       onDomainChangeRequest?.(viewDomain.start, viewDomain.end);
     }
-  }, [viewDomain, domainStart.getTime(), domainEnd.getTime(), onDomainChangeRequest]);
+  }, [viewDomain, domainStart.getTime(), domainEnd.getTime(), onDomainChangeRequest, onViewportDomainCommit]);
 
   const persistRef = useRef(persistDomainChange);
   persistRef.current = persistDomainChange;
@@ -1863,14 +1885,20 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           </g>
         )}
       </svg>
-      <div className="chart-comment-controls" role="group" aria-label="Comment overlay controls">
-        <IonButtons>
-          <IonButton onClick={onToggleComments} aria-label={showComments ? 'Hide pins (C)' : 'Show pins (C)'}>
-            <IonIcon icon={showComments ? eye : eyeOff} />
-            {typeof commentCount === 'number' && <IonBadge color="primary" style={{ marginLeft: 6 }}>{commentCount}</IonBadge>}
+      {onTimePointSelect && (
+        <div className="chart-comment-add-action">
+          <IonButton
+            onClick={() => onTimePointSelect(centerTime, centerLevel ?? undefined)}
+            aria-label="Add comment at current chart time"
+            className="chart-comment-add"
+            color="primary"
+            shape="round"
+          >
+            <IonIcon icon={addCircleOutline} slot="start" />
+            Add Comment
           </IonButton>
-        </IonButtons>
-      </div>
+        </div>
+      )}
     </div>
   );
 };

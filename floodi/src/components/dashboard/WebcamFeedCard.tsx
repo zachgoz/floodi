@@ -1,15 +1,33 @@
-import React, { useState, useEffect } from 'react';
-import { IonIcon, IonButton } from '@ionic/react';
-import { videocamOutline, refreshOutline, warningOutline, closeOutline } from 'ionicons/icons';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  IonIcon,
+  IonButton,
+  IonSelect,
+  IonSelectOption,
+  IonSkeletonText,
+} from '@ionic/react';
+import {
+  videocamOutline,
+  refreshOutline,
+  warningOutline,
+  chevronBackOutline,
+  chevronForwardOutline,
+  timeOutline
+} from 'ionicons/icons';
+import { WEBCAMS } from '../../constants/webcams';
 import './WebcamFeedCard.css';
 
 interface WebcamFeedCardProps {
   locationName: string;
   cameraId: string;
   targetTime: Date;
+  isLive: boolean;
   onResetToLive?: () => void;
-  onClose?: () => void;
+  onTimeChange?: (time: Date) => void;
+  onCameraChange?: (cameraId: string) => void;
   imagery?: Record<string, string>;
+  onClose?: () => void;
+  loading?: boolean;
 }
 
 // Helper to truncate seconds/milliseconds to start exactly on the minute
@@ -30,171 +48,223 @@ function formatDateToIsoString(date: Date): string {
   return `${year}-${month}-${day}T${hours}:${minutes}Z`;
 }
 
-// Smart lookup table: probe every minute for 60 minutes to catch any camera drift (since cameras take photos every 6 mins but drift, and also drop frames).
-// Then jump to previous likely daylight hours and probe 20-minute clusters to find the current drift.
 const FALLBACK_OFFSETS_MINUTES = [
-  // First 60 minutes minute-by-minute (guarantees finding an interval regardless of drift and dropped frames)
   ...Array.from({ length: 60 }, (_, i) => i),
-  // Jump to 12h ago
   ...Array.from({ length: 20 }, (_, i) => 12 * 60 + i),
-  // Jump to 24h ago
   ...Array.from({ length: 20 }, (_, i) => 24 * 60 + i),
-  // Jump to 48h ago
-  ...Array.from({ length: 20 }, (_, i) => 48 * 60 + i),
-  // Jump to 3 days ago
-  ...Array.from({ length: 20 }, (_, i) => 3 * 24 * 60 + i),
-  // Jump to 4 days ago
-  ...Array.from({ length: 20 }, (_, i) => 4 * 24 * 60 + i),
-  // Jump to 5 days ago
-  ...Array.from({ length: 20 }, (_, i) => 5 * 24 * 60 + i),
-  // Jump to 6 days ago
-  ...Array.from({ length: 20 }, (_, i) => 6 * 24 * 60 + i),
-  // Jump to 7 days ago
-  ...Array.from({ length: 20 }, (_, i) => 7 * 24 * 60 + i),
 ];
 
 export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
   locationName,
   cameraId,
   targetTime,
+  isLive,
   onResetToLive,
-  onClose,
+  onTimeChange,
+  onCameraChange,
   imagery,
+  onClose,
+  loading = false,
 }) => {
   const [attemptIdx, setAttemptIdx] = useState(0);
   const [apiFailed, setApiFailed] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [isImageLoading, setIsImageLoading] = useState(true);
+
   const MAX_ATTEMPTS = FALLBACK_OFFSETS_MINUTES.length;
 
-  // Reset attempts when time or camera changes
+  // Reset attempts when time, camera, or data-backed imagery changes.
   useEffect(() => {
     setAttemptIdx(0);
     setApiFailed(false);
     setHasError(false);
+    setIsImageLoading(true);
   }, [targetTime, cameraId, imagery]);
 
-  const isFuture = (targetTime.getTime() - Date.now()) > 10 * 60 * 1000;
-  
-  // 1. Try to find image in API response first
-  let imageUrl = '';
-  let finalImageDate = new Date();
-  let foundInApi = false;
+  const isFuture = (targetTime.getTime() - Date.now()) > 60 * 1000;
 
-  if (imagery && Object.keys(imagery).length > 0 && !apiFailed && !hasError) {
-    const targetMs = targetTime.getTime();
-    const sortedTimes = Object.keys(imagery)
-      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime()); // Latest first
-    
-    // Find nearest point <= targetTime
-    for (const iso of sortedTimes) {
-      const t = new Date(iso).getTime();
-      if (t <= targetMs) {
-        imageUrl = imagery[iso];
-        finalImageDate = new Date(iso);
-        foundInApi = true;
-        break;
+  // 1. Try to find image in API response first
+  const { imageUrl, finalImageDate, foundInApi } = useMemo(() => {
+    let url = '';
+    let date = new Date();
+    let found = false;
+
+    if (imagery && Object.keys(imagery).length > 0 && !apiFailed) {
+      const targetMs = targetTime.getTime();
+      const sortedTimes = Object.keys(imagery)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+      for (const iso of sortedTimes) {
+        const t = new Date(iso).getTime();
+        if (t <= targetMs) {
+          url = imagery[iso];
+          date = new Date(iso);
+          found = true;
+          break;
+        }
       }
     }
-  }
 
-  // 2. Fallback to manual URL construction if not found in API or if specifically failed
-  if (!foundInApi) {
-    const baseDate = getBaseMinute(targetTime);
-    const offsetMinutes = FALLBACK_OFFSETS_MINUTES[attemptIdx] || 0;
-    finalImageDate = new Date(baseDate.getTime() - offsetMinutes * 60 * 1000);
-    const dateString = formatDateToIsoString(finalImageDate);
-    imageUrl = `https://wl.secoora.org/webcam/${cameraId}.${dateString}.jpg`;
-  }
-  
-  const isStale = (targetTime.getTime() - finalImageDate.getTime()) > 60 * 60 * 1000; // > 1h diff
-  const isHistorical = (Date.now() - finalImageDate.getTime()) > 60 * 60 * 1000;
+    if (!found) {
+      const baseDate = getBaseMinute(targetTime);
+      const offsetMinutes = FALLBACK_OFFSETS_MINUTES[attemptIdx] || 0;
+      date = new Date(baseDate.getTime() - offsetMinutes * 60 * 1000);
+      const dateString = formatDateToIsoString(date);
+      url = `https://wl.secoora.org/webcam/${cameraId}.${dateString}.jpg`;
+    }
+
+    return { imageUrl: url, finalImageDate: date, foundInApi: found };
+  }, [imagery, targetTime, cameraId, apiFailed, attemptIdx]);
 
   const handleError = () => {
     if (foundInApi) {
       setApiFailed(true);
-      setAttemptIdx(0); 
+      setAttemptIdx(0);
     } else {
       if (attemptIdx < MAX_ATTEMPTS - 1) {
         setAttemptIdx(a => a + 1);
       } else {
         setHasError(true);
+        setIsImageLoading(false);
       }
     }
   };
 
+  const handleLoad = () => {
+    setIsImageLoading(false);
+  };
+
+  const shiftTime = (hours: number) => {
+    if (!onTimeChange) return;
+    const newTime = new Date(targetTime.getTime() + hours * 3600 * 1000);
+    // Don't go into the future more than 5 mins
+    if (newTime.getTime() > Date.now() + 300000) {
+      onResetToLive?.();
+    } else {
+      onTimeChange(newTime);
+    }
+  };
+
   return (
-    <div className="webcam-card-container">
+    <div className={`webcam-card-container premium-card ${loading ? 'is-loading' : ''}`}>
       <div className="webcam-header">
         <div className="webcam-header-main">
           <div className="webcam-title-group">
             <h3 className="webcam-title">
-              <IonIcon icon={videocamOutline} />
-              <span>
-                {isHistorical 
-                  ? finalImageDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
-                  : 'Live Feed'}
-              </span>
+              <IonIcon icon={videocamOutline} className="title-icon" />
+              {loading ? (
+                <IonSkeletonText animated style={{ width: '150px', height: '24px', borderRadius: '4px', margin: '0 8px' }} />
+              ) : (
+                <IonSelect
+                  value={cameraId}
+                  interface="popover"
+                  className="camera-selector"
+                  onIonChange={e => onCameraChange?.(e.detail.value)}
+                >
+                  {WEBCAMS.map(cam => (
+                    <IonSelectOption key={cam.id} value={cam.id}>
+                      {cam.name}
+                    </IonSelectOption>
+                  ))}
+                </IonSelect>
+              )}
             </h3>
-            <span className="webcam-location">{locationName}</span>
           </div>
-          {!isFuture && (
-            <div className="webcam-status-pill">
-              <span className={`webcam-live-indicator ${(isStale || isHistorical) && !hasError ? 'stale' : ''}`} style={{ backgroundColor: hasError ? 'red' : undefined }}></span>
-              {hasError ? 'OFFLINE' : isStale ? 'STALE' : isHistorical ? 'HISTORY' : 'LIVE'}
-            </div>
-          )}
+
+          <div className="webcam-header-actions">
+            {loading ? (
+              <IonSkeletonText animated style={{ width: '80px', height: '24px', borderRadius: '12px' }} />
+            ) : (
+              <div className={`webcam-status-pill ${isLive ? 'live' : 'history'}`}>
+                <span className="pulse-dot"></span>
+                {hasError ? 'OFFLINE' : isLive ? 'LIVE' : 'HISTORICAL'}
+              </div>
+            )}
+            {onClose && !loading && (
+              <IonButton fill="clear" color="light" onClick={onClose} className="webcam-close-btn">
+                <span style={{ fontSize: '20px' }}>×</span>
+              </IonButton>
+            )}
+          </div>
         </div>
-        {onClose && (
-          <IonButton fill="clear" color="medium" onClick={onClose} className="webcam-close-button">
-            <IonIcon slot="icon-only" icon={closeOutline} />
-          </IonButton>
-        )}
       </div>
       
-      <div className="webcam-image-wrapper">
-        {isFuture ? (
-          <div className="webcam-image-placeholder">
-            <div className="placeholder-content">
-              <span className="placeholder-text">No Image Available</span>
-              <span className="placeholder-subtext">Webcams only show live or historical data</span>
-              {onResetToLive && (
-                <IonButton 
-                  onClick={onResetToLive}
-                  className="webcam-reset-button"
-                  size="small"
-                  mode="ios"
-                >
-                  <IonIcon slot="start" icon={refreshOutline} />
-                  Return to Live
-                </IonButton>
-              )}
+      <div className="webcam-image-container">
+        <div className="webcam-aspect-ratio-box">
+          {(loading || (isImageLoading && !hasError && !isFuture)) && (
+            <div className="skeleton-overlay">
+              <IonSkeletonText animated style={{ width: '100%', height: '100%', margin: 0 }} />
             </div>
-          </div>
-        ) : !hasError ? (
-          <img 
-            src={imageUrl} 
-            alt={`Webcam feed from ${locationName}`} 
-            key={imageUrl}
-            className="webcam-image" 
-            loading="lazy"
-            onError={handleError}
-          />
-        ) : (
-          <div className="webcam-image-placeholder">
-            <span>No Image Available</span>
-          </div>
-        )}
-        {!isFuture && (
-          <div className={`webcam-overlay-badge ${isStale && !hasError ? 'stale-badge' : ''}`}>
-            <span className="badge-time">
-              {isStale && !hasError && <IonIcon icon={warningOutline} style={{ marginRight: '4px', verticalAlign: 'middle' }} />}
-              {isStale && !hasError ? finalImageDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' : ''}
-              {finalImageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-            <span className="badge-divider">|</span>
-            <span className="badge-cam">CAM: {cameraId}</span>
-          </div>
-        )}
+          )}
+
+          {!loading && (
+            <>
+              {isFuture ? (
+                <div className="webcam-placeholder-glass">
+                  <IonIcon icon={timeOutline} className="placeholder-icon" />
+                  <h4>Future Forecast</h4>
+                  <p>Visual feed is only available for live or historical data.</p>
+                  <IonButton fill="outline" color="light" size="small" onClick={onResetToLive}>
+                    <IonIcon slot="start" icon={refreshOutline} />
+                    Back to Live
+                  </IonButton>
+                </div>
+              ) : !hasError ? (
+                <img
+                  src={imageUrl}
+                  alt={`Webcam feed from ${locationName}`}
+                  className={`webcam-image ${isImageLoading ? 'loading' : 'loaded'}`}
+                  onLoad={handleLoad}
+                  onError={handleError}
+                />
+              ) : (
+                <div className="webcam-placeholder-glass">
+                  <IonIcon icon={warningOutline} color="warning" className="placeholder-icon" />
+                  <h4>Feed Offline</h4>
+                  <p>Unable to retrieve image for this timestamp.</p>
+                </div>
+              )}
+
+              {/* Time Navigation Overlays */}
+              {!isFuture && (
+                <>
+                  <div className="webcam-nav-overlay left">
+                    <IonButton fill="clear" className="nav-fab" onClick={() => shiftTime(-1)} aria-label="Previous hour">
+                      <IonIcon icon={chevronBackOutline} />
+                    </IonButton>
+                  </div>
+
+                  {!isLive && (
+                    <div className="webcam-nav-overlay right">
+                      <IonButton fill="clear" className="nav-fab" onClick={() => shiftTime(1)} aria-label="Next hour">
+                        <IonIcon icon={chevronForwardOutline} />
+                      </IonButton>
+                    </div>
+                  )}
+
+                  {!isLive && (
+                    <IonButton
+                      className="jump-to-live-btn"
+                      size="small"
+                      onClick={onResetToLive}
+                    >
+                      <IonIcon slot="start" icon={refreshOutline} />
+                      Jump to Live
+                    </IonButton>
+                  )}
+
+                  <div className="webcam-timestamp-badge">
+                    <span className="timestamp-text">
+                      {finalImageDate.toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                      <span className="separator">•</span>
+                      {finalImageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

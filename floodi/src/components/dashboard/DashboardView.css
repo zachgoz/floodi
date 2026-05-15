@@ -47,16 +47,65 @@
   gap: 24px;
 }
 
+@media (max-width: 991px) {
+  .dashboard-main-col,
+  .dashboard-sidebar {
+    display: contents;
+  }
+
+  .dashboard-next-events {
+    order: 1;
+  }
+
+  .dashboard-next-events .next-flood-card {
+    margin-bottom: 0;
+  }
+
+  .dashboard-hydrograph-card {
+    order: 2;
+  }
+
+  .dashboard-hydrograph-card .hydrograph-container,
+  .dashboard-webcam-card .webcam-card-container {
+    margin-bottom: 0;
+  }
+
+  .dashboard-webcam-card {
+    order: 3;
+  }
+
+  .dashboard-map-card {
+    order: 4;
+  }
+
+  .dashboard-simulator-card {
+    order: 5;
+  }
+}
+
 @media (min-width: 992px) {
   .dashboard-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
+    column-gap: 24px;
+    row-gap: 0;
     align-items: start;
+  }
+
+  .dashboard-main-col {
+    grid-column: 1;
+    grid-row: 1;
   }
   
   .dashboard-sidebar {
     display: flex;
     flex-direction: column;
     gap: 24px;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .dashboard-sidebar .next-flood-card {
+    margin-bottom: 0;
   }
 }

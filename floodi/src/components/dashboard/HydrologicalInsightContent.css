@@ -1,0 +1,36 @@
+.modal-summary-section .metric-item.highlight {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.modal-summary-section .metric-item.highlight .metric-icon-box {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-summary-section .metric-item.highlight .metric-label {
+  font-weight: 600;
+  color: var(--ion-color-medium);
+}
+
+.modal-summary-section .metric-item.highlight .metric-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.insight-paragraph {
+  margin: 16px 0;
+  line-height: 1.6;
+  color: var(--ion-color-dark);
+}
+
+.insight-paragraph p {
+  margin: 8px 0;
+}

@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
-import { IonIcon, IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent } from '@ionic/react';
+import { IonIcon, IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent, IonSkeletonText } from '@ionic/react';
 import { closeOutline } from 'ionicons/icons';
 import './AtmosphericOverlay.css';
 import { AtmosphereMetrics, WaterLevelMetric } from './MetricPills';
 import { ViewingTimePill } from './ViewingTimePill';
+import { HydrologicalInsightContent } from './HydrologicalInsightContent';
+import {
+  getFloodSeverityColor,
+  getFloodSeverityForLevel,
+} from 'src/utils/floodSeverity';
 
 interface AtmosphericOverlayProps {
   precipitationAccumulation: number; // in inches
@@ -27,71 +32,7 @@ interface AtmosphericOverlayProps {
   maxWaterLevelTime?: Date;
   thresholds?: { minor: number; moderate: number; major: number; extreme: number };
   statusLabel?: 'Observed' | 'Predicted';
-}
-
-/** Get descriptive name for flood category */
-function getFloodCategory(level: number, thresholds?: AtmosphericOverlayProps['thresholds']): string {
-  if (!thresholds) return level >= 5.6 ? 'Minor' : 'None';
-  
-  if (level >= thresholds.extreme) return 'Extreme';
-  if (level >= thresholds.major) return 'Major';
-  if (level >= thresholds.moderate) return 'Moderate';
-  if (level >= thresholds.minor) return 'Minor';
-  return 'None';
-}
-
-/** Dynamic color for water level based on flood thresholds */
-function waterColor(level: number, thresholds?: AtmosphericOverlayProps['thresholds']): string {
-  if (!thresholds) {
-    // Fallback to defaults if thresholds aren't provided
-    if (level < 5.6) return 'var(--line-observed, #2ecc71)'; // Green
-    if (level < 7.0) return '#fbc02d'; // Yellow (Minor)
-    if (level < 7.7) return '#f57c00'; // Orange (Moderate)
-    if (level < 8.5) return '#d32f2f'; // Red (Major)
-    return '#7b1fa2'; // Purple (Extreme)
-  }
-
-  if (level < thresholds.minor) return 'var(--line-observed, #2ecc71)';
-  if (level < thresholds.moderate) return '#fbc02d';
-  if (level < thresholds.major) return '#f57c00';
-  if (level < thresholds.extreme) return '#d32f2f';
-  return '#7b1fa2';
-}
-
-/** Format depth in inches or ft' in" */
-function formatDepth(feet: number): string {
-  if (feet <= 0) return 'None';
-  const totalInches = Math.round(feet * 12);
-  if (totalInches < 12) {
-    return `${totalInches}"`;
-  }
-  const ft = Math.floor(totalInches / 12);
-  const inches = totalInches % 12;
-  return inches > 0 ? `${ft}' ${inches}"` : `${ft}'`;
-}
-
-function formatWindowTime(date: Date): string {
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-}
-
-function getDataSourceDetails(sourceId?: string, dataSource?: string) {
-  if (sourceId === 'fiman') {
-    return {
-      label: 'Observed Water Level (Fiman station Myrtle Grove Sound @ Canal Dr & Sandpiper Ln - Site ID: 30046)',
-      url: 'https://fiman.nc.gov/?id=30046',
-      linkLabel: 'View FIMAN Station',
-    };
-  }
-
-  if (sourceId === 'noaa') {
-    return {
-      label: 'NOAA Wrightsville Beach Station',
-      url: 'https://tidesandcurrents.noaa.gov/waterlevels.html?id=8658163',
-      linkLabel: 'View NOAA Station',
-    };
-  }
-
-  return dataSource ? { label: dataSource } : null;
+  loading?: boolean;
 }
 
 export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
@@ -115,13 +56,11 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
   maxWaterLevel,
   maxWaterLevelTime,
   statusLabel = 'Observed',
+  loading = false,
 }) => {
   const [showWLInfo, setShowWLInfo] = useState(false);
-  const wlColor = waterColor(observedWaterLevel, thresholds);
-  const floodCategory = getFloodCategory(observedWaterLevel, thresholds);
-  const dataSource = fullSource || source;
-  const dataSourceDetails = getDataSourceDetails(sourceId, dataSource);
-  const hasFloodWindow = Boolean(floodStartTime && floodEndTime);
+  const floodSeverity = thresholds ? getFloodSeverityForLevel(observedWaterLevel, thresholds) : observedWaterLevel >= 5.6 ? 'minor' : null;
+  const wlColor = getFloodSeverityColor(floodSeverity);
 
   // Format time for the modal
   const localTime = targetTime 
@@ -135,16 +74,18 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
       <div className="sentinel-metrics tidal-metrics">
         {/* Tidal Group: Predicted + Surge = Final */}
         <div className="tidal-group">
-          {viewMode === 'advanced' && prediction !== null && prediction !== undefined && (
+          {viewMode === 'advanced' && (prediction !== null && prediction !== undefined || loading) && (
             <div className="metric-item prediction" title="NOAA Prediction">
               <div className="metric-icon-box">
                 <span className="legend-dashed-line" style={{ backgroundColor: 'var(--line-predicted, #95a5a6)', width: '20px' }} />
               </div>
               <div className="metric-details">
                 <div className="metric-value-row">
-                  <span className="metric-value" style={{ color: 'var(--line-predicted, #95a5a6)' }}>{prediction.toFixed(2)}</span>
-                  <span className="metric-unit">ft</span>
-                  <span className="metric-status-label">Predicted</span>
+                  <span className="metric-value" style={{ color: 'var(--line-predicted, #95a5a6)' }}>
+                    {loading ? <IonSkeletonText animated style={{ width: '32px', height: '20px' }} /> : prediction?.toFixed(2)}
+                  </span>
+                  {!loading && <span className="metric-unit">ft</span>}
+                  {!loading && <span className="metric-status-label">Predicted</span>}
                 </div>
                 <div className="metric-label-row">
                   <span className="metric-label">Water Level</span>
@@ -153,7 +94,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
             </div>
           )}
 
-          {viewMode === 'advanced' && surge !== null && surge !== undefined && (
+          {viewMode === 'advanced' && (surge !== null && surge !== undefined || loading) && (
             <>
               <span className="tidal-operator">+</span>
               <div className="metric-item surge-gauge" title="Surge (Observed - Predicted)">
@@ -166,9 +107,11 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
                 </div>
                 <div className="metric-details">
                   <div className="metric-value-row">
-                    <span className="metric-value" style={{ color: '#1976d2' }}>{surge >= 0 ? '+' : ''}{surge.toFixed(2)}</span>
-                    <span className="metric-unit">ft</span>
-                    <span className="metric-status-label">{statusLabel}</span>
+                    <span className="metric-value" style={{ color: '#1976d2' }}>
+                      {loading ? <IonSkeletonText animated style={{ width: '32px', height: '20px' }} /> : (surge ? `${surge >= 0 ? '+' : ''}${surge.toFixed(2)}` : '0.00')}
+                    </span>
+                    {!loading && <span className="metric-unit">ft</span>}
+                    {!loading && <span className="metric-status-label">{statusLabel}</span>}
                   </div>
                   <div className="metric-label-row">
                     <span className="metric-label">Water Level</span>
@@ -186,6 +129,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
             statusLabel={statusLabel}
             interactive
             onClick={() => setShowWLInfo(true)}
+            loading={loading}
           />
         </div>
       </div>
@@ -195,6 +139,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
         precipitationAccumulation={precipitationAccumulation}
         windSpeed={windSpeed}
         windDirection={windDirection}
+        loading={loading}
       />
 
       {/* Water Level Info Modal */}
@@ -210,7 +155,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
           <IonToolbar>
             <IonTitle>
               <div className={`insight-modal-title ${isLive ? 'is-live' : 'is-historical'}`}>
-                <span>Hydrological Insight</span>
+                <span>Flood Insight</span>
                 <ViewingTimePill time={targetTime} fallbackLabel={localTime} />
               </div>
             </IonTitle>
@@ -222,101 +167,29 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
           </IonToolbar>
         </IonHeader>
         <IonContent className="ion-padding">
-          <div className="datum-info-content">
-            <div className={`modal-summary-section view-${viewMode}`}>
-              <div className="insight-observation-section">
-                <div className="sentinel-metrics tidal-metrics">
-                  <div className="tidal-group">
-                    <WaterLevelMetric
-                      observedWaterLevel={observedWaterLevel}
-                      wlColor={wlColor}
-                      statusLabel={statusLabel}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {(windSpeed > 0 || (precipitationAccumulation !== undefined && precipitationAccumulation > 0.005)) && (
-                <div className="insight-observation-section">
-                  <AtmosphereMetrics
-                    precipitationAccumulation={precipitationAccumulation}
-                    windSpeed={windSpeed}
-                    windDirection={windDirection}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="datum-insight-grid">
-              <div className="insight-row">
-                <span className="flooding-label-group">
-                  <span className="insight-label">Flooding:</span>
-                  <span className="flooding-category-value" style={{ color: wlColor }}>{floodCategory}</span>
-                </span>
-                <span className="flooding-combined-value">
-                  {maxWaterLevelTime && (
-                    <span className="flooding-peak-time">Water Peaks after {formatWindowTime(maxWaterLevelTime)}</span>
-                  )}
-                  <span className="flooding-depth-value">
-                    <span>Max Street Flooding: </span>
-                    <strong>{formatDepth(maxRoadFloodDepth)}</strong>
-                  </span>
-                  {maxWaterLevel !== undefined && maxWaterLevelTime && (
-                    <span className="flooding-depth-value">
-                      <span>Max Water Level: </span>
-                      <strong>{maxWaterLevel.toFixed(2)} ft</strong>
-                    </span>
-                  )}
-                </span>
-              </div>
-
-              {hasFloodWindow && floodStartTime && floodEndTime && (
-                <div className="insight-row">
-                  <span className="insight-label">Approx. Flooding Time:</span>
-                  <span className="insight-value insight-time-value">
-                    {formatWindowTime(floodStartTime)} - {formatWindowTime(floodEndTime)}
-                    {floodDuration ? ` (${floodDuration})` : ''}
-                  </span>
-                </div>
-              )}
-
-            </div>
-
-            <div className="insight-paragraph">
-              <p>
-                At <strong>{localTime}</strong> local time, the water level is {isLive ? 'currently' : 'predicted to be'} <strong>{observedWaterLevel.toFixed(2)} ft MLLW</strong>. 
-                {surge !== null && surge !== undefined && (
-                  <> This is <strong>{Math.abs(surge).toFixed(2)} ft {surge >= 0 ? 'higher' : 'lower'}</strong> than NOAA originally forecast.</>
-                )}
-              </p>
-            </div>
-            
-            <div className="datum-source-footer">
-              {dataSourceDetails && (
-                <h4>
-                  Data Source: {dataSourceDetails.label}
-                  {dataSourceDetails.url && (
-                    <a
-                      href={dataSourceDetails.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="datum-source-link"
-                    >
-                      {dataSourceDetails.linkLabel}
-                    </a>
-                  )}
-                </h4>
-              )}
-              <p>
-                Value is relative to the <strong>MLLW (Mean Lower Low Water)</strong> datum. 
-                {sourceId === 'floodcast' && " FloodCast uses recent surge trends to improve upon standard NOAA harmonic predictions."}
-              </p>
-            </div>
-            
-            <div style={{ marginTop: '24px' }}>
-              <IonButton expand="block" mode="ios" onClick={() => setShowWLInfo(false)}>Close</IonButton>
-            </div>
-          </div>
+          <HydrologicalInsightContent
+            precipitationAccumulation={precipitationAccumulation}
+            windSpeed={windSpeed}
+            windDirection={windDirection}
+            targetTime={targetTime}
+            isLive={isLive}
+            observedWaterLevel={observedWaterLevel}
+            source={source}
+            fullSource={fullSource}
+            sourceId={sourceId}
+            surge={surge}
+            prediction={prediction}
+            viewMode={viewMode}
+            thresholds={thresholds}
+            floodStartTime={floodStartTime}
+            floodEndTime={floodEndTime}
+            floodDuration={floodDuration}
+            maxRoadFloodDepth={maxRoadFloodDepth}
+            maxWaterLevel={maxWaterLevel}
+            maxWaterLevelTime={maxWaterLevelTime}
+            statusLabel={statusLabel}
+            onClose={() => setShowWLInfo(false)}
+          />
         </IonContent>
       </IonModal>
 

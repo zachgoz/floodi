@@ -55,6 +55,12 @@ interface SettingsModalProps {
   onClearMessages?: () => void;
   /** Callback to reset all settings to defaults */
   onResetDefaults: () => void;
+  /** Whether chart comment markers are visible */
+  showComments?: boolean;
+  /** Number of visible comments in the current chart domain */
+  commentCount?: number;
+  /** Callback when comment marker visibility changes */
+  onShowCommentsChange?: (show: boolean) => void;
 }
 
 /**
@@ -83,6 +89,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   errorMessage,
   onClearMessages,
   onResetDefaults,
+  showComments,
+  commentCount,
+  onShowCommentsChange,
 }) => {
   const history = useHistory();
   /**
@@ -152,6 +161,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onViewModeChange={(viewMode) => onDisplayChange({ viewMode })}
             dataSource={config.display.dataSource || 'auto'}
             onDataSourceChange={(dataSource) => onDisplayChange({ dataSource })}
+            showComments={showComments}
+            commentCount={commentCount}
+            onShowCommentsChange={onShowCommentsChange}
           />
 
           {/* Time Settings */}
