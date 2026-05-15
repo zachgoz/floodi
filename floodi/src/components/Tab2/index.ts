@@ -12,7 +12,6 @@ export { SettingsModal } from './SettingsModal';
 export { FloodSettings } from './FloodSettings';
 export { TimeSettings } from './TimeSettings';
 export { DisplaySettings } from './DisplaySettings';
-export { FloodEventSidebar } from './FloodEventSidebar';
 export { LocationSettings } from './LocationSettings';
 
 // Custom Hooks

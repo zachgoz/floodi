@@ -47,16 +47,48 @@
   gap: 24px;
 }
 
+@media (max-width: 991px) {
+  .dashboard-sidebar {
+    display: contents;
+  }
+
+  .dashboard-sidebar .next-flood-card {
+    order: 1;
+    margin-bottom: 0;
+  }
+
+  .dashboard-main-col {
+    order: 2;
+  }
+
+  .dashboard-sidebar .webcam-card-container {
+    order: 3;
+  }
+}
+
 @media (min-width: 992px) {
   .dashboard-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
+    column-gap: 24px;
+    row-gap: 0;
     align-items: start;
+  }
+
+  .dashboard-main-col {
+    grid-column: 1;
+    grid-row: 1;
   }
   
   .dashboard-sidebar {
     display: flex;
     flex-direction: column;
     gap: 24px;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .dashboard-sidebar .next-flood-card {
+    margin-bottom: 0;
   }
 }

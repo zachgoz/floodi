@@ -85,12 +85,23 @@
   box-shadow: var(--floodcast-shadow-sm);
 }
 
-/* Comment overlay controls */
-.chart-comment-controls {
+.chart-comment-add-action {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
+  left: 50%;
+  bottom: 14px;
+  z-index: 20;
+  transform: translateX(-50%);
+}
+
+.chart-comment-add {
+  --border-radius: 999px;
+  --box-shadow: 0 8px 22px rgba(var(--ion-color-primary-rgb), 0.34);
+  --padding-start: 16px;
+  --padding-end: 18px;
+  min-height: 42px;
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-transform: none;
 }
 
 /* Comment markers */
@@ -507,4 +518,3 @@
     font-size: 0.9rem;
   }
 }
-

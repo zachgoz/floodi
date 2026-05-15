@@ -2,9 +2,6 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import {
   IonContent,
   IonHeader,
-  IonItem,
-  IonLabel,
-  IonList,
   IonPage,
   IonTitle,
   IonToolbar,
@@ -19,7 +16,6 @@ import { SettingsModal } from 'src/components/Tab2/SettingsModal';
 import { useSettingsStorage } from 'src/components/Tab2/hooks/useSettingsStorage';
 import { useChartData } from 'src/components/Tab2/hooks/useChartData';
 import { useAtmosphericState } from 'src/components/Tab2/hooks/useAtmosphericState';
-import { formatTooltipTime } from 'src/components/Tab2/hooks/useChartInteraction';
 import { useChartComments } from 'src/components/Tab2/hooks/useChartComments';
 import { ChartCommentModal } from 'src/components/Tab2/ChartCommentModal';
 import 'src/components/Tab2/styles/Tab2.css';
@@ -30,11 +26,9 @@ import AtmosphericOverlay from 'src/components/dashboard/AtmosphericOverlay';
 import InundationMap, { RoadProperties } from 'src/components/dashboard/InundationMap';
 import InundationSimulator from 'src/components/dashboard/InundationSimulator';
 import WebcamFeedCard from 'src/components/dashboard/WebcamFeedCard';
-import { FloodEventSidebar } from 'src/components/Tab2/FloodEventSidebar';
-import { findLastSimilarLevel } from 'src/lib/dataService';
+import NextFloodingEventsCard from 'src/components/dashboard/NextFloodingEventsCard';
 import { WEBCAMS } from 'src/constants/webcams';
 import { APIProvider } from '@vis.gl/react-google-maps';
-import type { FloodEvent, WaterLevelPeak } from 'src/types/data';
 
 /**
  * Professional FloodCast Tab2 Component
@@ -83,7 +77,6 @@ const Tab2: React.FC = () => {
     error,
     data,
     processedData,
-    thresholdCrossing,
     refresh,
   } = useChartData(config);
 
@@ -150,28 +143,6 @@ const Tab2: React.FC = () => {
 
 
   /**
-   * Handle flood event selection
-   */
-  const handleEventSelect = (event: FloodEvent) => {
-    setCenterRequest({ time: new Date(event.peakTime), id: Date.now() });
-  };
-
-  /**
-   * Find last time water level was at the current focus level
-   */
-  const handleFindLastSimilar = async () => {
-    if (!activeAtmo.wl) return;
-    try {
-      const peak = await findLastSimilarLevel(config.location.id, activeAtmo.wl, activeAtmo.targetTime || new Date());
-      if (peak) {
-        setCenterRequest({ time: new Date(peak.t), id: Date.now() });
-      }
-    } catch (err) {
-      console.error('Failed to find similar level:', err);
-    }
-  };
-
-  /**
    * Handle refresh with proper error handling
    */
   type RefresherDetail = { complete: () => void };
@@ -186,10 +157,6 @@ const Tab2: React.FC = () => {
     } finally {
       event.detail.complete();
     }
-  };
-
-  const formatTime = (date: Date): string => {
-    return formatTooltipTime(date, config.display.timezone);
   };
 
   /**
@@ -373,6 +340,31 @@ const Tab2: React.FC = () => {
         {(processedData || error) && (
           <div className="dashboard-scroll-container">
             <div className="dashboard-grid">
+              {processedData && (
+                <div className="dashboard-sidebar">
+                  <NextFloodingEventsCard
+                    adjustedPoints={processedData.adjustedPoints}
+                    predictedPoints={processedData.predictedPoints}
+                    windPoints={processedData.windPoints}
+                    precipPoints={processedData.precipPoints}
+                    floodEvents={processedData.floodEvents}
+                    thresholds={config.thresholds}
+                    now={processedData.timeDomain.now}
+                    onTimeChange={handleTimeChange}
+                  />
+                  <WebcamFeedCard
+                    cameraId={selectedCameraId}
+                    locationName={WEBCAMS.find(c => c.id === selectedCameraId)?.name || ''}
+                    targetTime={activeAtmo.targetTime || new Date()}
+                    isLive={activeAtmo.isLive}
+                    onResetToLive={resetToLive}
+                    onTimeChange={handleTimeChange}
+                    onCameraChange={setSelectedCameraId}
+                    imagery={processedData?.imagery?.[selectedCameraId]}
+                  />
+                </div>
+              )}
+
               <div className="dashboard-main-col">
                 {error ? (
                   /* Error state — replaces chart area entirely */
@@ -515,55 +507,8 @@ const Tab2: React.FC = () => {
                   </>
                 ) : null}
               </div>
-
-              <div className="dashboard-sidebar">
-                <IonButton 
-                  expand="block" 
-                  fill="outline" 
-                  className="ion-margin-bottom"
-                  onClick={handleFindLastSimilar}
-                  disabled={!activeAtmo.wl}
-                >
-                  Find Last Similar Level ({activeAtmo.wl?.toFixed(2)}')
-                </IonButton>
-
-                <WebcamFeedCard
-                  cameraId={selectedCameraId}
-                  locationName={WEBCAMS.find(c => c.id === selectedCameraId)?.name || ''}
-                  targetTime={activeAtmo.targetTime || new Date()}
-                  isLive={activeAtmo.isLive}
-                  onResetToLive={resetToLive}
-                  onTimeChange={handleTimeChange}
-                  onCameraChange={setSelectedCameraId}
-                  imagery={processedData?.imagery?.[selectedCameraId]}
-                />
-
-                <FloodEventSidebar 
-                  locationId={config.location.id} 
-                  onEventSelect={handleEventSelect} 
-                />
-              </div>
             </div>
           </div>
-        )}
-
-        {/* Threshold crossing information */}
-        {!loading && !error && thresholdCrossing && (
-          <IonList className="crossing-info">
-            <IonItem>
-              <IonLabel>
-                <h2>
-                  Next Flood Crossing ({config.display.timezone === 'gmt' ? 'GMT' : 'Local'})
-                </h2>
-                <p>
-                  {formatTime(thresholdCrossing.time)}
-                  <span className="crossing-details">
-                    {' '}• Lead time: {Math.round((thresholdCrossing.time.getTime() - (processedData?.timeDomain.now.getTime() || Date.now())) / 60000)} minutes
-                  </span>
-                </p>
-              </IonLabel>
-            </IonItem>
-          </IonList>
         )}
 
         {/* Professional settings modal */}
@@ -584,6 +529,13 @@ const Tab2: React.FC = () => {
           successMessage={messages.success}
           errorMessage={messages.error}
           onClearMessages={clearMessages}
+          showComments={showComments}
+          commentCount={commentCount}
+          onShowCommentsChange={(show) => {
+            if (show !== showComments) {
+              toggleCommentOverlay();
+            }
+          }}
         />
 
         {/* Chart comment creation modal */}

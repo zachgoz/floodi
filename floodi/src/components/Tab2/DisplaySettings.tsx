@@ -7,6 +7,7 @@ import {
   IonIcon,
   IonSegment,
   IonSegmentButton,
+  IonToggle,
 } from '@ionic/react';
 import { settingsOutline } from 'ionicons/icons';
 
@@ -26,6 +27,12 @@ interface DisplaySettingsProps {
   dataSource: 'auto' | 'fiman' | 'noaa' | undefined;
   /** Callback when data source changes */
   onDataSourceChange: (source: 'auto' | 'fiman' | 'noaa') => void;
+  /** Whether chart comment markers are visible */
+  showComments?: boolean;
+  /** Number of visible comments in the current chart domain */
+  commentCount?: number;
+  /** Callback when comment marker visibility changes */
+  onShowCommentsChange?: (show: boolean) => void;
 }
 
 /**
@@ -43,7 +50,10 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
   viewMode = 'basic',
   onViewModeChange,
   dataSource = 'auto',
-  onDataSourceChange
+  onDataSourceChange,
+  showComments = true,
+  commentCount = 0,
+  onShowCommentsChange
 }) => {
   const handleThemeChange = (event: CustomEvent) => {
     const value = event.detail.value as 'auto' | 'light' | 'dark';
@@ -102,6 +112,17 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
             <IonLabel>NOAA</IonLabel>
           </IonSegmentButton>
         </IonSegment>
+      </IonItem>
+
+      <IonItem>
+        <IonLabel>
+          <h3>Show comments</h3>
+          <p>{commentCount} visible on the current chart</p>
+        </IonLabel>
+        <IonToggle
+          checked={showComments}
+          onIonChange={(event: CustomEvent<{ checked: boolean }>) => onShowCommentsChange?.(!!event.detail.checked)}
+        />
       </IonItem>
     </IonList>
   );
