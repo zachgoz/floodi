@@ -31,7 +31,7 @@ describe('useAtmosphericState', () => {
     
     expect(result.current.activeAtmo.wl).toBe(2.0);
     expect(result.current.activeAtmo.isLive).toBe(true);
-    expect(result.current.activeAtmo.source).toContain('Observed');
+    expect(result.current.activeAtmo.source).toContain('Water Level');
   });
 
   it('returns manual focus data when manualFocusTime is provided', () => {
@@ -41,7 +41,7 @@ describe('useAtmosphericState', () => {
     // At focusTime (now + 1h), we have adjustedPoints (2.5)
     expect(result.current.activeAtmo.wl).toBe(2.5);
     expect(result.current.activeAtmo.isLive).toBe(false);
-    expect(result.current.activeAtmo.source).toBe('FloodCast Prediction');
+    expect(result.current.activeAtmo.source).toBe('Predicted Water Level');
   });
 
   it('handles simulation mode', () => {
