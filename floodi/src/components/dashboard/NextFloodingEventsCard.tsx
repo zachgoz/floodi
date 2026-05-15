@@ -247,7 +247,7 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
           <IonToolbar>
             <IonTitle>
               <div className="insight-modal-title is-historical">
-                <span>Hydrological Insight</span>
+                <span>Flood Insight</span>
                 <ViewingTimePill time={selectedEvent?.peakTime} fallbackLabel="Forecast" />
               </div>
             </IonTitle>

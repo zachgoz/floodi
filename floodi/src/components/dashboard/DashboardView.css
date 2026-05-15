@@ -48,21 +48,38 @@
 }
 
 @media (max-width: 991px) {
+  .dashboard-main-col,
   .dashboard-sidebar {
     display: contents;
   }
 
-  .dashboard-sidebar .next-flood-card {
+  .dashboard-next-events {
     order: 1;
+  }
+
+  .dashboard-next-events .next-flood-card {
     margin-bottom: 0;
   }
 
-  .dashboard-main-col {
+  .dashboard-hydrograph-card {
     order: 2;
   }
 
-  .dashboard-sidebar .webcam-card-container {
+  .dashboard-hydrograph-card .hydrograph-container,
+  .dashboard-webcam-card .webcam-card-container {
+    margin-bottom: 0;
+  }
+
+  .dashboard-webcam-card {
     order: 3;
+  }
+
+  .dashboard-map-card {
+    order: 4;
+  }
+
+  .dashboard-simulator-card {
+    order: 5;
   }
 }
 

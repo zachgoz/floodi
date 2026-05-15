@@ -383,6 +383,13 @@
   line-height: 1.6;
 }
 
+/* Remove blue highlight background from pills in the modal */
+.modal-summary-section .metric-item.highlight {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
 .datum-info-content p {
   margin-bottom: 16px;
   font-size: 0.95rem;
@@ -560,7 +567,7 @@
 }
 
 .insight-modal-title {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   line-height: 1.2;
 }
 
@@ -602,6 +609,9 @@
 }
 
 .modal-summary-section .sentinel-metrics {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   width: fit-content;
   max-width: 100%;
 }

@@ -342,26 +342,30 @@ const Tab2: React.FC = () => {
             <div className="dashboard-grid">
               {processedData && (
                 <div className="dashboard-sidebar">
-                  <NextFloodingEventsCard
-                    adjustedPoints={processedData.adjustedPoints}
-                    predictedPoints={processedData.predictedPoints}
-                    windPoints={processedData.windPoints}
-                    precipPoints={processedData.precipPoints}
-                    floodEvents={processedData.floodEvents}
-                    thresholds={config.thresholds}
-                    now={processedData.timeDomain.now}
-                    onTimeChange={handleTimeChange}
-                  />
-                  <WebcamFeedCard
-                    cameraId={selectedCameraId}
-                    locationName={WEBCAMS.find(c => c.id === selectedCameraId)?.name || ''}
-                    targetTime={activeAtmo.targetTime || new Date()}
-                    isLive={activeAtmo.isLive}
-                    onResetToLive={resetToLive}
-                    onTimeChange={handleTimeChange}
-                    onCameraChange={setSelectedCameraId}
-                    imagery={processedData?.imagery?.[selectedCameraId]}
-                  />
+                  <div className="dashboard-next-events">
+                    <NextFloodingEventsCard
+                      adjustedPoints={processedData.adjustedPoints}
+                      predictedPoints={processedData.predictedPoints}
+                      windPoints={processedData.windPoints}
+                      precipPoints={processedData.precipPoints}
+                      floodEvents={processedData.floodEvents}
+                      thresholds={config.thresholds}
+                      now={processedData.timeDomain.now}
+                      onTimeChange={handleTimeChange}
+                    />
+                  </div>
+                  <div className="dashboard-webcam-card">
+                    <WebcamFeedCard
+                      cameraId={selectedCameraId}
+                      locationName={WEBCAMS.find(c => c.id === selectedCameraId)?.name || ''}
+                      targetTime={activeAtmo.targetTime || new Date()}
+                      isLive={activeAtmo.isLive}
+                      onResetToLive={resetToLive}
+                      onTimeChange={handleTimeChange}
+                      onCameraChange={setSelectedCameraId}
+                      imagery={processedData?.imagery?.[selectedCameraId]}
+                    />
+                  </div>
                 </div>
               )}
 
@@ -408,102 +412,108 @@ const Tab2: React.FC = () => {
                   </div>
                 ) : processedData ? (
                   <>
-                    <HydrographChart
-                      locationName="Carolina Beach Tidal Flooding"
-                      sentinel={
-                        <AtmosphericOverlay
-                          precipitationAccumulation={activeAtmo.precip ?? 0}
-                          windSpeed={activeAtmo.wind?.speed ?? 0}
-                          windDirection={activeAtmo.wind?.dir ?? 0}
-                          observedWaterLevel={activeAtmo.wl ?? 0}
-                          isLive={activeAtmo.isLive}
-                          source={activeAtmo.source}
-                          fullSource={activeAtmo.fullSource}
-                          sourceId={activeAtmo.sourceId}
-                          surge={activeAtmo.surge}
-                          prediction={activeAtmo.prediction}
-                          statusLabel={activeAtmo.statusLabel}
-                          targetTime={activeAtmo.targetTime ?? undefined}
-                          thresholds={config.thresholds}
-                          maxRoadFloodDepth={floodWindow?.maxRoadFloodDepth ?? Math.max(0, (activeAtmo.wl ?? 0) - (config.thresholds?.minor || 5.6))}
-                          maxWaterLevel={floodWindow?.maxWaterLevel}
-                          maxWaterLevelTime={floodWindow?.maxWaterLevelTime}
-                          floodStartTime={floodWindow?.startTime}
-                          floodEndTime={floodWindow?.endTime}
-                          floodDuration={floodWindow?.duration}
-                        />
-                      }
-                      isLive={activeAtmo.isLive}
-                      time={activeAtmo.targetTime}
-                      source={activeAtmo.source}
-                      observedPoints={processedData.observedPoints}
-                      predictedPoints={processedData.predictedPoints}
-                      adjustedPoints={processedData.adjustedPoints}
-                      deltaPoints={processedData.deltaPoints}
-                      timeOffsetMins={processedData.timeOffsetMins}
-                      surgeForecastPoints={processedData.surgeForecastPoints}
-                      windPoints={processedData.windPoints}
-                      precipPoints={processedData.precipPoints}
-                      domainStart={processedData.timeDomain.start}
-                      domainEnd={processedData.timeDomain.end}
-                      now={processedData.timeDomain.now}
-                      thresholds={config?.thresholds}
-                      showDelta={config?.display.showDelta}
-                      timezone={config?.display.timezone || 'local'}
-                      config={chartConfig}
-                      floodEvents={processedData.floodEvents}
-                      timeRange={config?.timeRange}
-                      selectedTime={manualFocusTime}
-                      showComments={showComments}
-                      comments={visibleComments}
-                      onCommentHover={handleCommentHover}
-                      onCommentClick={handleCommentClick}
-                      onTimePointSelect={handleTimePointSelect}
-                      onToggleComments={toggleCommentOverlay}
-                      commentCount={commentCount}
-                      onViewportChange={handleViewportChange}
-                      onViewportDomainCommit={persistViewedDomain}
-                      onDomainChangeRequest={handleDomainChangeRequest}
-                      loading={loading}
-                      mode={config.timeRange.mode}
-                      onResetToLive={resetToLive}
-                      centerRequest={centerRequest}
-                      resetKey={resetCount}
-                      warnings={processedData.warnings}
-                      viewMode={config.display.viewMode}
-                      locationId={config.locationId}
-                    />
+                    <div className="dashboard-hydrograph-card">
+                      <HydrographChart
+                        locationName="Carolina Beach Tidal Flooding"
+                        sentinel={
+                          <AtmosphericOverlay
+                            precipitationAccumulation={activeAtmo.precip ?? 0}
+                            windSpeed={activeAtmo.wind?.speed ?? 0}
+                            windDirection={activeAtmo.wind?.dir ?? 0}
+                            observedWaterLevel={activeAtmo.wl ?? 0}
+                            isLive={activeAtmo.isLive}
+                            source={activeAtmo.source}
+                            fullSource={activeAtmo.fullSource}
+                            sourceId={activeAtmo.sourceId}
+                            surge={activeAtmo.surge}
+                            prediction={activeAtmo.prediction}
+                            statusLabel={activeAtmo.statusLabel}
+                            targetTime={activeAtmo.targetTime ?? undefined}
+                            thresholds={config.thresholds}
+                            maxRoadFloodDepth={floodWindow?.maxRoadFloodDepth ?? Math.max(0, (activeAtmo.wl ?? 0) - (config.thresholds?.minor || 5.6))}
+                            maxWaterLevel={floodWindow?.maxWaterLevel}
+                            maxWaterLevelTime={floodWindow?.maxWaterLevelTime}
+                            floodStartTime={floodWindow?.startTime}
+                            floodEndTime={floodWindow?.endTime}
+                            floodDuration={floodWindow?.duration}
+                          />
+                        }
+                        isLive={activeAtmo.isLive}
+                        time={activeAtmo.targetTime}
+                        source={activeAtmo.source}
+                        observedPoints={processedData.observedPoints}
+                        predictedPoints={processedData.predictedPoints}
+                        adjustedPoints={processedData.adjustedPoints}
+                        deltaPoints={processedData.deltaPoints}
+                        timeOffsetMins={processedData.timeOffsetMins}
+                        surgeForecastPoints={processedData.surgeForecastPoints}
+                        windPoints={processedData.windPoints}
+                        precipPoints={processedData.precipPoints}
+                        domainStart={processedData.timeDomain.start}
+                        domainEnd={processedData.timeDomain.end}
+                        now={processedData.timeDomain.now}
+                        thresholds={config?.thresholds}
+                        showDelta={config?.display.showDelta}
+                        timezone={config?.display.timezone || 'local'}
+                        config={chartConfig}
+                        floodEvents={processedData.floodEvents}
+                        timeRange={config?.timeRange}
+                        selectedTime={manualFocusTime}
+                        showComments={showComments}
+                        comments={visibleComments}
+                        onCommentHover={handleCommentHover}
+                        onCommentClick={handleCommentClick}
+                        onTimePointSelect={handleTimePointSelect}
+                        onToggleComments={toggleCommentOverlay}
+                        commentCount={commentCount}
+                        onViewportChange={handleViewportChange}
+                        onViewportDomainCommit={persistViewedDomain}
+                        onDomainChangeRequest={handleDomainChangeRequest}
+                        loading={loading}
+                        mode={config.timeRange.mode}
+                        onResetToLive={resetToLive}
+                        centerRequest={centerRequest}
+                        resetKey={resetCount}
+                        warnings={processedData.warnings}
+                        viewMode={config.display.viewMode}
+                        locationId={config.locationId}
+                      />
+                    </div>
 
                     {/* Google Maps inundation map — FIMAN-style road coloring */}
-                    <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}>
-                      <InundationMap
-                        waterLevelFt={simulationLevel}
-                        roadData={roadData}
-                        observedLevelFt={processedData?.observedPoints?.slice(-1)[0]?.v}
-                        targetTime={activeAtmo.targetTime || new Date()}
-                        onResetToLive={resetToLive}
-                        onTimeChange={handleTimeChange}
-                        imagery={processedData.imagery}
-                      />
-                    </APIProvider>
+                    <div className="dashboard-map-card">
+                      <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}>
+                        <InundationMap
+                          waterLevelFt={simulationLevel}
+                          roadData={roadData}
+                          observedLevelFt={processedData?.observedPoints?.slice(-1)[0]?.v}
+                          targetTime={activeAtmo.targetTime || new Date()}
+                          onResetToLive={resetToLive}
+                          onTimeChange={handleTimeChange}
+                          imagery={processedData.imagery}
+                        />
+                      </APIProvider>
+                    </div>
 
-                    <InundationSimulator
-                      waterLevelFt={simulationLevel}
-                      minLevelFt={0.0}
-                      maxLevelFt={10.0}
-                      onLevelChange={(val) => {
-                        setSimulationLevel(val);
-                        setIsUserSimulating(true);
-                      }}
-                      thresholds={config.thresholds}
-                      simulationContext={{
-                        targetTime: activeAtmo.targetTime ?? new Date(),
-                        wind: activeAtmo.wind ?? undefined,
-                        precip: activeAtmo.precip ?? undefined,
-                        source: activeAtmo.fullSource,
-                        isSimulated: activeAtmo.isSimulated,
-                      }}
-                    />
+                    <div className="dashboard-simulator-card">
+                      <InundationSimulator
+                        waterLevelFt={simulationLevel}
+                        minLevelFt={0.0}
+                        maxLevelFt={10.0}
+                        onLevelChange={(val) => {
+                          setSimulationLevel(val);
+                          setIsUserSimulating(true);
+                        }}
+                        thresholds={config.thresholds}
+                        simulationContext={{
+                          targetTime: activeAtmo.targetTime ?? new Date(),
+                          wind: activeAtmo.wind ?? undefined,
+                          precip: activeAtmo.precip ?? undefined,
+                          source: activeAtmo.fullSource,
+                          isSimulated: activeAtmo.isSimulated,
+                        }}
+                      />
+                    </div>
                   </>
                 ) : null}
               </div>

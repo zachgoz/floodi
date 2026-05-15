@@ -1,9 +1,9 @@
-:root {
-  --intro-bg: #0b1b2b;
+.intro-content {
+  --background: var(--ion-background-color, #ffffff);
 }
 
-.intro-content {
-  --background: var(--intro-bg);
+.ion-palette-dark .intro-content {
+  --background: #0b1b2b;
 }
 
 .intro-center {

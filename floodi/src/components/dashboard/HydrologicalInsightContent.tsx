@@ -1,5 +1,6 @@
 import React from 'react';
 import { IonButton } from '@ionic/react';
+import './HydrologicalInsightContent.css';
 import { AtmosphereMetrics, WaterLevelMetric } from './MetricPills';
 import {
   getFloodSeverityColor,
@@ -160,17 +161,16 @@ export const HydrologicalInsightContent: React.FC<HydrologicalInsightContentProp
         )}
       </div>
 
-      <div className="insight-paragraph">
-        <p>
-          At <strong>{localTime}</strong> local time, the water level is {isLive ? 'currently' : 'predicted to be'} <strong>{observedWaterLevel.toFixed(2)} ft MLLW</strong>.
-          {surge !== null && surge !== undefined && (
-            <> This is <strong>{Math.abs(surge).toFixed(2)} ft {surge >= 0 ? 'higher' : 'lower'}</strong> than NOAA originally forecast.</>
-          )}
-          {prediction !== null && prediction !== undefined && statusLabel === 'Predicted' && (
-            <> Forecast guidance currently places the peak near <strong>{prediction.toFixed(2)} ft MLLW</strong>.</>
-          )}
-        </p>
-      </div>
+      {floodSeverity !== null && (
+        <div className="insight-paragraph">
+          <p>
+            At <strong>{localTime}</strong> local time, the water level is {isLive ? 'currently' : 'predicted to be'} <strong>{observedWaterLevel.toFixed(2)} ft MLLW</strong>.
+            {surge !== null && surge !== undefined && (
+              <> This is <strong>{Math.abs(surge).toFixed(2)} ft {surge >= 0 ? 'higher' : 'lower'}</strong> than NOAA originally forecast.</>
+            )}
+          </p>
+        </div>
+      )}
 
       {children}
 

@@ -10,9 +10,9 @@
 }
 
 .next-flood-card ion-card-header {
-  background: rgba(var(--ion-color-primary-rgb), 0.04);
+  background: transparent;
   padding: 14px 16px 8px;
-  border-bottom: 1px solid rgba(var(--ion-color-primary-rgb), 0.1);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .next-flood-card ion-card-title {
@@ -31,7 +31,7 @@
 }
 
 .next-flood-item {
-  --background: color-mix(in srgb, var(--event-color) 9%, var(--ion-item-background, transparent));
+  --background: color-mix(in srgb, var(--event-color) 16%, #ffffff);
   --border-radius: 8px;
   --padding-start: 8px;
   --inner-padding-end: 8px;
@@ -39,6 +39,9 @@
   --min-height: 70px;
   margin: 6px 0;
   border-left: 4px solid var(--event-color);
+  border-top: 1px solid color-mix(in srgb, var(--event-color) 18%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--event-color) 18%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--event-color) 18%, transparent);
   border-radius: 8px;
 }
 
@@ -196,6 +199,10 @@
   }
 }
 
+.ion-palette-light .next-flood-item {
+  --background: color-mix(in srgb, var(--event-color) 16%, #ffffff);
+}
+
 .ion-palette-dark .next-flood-item {
   --background: color-mix(in srgb, var(--event-color) 13%, rgba(18, 25, 38, 0.62));
 }
@@ -210,6 +217,16 @@
     background: rgba(255, 255, 255, 0.06);
     border-bottom-color: rgba(var(--ion-color-primary-rgb), 0.18);
   }
+}
+
+.ion-palette-light .next-flood-card {
+  border-color: rgba(var(--ion-color-primary-rgb), 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.ion-palette-light .next-flood-card ion-card-header {
+  background: transparent;
+  border-bottom-color: rgba(0, 0, 0, 0.05);
 }
 
 .ion-palette-dark .next-flood-card {

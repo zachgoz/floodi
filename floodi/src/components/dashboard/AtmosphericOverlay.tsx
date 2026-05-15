@@ -147,7 +147,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
           <IonToolbar>
             <IonTitle>
               <div className={`insight-modal-title ${isLive ? 'is-live' : 'is-historical'}`}>
-                <span>Hydrological Insight</span>
+                <span>Flood Insight</span>
                 <ViewingTimePill time={targetTime} fallbackLabel={localTime} />
               </div>
             </IonTitle>

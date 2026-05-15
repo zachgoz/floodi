@@ -161,18 +161,44 @@
   opacity: 0.7;
 }
 
-/* Dark Mode Tweaks */
-@media (prefers-color-scheme: dark) {
-  .source-card {
-    background: #1e1e1e;
-    border-color: #333;
-  }
-  
-  .methodology-card {
-    background: #1a1a1a;
-  }
-  
-  .glass-card {
-    background: rgba(var(--ion-color-primary-rgb), 0.1);
-  }
+/* Dark Mode Tweaks - Using class-based selection to sync with App.tsx logic */
+.ion-palette-dark .source-card {
+  background: #1e1e1e;
+  border-color: #333;
+}
+
+.ion-palette-dark .methodology-card {
+  background: #1a1a1a;
+}
+
+.ion-palette-dark .glass-card {
+  background: rgba(var(--ion-color-primary-rgb), 0.1);
+  border-color: rgba(var(--ion-color-primary-rgb), 0.2);
+}
+
+/* Light mode improvements */
+.ion-palette-light .source-card,
+:root:not(.ion-palette-dark) .source-card {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.ion-palette-light .methodology-card,
+:root:not(.ion-palette-dark) .methodology-card {
+  background: #ffffff;
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.1);
+}
+
+.ion-palette-light .glass-card,
+:root:not(.ion-palette-dark) .glass-card {
+  background: linear-gradient(135deg, rgba(var(--ion-color-primary-rgb), 0.1) 0%, rgba(var(--ion-color-primary-rgb), 0.04) 100%);
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.15);
+  box-shadow: 0 4px 16px rgba(var(--ion-color-primary-rgb), 0.06);
+}
+
+/* Logo filtering for light mode */
+.ion-palette-light .about-logo,
+:root:not(.ion-palette-dark) .about-logo {
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.08));
 }

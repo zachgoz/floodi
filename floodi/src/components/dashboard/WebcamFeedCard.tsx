@@ -79,7 +79,7 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
     setIsImageLoading(true);
   }, [targetTime, cameraId, imagery]);
 
-  const isFuture = (targetTime.getTime() - Date.now()) > 10 * 60 * 1000;
+  const isFuture = (targetTime.getTime() - Date.now()) > 60 * 1000;
 
   // 1. Try to find image in API response first
   const { imageUrl, finalImageDate, foundInApi } = useMemo(() => {
@@ -217,14 +217,14 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
           {!isFuture && (
             <>
               <div className="webcam-nav-overlay left">
-                <IonButton fill="clear" className="nav-fab" onClick={() => shiftTime(-1)}>
+                <IonButton fill="clear" className="nav-fab" onClick={() => shiftTime(-1)} aria-label="Previous hour">
                   <IonIcon icon={chevronBackOutline} />
                 </IonButton>
               </div>
 
               {!isLive && (
                 <div className="webcam-nav-overlay right">
-                  <IonButton fill="clear" className="nav-fab" onClick={() => shiftTime(1)}>
+                  <IonButton fill="clear" className="nav-fab" onClick={() => shiftTime(1)} aria-label="Next hour">
                     <IonIcon icon={chevronForwardOutline} />
                   </IonButton>
                 </div>
@@ -240,16 +240,16 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
                   Jump to Live
                 </IonButton>
               )}
+
+              <div className="webcam-timestamp-badge">
+                <span className="timestamp-text">
+                  {finalImageDate.toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                  <span className="separator">•</span>
+                  {finalImageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
             </>
           )}
-
-          <div className="webcam-timestamp-badge">
-            <span className="timestamp-text">
-              {finalImageDate.toLocaleDateString([], { month: 'short', day: 'numeric' })}
-              <span className="separator">•</span>
-              {finalImageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          </div>
         </div>
       </div>
     </div>
