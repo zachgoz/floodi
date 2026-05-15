@@ -86,46 +86,34 @@ export const DashboardView: React.FC = () => {
     setSelectedTime(isNearLive ? null : rounded);
   }, [liveTimeMs]);
 
-  if (loading || !processedData) {
-    return (
-      <IonPage>
-        <IonContent>
-          <div className="flex-center" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <IonSpinner name="crescent" />
-          </div>
-        </IonContent>
-      </IonPage>
-    );
-  }
-
   const {
-    observedPoints,
-    predictedPoints,
-    adjustedPoints,
-    timeDomain,
-    windPoints,
-    precipPoints
-  } = processedData;
+    observedPoints = [],
+    predictedPoints = [],
+    adjustedPoints = [],
+    timeDomain = { start: new Date(), end: new Date(), now: new Date() },
+    windPoints = [],
+    precipPoints = []
+  } = processedData || {};
 
   const { start, end, now } = timeDomain;
-  const isLive = !selectedTime || Math.abs(selectedTime.getTime() - now.getTime()) < LIVE_TOLERANCE_MS;
-  const targetTime = isLive ? now : selectedTime;
+  const isLive = !selectedTime || Math.abs(selectedTime.getTime() - (now?.getTime() || Date.now())) < LIVE_TOLERANCE_MS;
+  const targetTime = isLive ? (now || new Date()) : selectedTime;
 
   // Find nearest wind point to targetTime
-  const currentWind = windPoints.length > 0
+  const currentWind = (windPoints && windPoints.length > 0)
     ? windPoints.reduce((prev, curr) =>
         Math.abs(curr.t.getTime() - targetTime.getTime()) < Math.abs(prev.t.getTime() - targetTime.getTime()) ? curr : prev
       )
     : { t: targetTime, speed: 0, dir: 0 };
 
   // Find nearest observed/predicted point to targetTime
-  const lastObs = observedPoints.length > 0 ? observedPoints[observedPoints.length - 1] : null;
+  const lastObs = (observedPoints && observedPoints.length > 0) ? observedPoints[observedPoints.length - 1] : null;
   const isPastHandover = targetTime.getTime() > (lastObs?.t.getTime() || 0);
 
-  const obsRes = findNearestPoint(observedPoints, targetTime);
-  const adjRes = findNearestPoint(adjustedPoints, targetTime);
-  const predRes = findNearestPoint(predictedPoints, targetTime);
-  const precipRes = findNearestPoint(precipPoints, targetTime);
+  const obsRes = observedPoints ? findNearestPoint(observedPoints, targetTime) : null;
+  const adjRes = adjustedPoints ? findNearestPoint(adjustedPoints, targetTime) : null;
+  const predRes = predictedPoints ? findNearestPoint(predictedPoints, targetTime) : null;
+  const precipRes = precipPoints ? findNearestPoint(precipPoints, targetTime) : null;
 
   const isObserved = !!(obsRes && obsRes.dtMin < 60 && !isPastHandover);
   const isAdjusted = !!(adjRes && adjRes.dtMin < 60 && isPastHandover);
@@ -180,17 +168,18 @@ export const DashboardView: React.FC = () => {
                   prediction={predRes?.point.v}
                   isLive={isLive}
                   targetTime={targetTime}
+                  loading={loading}
                 />
                 
                 <HydrographChart
                   locationId={DEFAULT_LOCATION_ID}
-                  observedPoints={observedPoints}
-                  predictedPoints={predictedPoints}
-                  adjustedPoints={adjustedPoints}
+                  observedPoints={observedPoints || []}
+                  predictedPoints={predictedPoints || []}
+                  adjustedPoints={adjustedPoints || []}
                   deltaPoints={[]}
-                  domainStart={start}
-                  domainEnd={end}
-                  now={now}
+                  domainStart={start || new Date(Date.now() - 24 * 3600 * 1000)}
+                  domainEnd={end || new Date(Date.now() + 48 * 3600 * 1000)}
+                  now={now || new Date()}
                   isLive={isLive}
                   time={targetTime}
                   selectedTime={selectedTime}
@@ -203,6 +192,7 @@ export const DashboardView: React.FC = () => {
                   centerRequest={centerRequest}
                   onViewportChange={handleViewportChange}
                   onResetToLive={resetToLive}
+                  loading={loading}
                 />
                 
                 {loading && (
@@ -220,6 +210,7 @@ export const DashboardView: React.FC = () => {
                   targetTime={targetTime}
                   onResetToLive={resetToLive}
                   onTimeChange={handleTimeChange}
+                  loading={loading}
                 />
               </APIProvider>
 
@@ -239,7 +230,8 @@ export const DashboardView: React.FC = () => {
                 onResetToLive={resetToLive}
                 onTimeChange={handleTimeChange}
                 onCameraChange={setSelectedCameraId}
-                imagery={processedData.imagery?.[selectedCameraId]}
+                imagery={processedData?.imagery?.[selectedCameraId]}
+                loading={loading}
               />
             </div>
           </div>

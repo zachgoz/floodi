@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { IonIcon, IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent } from '@ionic/react';
+import { IonIcon, IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent, IonSkeletonText } from '@ionic/react';
 import { closeOutline } from 'ionicons/icons';
 import './AtmosphericOverlay.css';
 import { AtmosphereMetrics, WaterLevelMetric } from './MetricPills';
@@ -32,6 +32,7 @@ interface AtmosphericOverlayProps {
   maxWaterLevelTime?: Date;
   thresholds?: { minor: number; moderate: number; major: number; extreme: number };
   statusLabel?: 'Observed' | 'Predicted';
+  loading?: boolean;
 }
 
 export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
@@ -55,6 +56,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
   maxWaterLevel,
   maxWaterLevelTime,
   statusLabel = 'Observed',
+  loading = false,
 }) => {
   const [showWLInfo, setShowWLInfo] = useState(false);
   const floodSeverity = thresholds ? getFloodSeverityForLevel(observedWaterLevel, thresholds) : observedWaterLevel >= 5.6 ? 'minor' : null;
@@ -72,16 +74,18 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
       <div className="sentinel-metrics tidal-metrics">
         {/* Tidal Group: Predicted + Surge = Final */}
         <div className="tidal-group">
-          {viewMode === 'advanced' && prediction !== null && prediction !== undefined && (
+          {viewMode === 'advanced' && (prediction !== null && prediction !== undefined || loading) && (
             <div className="metric-item prediction" title="NOAA Prediction">
               <div className="metric-icon-box">
                 <span className="legend-dashed-line" style={{ backgroundColor: 'var(--line-predicted, #95a5a6)', width: '20px' }} />
               </div>
               <div className="metric-details">
                 <div className="metric-value-row">
-                  <span className="metric-value" style={{ color: 'var(--line-predicted, #95a5a6)' }}>{prediction.toFixed(2)}</span>
-                  <span className="metric-unit">ft</span>
-                  <span className="metric-status-label">Predicted</span>
+                  <span className="metric-value" style={{ color: 'var(--line-predicted, #95a5a6)' }}>
+                    {loading ? <IonSkeletonText animated style={{ width: '32px', height: '20px' }} /> : prediction?.toFixed(2)}
+                  </span>
+                  {!loading && <span className="metric-unit">ft</span>}
+                  {!loading && <span className="metric-status-label">Predicted</span>}
                 </div>
                 <div className="metric-label-row">
                   <span className="metric-label">Water Level</span>
@@ -90,7 +94,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
             </div>
           )}
 
-          {viewMode === 'advanced' && surge !== null && surge !== undefined && (
+          {viewMode === 'advanced' && (surge !== null && surge !== undefined || loading) && (
             <>
               <span className="tidal-operator">+</span>
               <div className="metric-item surge-gauge" title="Surge (Observed - Predicted)">
@@ -103,9 +107,11 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
                 </div>
                 <div className="metric-details">
                   <div className="metric-value-row">
-                    <span className="metric-value" style={{ color: '#1976d2' }}>{surge >= 0 ? '+' : ''}{surge.toFixed(2)}</span>
-                    <span className="metric-unit">ft</span>
-                    <span className="metric-status-label">{statusLabel}</span>
+                    <span className="metric-value" style={{ color: '#1976d2' }}>
+                      {loading ? <IonSkeletonText animated style={{ width: '32px', height: '20px' }} /> : (surge ? `${surge >= 0 ? '+' : ''}${surge.toFixed(2)}` : '0.00')}
+                    </span>
+                    {!loading && <span className="metric-unit">ft</span>}
+                    {!loading && <span className="metric-status-label">{statusLabel}</span>}
                   </div>
                   <div className="metric-label-row">
                     <span className="metric-label">Water Level</span>
@@ -123,6 +129,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
             statusLabel={statusLabel}
             interactive
             onClick={() => setShowWLInfo(true)}
+            loading={loading}
           />
         </div>
       </div>
@@ -132,6 +139,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
         precipitationAccumulation={precipitationAccumulation}
         windSpeed={windSpeed}
         windDirection={windDirection}
+        loading={loading}
       />
 
       {/* Water Level Info Modal */}

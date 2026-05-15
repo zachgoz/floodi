@@ -336,22 +336,23 @@ const Tab2: React.FC = () => {
           />
         </IonRefresher>
 
-        {/* Main dashboard — always render the shell once we have a station */}
-        {(processedData || error) && (
+        {/* Main dashboard — always render the shell once we have a station or are loading */}
+        {(processedData || error || loading) && (
           <div className="dashboard-scroll-container">
             <div className="dashboard-grid">
-              {processedData && (
+              {(processedData || loading) && (
                 <div className="dashboard-sidebar">
                   <div className="dashboard-next-events">
                     <NextFloodingEventsCard
-                      adjustedPoints={processedData.adjustedPoints}
-                      predictedPoints={processedData.predictedPoints}
-                      windPoints={processedData.windPoints}
-                      precipPoints={processedData.precipPoints}
-                      floodEvents={processedData.floodEvents}
+                      adjustedPoints={processedData?.adjustedPoints || []}
+                      predictedPoints={processedData?.predictedPoints || []}
+                      windPoints={processedData?.windPoints || []}
+                      precipPoints={processedData?.precipPoints || []}
+                      floodEvents={processedData?.floodEvents || []}
                       thresholds={config.thresholds}
-                      now={processedData.timeDomain.now}
+                      now={processedData?.timeDomain.now || new Date()}
                       onTimeChange={handleTimeChange}
+                      loading={loading}
                     />
                   </div>
                   <div className="dashboard-webcam-card">
@@ -364,6 +365,7 @@ const Tab2: React.FC = () => {
                       onTimeChange={handleTimeChange}
                       onCameraChange={setSelectedCameraId}
                       imagery={processedData?.imagery?.[selectedCameraId]}
+                      loading={loading}
                     />
                   </div>
                 </div>
@@ -410,7 +412,7 @@ const Tab2: React.FC = () => {
                       </IonButton>
                     </div>
                   </div>
-                ) : processedData ? (
+                ) : (processedData || loading) ? (
                   <>
                     <div className="dashboard-hydrograph-card">
                       <HydrographChart
@@ -436,27 +438,28 @@ const Tab2: React.FC = () => {
                             floodStartTime={floodWindow?.startTime}
                             floodEndTime={floodWindow?.endTime}
                             floodDuration={floodWindow?.duration}
+                            loading={loading}
                           />
                         }
                         isLive={activeAtmo.isLive}
                         time={activeAtmo.targetTime}
                         source={activeAtmo.source}
-                        observedPoints={processedData.observedPoints}
-                        predictedPoints={processedData.predictedPoints}
-                        adjustedPoints={processedData.adjustedPoints}
-                        deltaPoints={processedData.deltaPoints}
-                        timeOffsetMins={processedData.timeOffsetMins}
-                        surgeForecastPoints={processedData.surgeForecastPoints}
-                        windPoints={processedData.windPoints}
-                        precipPoints={processedData.precipPoints}
-                        domainStart={processedData.timeDomain.start}
-                        domainEnd={processedData.timeDomain.end}
-                        now={processedData.timeDomain.now}
+                        observedPoints={processedData?.observedPoints || []}
+                        predictedPoints={processedData?.predictedPoints || []}
+                        adjustedPoints={processedData?.adjustedPoints || []}
+                        deltaPoints={processedData?.deltaPoints || []}
+                        timeOffsetMins={processedData?.timeOffsetMins || 0}
+                        surgeForecastPoints={processedData?.surgeForecastPoints || []}
+                        windPoints={processedData?.windPoints || []}
+                        precipPoints={processedData?.precipPoints || []}
+                        domainStart={processedData?.timeDomain.start || new Date(Date.now() - 24 * 3600 * 1000)}
+                        domainEnd={processedData?.timeDomain.end || new Date(Date.now() + 48 * 3600 * 1000)}
+                        now={processedData?.timeDomain.now || new Date()}
                         thresholds={config?.thresholds}
                         showDelta={config?.display.showDelta}
                         timezone={config?.display.timezone || 'local'}
                         config={chartConfig}
-                        floodEvents={processedData.floodEvents}
+                        floodEvents={processedData?.floodEvents || []}
                         timeRange={config?.timeRange}
                         selectedTime={manualFocusTime}
                         showComments={showComments}
@@ -474,7 +477,7 @@ const Tab2: React.FC = () => {
                         onResetToLive={resetToLive}
                         centerRequest={centerRequest}
                         resetKey={resetCount}
-                        warnings={processedData.warnings}
+                        warnings={processedData?.warnings || []}
                         viewMode={config.display.viewMode}
                         locationId={config.locationId}
                       />
@@ -490,7 +493,8 @@ const Tab2: React.FC = () => {
                           targetTime={activeAtmo.targetTime || new Date()}
                           onResetToLive={resetToLive}
                           onTimeChange={handleTimeChange}
-                          imagery={processedData.imagery}
+                          imagery={processedData?.imagery}
+                          loading={loading}
                         />
                       </APIProvider>
                     </div>

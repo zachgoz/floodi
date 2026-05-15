@@ -25,6 +25,19 @@
   padding: 8px 8px 12px;
 }
 
+.next-flood-content {
+  position: relative;
+  min-height: 120px;
+}
+
+.next-flood-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  min-height: 120px;
+}
+
 .next-flood-list {
   padding: 0;
   background: transparent;

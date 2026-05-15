@@ -14,6 +14,7 @@ import {
   IonLabel,
   IonList,
   IonModal,
+  IonSkeletonText,
   IonTitle,
   IonToolbar,
 } from '@ionic/react';
@@ -50,6 +51,7 @@ interface NextFloodingEventsCardProps {
   thresholds: AppConfiguration['thresholds'];
   now: Date;
   onTimeChange: (time: Date) => void;
+  loading?: boolean;
 }
 
 const EVENT_WINDOW_DAYS = 14;
@@ -154,6 +156,7 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
   thresholds,
   now,
   onTimeChange,
+  loading = false,
 }) => {
   const [selectedEvent, setSelectedEvent] = useState<UpcomingFloodEvent | null>(null);
   const [showAllEvents, setShowAllEvents] = useState(false);
@@ -180,8 +183,26 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
       <IonCardHeader>
         <IonCardTitle>Next Flooding Events</IonCardTitle>
       </IonCardHeader>
-      <IonCardContent>
-        {upcomingEvents.length > 0 ? (
+      <IonCardContent className="next-flood-content">
+        {loading ? (
+          <IonList className="next-flood-list" lines="none">
+            {[1, 2].map((i) => (
+              <IonItem key={i} className="next-flood-item skeleton">
+                <div className="flood-timeline-slot" slot="start">
+                  <span className="flood-timeline-line" aria-hidden="true" />
+                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(var(--ion-text-color-rgb, 0,0,0), 0.1)' }} />
+                </div>
+                <IonLabel>
+                  <h3><IonSkeletonText animated style={{ width: '60%' }} /></h3>
+                  <p><IonSkeletonText animated style={{ width: '80%' }} /></p>
+                  <p><IonSkeletonText animated style={{ width: '40%' }} /></p>
+                </IonLabel>
+                <div slot="end" style={{ width: '60px', height: '20px', borderRadius: '4px', background: 'rgba(var(--ion-text-color-rgb, 0,0,0), 0.1)' }} />
+              </IonItem>
+            ))}
+          </IonList>
+        ) : upcomingEvents.length > 0 ? (
+
           <>
             <IonList className="next-flood-list" lines="none">
               {visibleEvents.map((event, index) => {

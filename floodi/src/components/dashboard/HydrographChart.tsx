@@ -1,5 +1,5 @@
 import React from 'react';
-import { IonSpinner } from '@ionic/react';
+import { IonSpinner, IonSkeletonText } from '@ionic/react';
 import './HydrographChart.css';
 import ChartViewer from '../Tab2/ChartViewer';
 import { ViewingTimePill } from './ViewingTimePill';
@@ -46,21 +46,34 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
     <div className="hydrograph-container">
       <div className="hydrograph-header">
         <div className="title-group">
-          <h2 className="hydrograph-title">{locationName}</h2>
-          <div className={`hydrograph-subtitle ${isLive ? 'is-live' : 'is-historical'}`}>
-            {isLive && <span className="subtitle-dot" />}
-            {isLive && <span className="subtitle-text">Live</span>}
-            <ViewingTimePill time={time} />
-            {!isLive && onResetToLive && (
-              <button
-                className="reset-to-live-btn"
-                onClick={onResetToLive}
-                aria-label="Return to live time"
-              >
-                Return to Live
-              </button>
-            )}
-          </div>
+          {loading ? (
+            <h2 className="hydrograph-title">
+              <IonSkeletonText animated style={{ width: '180px', height: '24px' }} />
+            </h2>
+          ) : (
+            <h2 className="hydrograph-title">{locationName}</h2>
+          )}
+
+          {loading ? (
+            <div className="hydrograph-subtitle">
+              <IonSkeletonText animated style={{ width: '100px', height: '16px' }} />
+            </div>
+          ) : (
+            <div className={`hydrograph-subtitle ${isLive ? 'is-live' : 'is-historical'}`}>
+              {isLive && <span className="subtitle-dot" />}
+              {isLive && <span className="subtitle-text">Live</span>}
+              <ViewingTimePill time={time} />
+              {!isLive && onResetToLive && (
+                <button
+                  className="reset-to-live-btn"
+                  onClick={onResetToLive}
+                  aria-label="Return to live time"
+                >
+                  Return to Live
+                </button>
+              )}
+            </div>
+          )}
         </div>
         {sentinel}
       </div>
