@@ -1,0 +1,16 @@
+# Settings for the Cloud Run container instance
+runConfig:
+  cpu: 1
+  memoryMiB: 512
+
+# Override default build and start behavior
+scripts:
+  buildCommand: npm run build
+  runCommand: npx superstatic . --port $PORT --host 0.0.0.0
+
+# Critical: Instruct App Hosting to preserve all workspace files
+# (specifically the generated 'dist' directory and 'firebase.json' file)
+outputFiles:
+  serverApp:
+    include:
+      - .

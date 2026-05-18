@@ -31,7 +31,7 @@ import './Tab3.css';
 /**
  * Tab3 Component (About Page)
  * 
- * A comprehensive informational page detailing the Floodi mission,
+ * A comprehensive informational page detailing the FloodCast mission,
  * data sources, and scientific methodology.
  */
 const Tab3: React.FC = () => {
@@ -51,7 +51,7 @@ const Tab3: React.FC = () => {
     <IonPage>
       <IonHeader className="ion-no-border">
         <IonToolbar>
-          <IonTitle>About Floodi</IonTitle>
+          <IonTitle>About FloodCast</IonTitle>
         </IonToolbar>
       </IonHeader>
       
@@ -85,7 +85,7 @@ const Tab3: React.FC = () => {
             </IonCardHeader>
             <IonCardContent>
               <p>
-                Floodi was created to provide Carolina Beach residents with the most accurate, 
+                FloodCast was created to provide Carolina Beach residents with the most accurate,
                 up-to-the-minute flood intelligence possible. Traditional tide tables are based 
                 on regional gauges (like Wrightsville Beach) and often fail to capture the 
                 unique inundation patterns of our local canals and road crossings.
@@ -200,7 +200,7 @@ const Tab3: React.FC = () => {
 
           <footer className="about-footer">
             <p>Built with ❤️ for the Carolina Beach community.</p>
-            <p className="version-tag">Floodi v1.2.0 • Build 2026.05.02</p>
+            <p className="version-tag">FloodCast v1.2.0 • Build 2026.05.02</p>
           </footer>
         </div>
       </IonContent>

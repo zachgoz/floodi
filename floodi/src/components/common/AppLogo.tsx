@@ -61,7 +61,7 @@ export const AppLogo: React.FC<LogoProps> = ({ className, style }) => {
           transition: 'fill 0.3s ease'
         }}
       >
-        Floodi
+        FloodCast
       </text>
     </svg>
   );

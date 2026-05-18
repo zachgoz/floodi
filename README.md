@@ -1,6 +1,6 @@
-# 🌊 FloodCast (Floodi) — Hyperlocal Tide & Coastal Flood Intelligence
+# 🌊 FloodCast — Hyperlocal Tide & Coastal Flood Intelligence
 
-Welcome to **FloodCast** (internally structured as **Floodi**), a premium, state-of-the-art mobile and web application engineered to deliver real-time, hyperlocal coastal flood intelligence and tidal forecasting. 
+Welcome to **FloodCast**, a premium, state-of-the-art mobile and web application engineered to deliver real-time, hyperlocal coastal flood intelligence and tidal forecasting.
 
 By unifying data streams from standard National Oceanic and Atmospheric Administration (NOAA) tidal gauges and ultra-localized sensor networks (such as FiMAN / Sunny Day Flooding), FloodCast gives coastal communities, municipal planners, and emergency responders dynamic, predictive insight into rising waters.
 

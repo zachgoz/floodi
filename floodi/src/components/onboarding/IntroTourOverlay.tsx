@@ -37,7 +37,7 @@ const tourSteps: TourStep[] = [
     label: 'Hydrograph',
     targetId: 'hydrograph',
     title: 'Use the chart as the time control',
-    summary: 'The hydrograph shows observed, NOAA predicted, and Floodi-adjusted water levels. Pan or tap the chart to move the whole dashboard through time.',
+    summary: 'The hydrograph shows observed, NOAA predicted, and FloodCast-adjusted water levels. Pan or tap the chart to move the whole dashboard through time.',
   },
   {
     icon: calendarOutline,
@@ -71,7 +71,7 @@ const tourSteps: TourStep[] = [
     icon: optionsOutline,
     label: 'Controls',
     targetId: 'settings',
-    title: 'Tune Floodi for your view',
+    title: 'Tune FloodCast for your view',
     summary: 'Settings control location, thresholds, offsets, time range, theme, chart mode, and whether comments appear on the chart.',
   },
 ];
@@ -336,7 +336,7 @@ export const IntroTourOverlay: React.FC<IntroTourOverlayProps> = ({ onFinish, ta
   }
 
   return (
-    <div className="intro-tour-overlay" role="dialog" aria-modal="true" aria-label="Floodi dashboard intro">
+    <div className="intro-tour-overlay" role="dialog" aria-modal="true" aria-label="FloodCast dashboard intro">
       <div className="intro-tour-mask" style={maskStyles.top} />
       <div className="intro-tour-mask" style={maskStyles.right} />
       <div className="intro-tour-mask" style={maskStyles.bottom} />
@@ -382,7 +382,7 @@ export const IntroTourOverlay: React.FC<IntroTourOverlayProps> = ({ onFinish, ta
             Back
           </IonButton>
           <IonButton size="small" onClick={handleNext} className="intro-tour-next">
-            {isLastStep ? 'Start using Floodi' : 'Next'}
+            {isLastStep ? 'Start using FloodCast' : 'Next'}
             <IonIcon icon={chevronForwardOutline} slot="end" />
           </IonButton>
         </div>
