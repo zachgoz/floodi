@@ -15,6 +15,7 @@
  */
 
 import type { CapacitorConfig } from '@capacitor/cli';
+import { KeyboardResize } from '@capacitor/keyboard';
 
 /**
  * Capacitor Configuration
@@ -58,7 +59,14 @@ const config: CapacitorConfig = {
    * Vite outputs the production build to 'dist' by default. Capacitor copies
    * these files into the native app containers during the sync process.
    */
-  webDir: 'dist'
+  webDir: 'dist',
+
+  plugins: {
+    Keyboard: {
+      resize: KeyboardResize.Ionic,
+      resizeOnFullScreen: true,
+    },
+  },
 };
 
 export default config;

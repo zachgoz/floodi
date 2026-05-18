@@ -29,6 +29,9 @@ import WebcamFeedCard from 'src/components/dashboard/WebcamFeedCard';
 import NextFloodingEventsCard from 'src/components/dashboard/NextFloodingEventsCard';
 import { WEBCAMS } from 'src/constants/webcams';
 import { APIProvider } from '@vis.gl/react-google-maps';
+import { markPerf, measurePerf } from 'src/lib/perfLogger';
+import { IntroTourOverlay } from 'src/components/onboarding/IntroTourOverlay';
+import { useHistory } from 'react-router-dom';
 
 /**
  * Professional FloodCast Tab2 Component
@@ -39,7 +42,18 @@ import { APIProvider } from '@vis.gl/react-google-maps';
  * 
  * @returns JSX.Element Professional FloodCast interface
  */
-const Tab2: React.FC = () => {
+interface Tab2Props {
+  showIntroTour?: boolean;
+}
+
+const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
+  const history = useHistory();
+  const pageRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    markPerf('tab2.mounted');
+  }, []);
+
   // Settings modal state
   const [showSettings, setShowSettings] = useState(false);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
@@ -79,6 +93,16 @@ const Tab2: React.FC = () => {
     processedData,
     refresh,
   } = useChartData(config);
+
+  useEffect(() => {
+    markPerf('tab2.dataState', {
+      loading,
+      hasError: !!error,
+      hasProcessedData: !!processedData,
+      observedPoints: processedData?.observedPoints.length ?? 0,
+      adjustedPoints: processedData?.adjustedPoints.length ?? 0,
+    });
+  }, [loading, error, processedData]);
 
   // Modularized atmospheric and simulation state
   const {
@@ -241,10 +265,10 @@ const Tab2: React.FC = () => {
   // Road elevation GeoJSON — fetched from /public/data/
   const [roadData, setRoadData] = useState<GeoJSON.FeatureCollection<GeoJSON.LineString, RoadProperties> | undefined>(undefined);
   useEffect(() => {
-    fetch('/data/carolinaBeachRoads.geojson?v=' + new Date().getTime())
+    measurePerf('tab2.fetchRoadGeojson', () => fetch('/data/carolinaBeachRoads.geojson?v=' + new Date().getTime())
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setRoadData(data); })
-      .catch(() => { /* file not yet generated — map shows notice */ });
+      .catch(() => { /* file not yet generated — map shows notice */ }));
   }, []);
 
   // Approximate flooding time calculation
@@ -312,7 +336,12 @@ const Tab2: React.FC = () => {
   }, [processedData, activeAtmo.targetTime, config.thresholds]);
 
   return (
-    <IonPage className="floodcast-page">
+    <IonPage
+      ref={(node) => {
+        pageRef.current = node as unknown as HTMLElement | null;
+      }}
+      className="floodcast-page"
+    >
       <IonHeader>
         <IonToolbar>
           <IonTitle>FloodCast</IonTitle>
@@ -320,6 +349,7 @@ const Tab2: React.FC = () => {
             <IonButton
               aria-label="Open settings"
               onClick={() => setShowSettings(true)}
+              data-tour-id="settings"
             >
               <IonIcon icon={settingsOutline} />
             </IonButton>
@@ -342,7 +372,7 @@ const Tab2: React.FC = () => {
             <div className="dashboard-grid">
               {(processedData || loading) && (
                 <div className="dashboard-sidebar">
-                  <div className="dashboard-next-events">
+                  <div className="dashboard-next-events" data-tour-id="events">
                     <NextFloodingEventsCard
                       adjustedPoints={processedData?.adjustedPoints || []}
                       predictedPoints={processedData?.predictedPoints || []}
@@ -355,7 +385,7 @@ const Tab2: React.FC = () => {
                       loading={loading}
                     />
                   </div>
-                  <div className="dashboard-webcam-card">
+                  <div className="dashboard-webcam-card" data-tour-id="webcam">
                     <WebcamFeedCard
                       cameraId={selectedCameraId}
                       locationName={WEBCAMS.find(c => c.id === selectedCameraId)?.name || ''}
@@ -414,32 +444,34 @@ const Tab2: React.FC = () => {
                   </div>
                 ) : (processedData || loading) ? (
                   <>
-                    <div className="dashboard-hydrograph-card">
+                    <div className="dashboard-hydrograph-card" data-tour-id="hydrograph">
                       <HydrographChart
                         locationName="Carolina Beach Tidal Flooding"
                         sentinel={
-                          <AtmosphericOverlay
-                            precipitationAccumulation={activeAtmo.precip ?? 0}
-                            windSpeed={activeAtmo.wind?.speed ?? 0}
-                            windDirection={activeAtmo.wind?.dir ?? 0}
-                            observedWaterLevel={activeAtmo.wl ?? 0}
-                            isLive={activeAtmo.isLive}
-                            source={activeAtmo.source}
-                            fullSource={activeAtmo.fullSource}
-                            sourceId={activeAtmo.sourceId}
-                            surge={activeAtmo.surge}
-                            prediction={activeAtmo.prediction}
-                            statusLabel={activeAtmo.statusLabel}
-                            targetTime={activeAtmo.targetTime ?? undefined}
-                            thresholds={config.thresholds}
-                            maxRoadFloodDepth={floodWindow?.maxRoadFloodDepth ?? Math.max(0, (activeAtmo.wl ?? 0) - (config.thresholds?.minor || 5.6))}
-                            maxWaterLevel={floodWindow?.maxWaterLevel}
-                            maxWaterLevelTime={floodWindow?.maxWaterLevelTime}
-                            floodStartTime={floodWindow?.startTime}
-                            floodEndTime={floodWindow?.endTime}
-                            floodDuration={floodWindow?.duration}
-                            loading={loading}
-                          />
+                          <div data-tour-id="live-readout">
+                            <AtmosphericOverlay
+                              precipitationAccumulation={activeAtmo.precip ?? 0}
+                              windSpeed={activeAtmo.wind?.speed ?? 0}
+                              windDirection={activeAtmo.wind?.dir ?? 0}
+                              observedWaterLevel={activeAtmo.wl ?? 0}
+                              isLive={activeAtmo.isLive}
+                              source={activeAtmo.source}
+                              fullSource={activeAtmo.fullSource}
+                              sourceId={activeAtmo.sourceId}
+                              surge={activeAtmo.surge}
+                              prediction={activeAtmo.prediction}
+                              statusLabel={activeAtmo.statusLabel}
+                              targetTime={activeAtmo.targetTime ?? undefined}
+                              thresholds={config.thresholds}
+                              maxRoadFloodDepth={floodWindow?.maxRoadFloodDepth ?? Math.max(0, (activeAtmo.wl ?? 0) - (config.thresholds?.minor || 5.6))}
+                              maxWaterLevel={floodWindow?.maxWaterLevel}
+                              maxWaterLevelTime={floodWindow?.maxWaterLevelTime}
+                              floodStartTime={floodWindow?.startTime}
+                              floodEndTime={floodWindow?.endTime}
+                              floodDuration={floodWindow?.duration}
+                              loading={loading}
+                            />
+                          </div>
                         }
                         isLive={activeAtmo.isLive}
                         time={activeAtmo.targetTime}
@@ -484,7 +516,7 @@ const Tab2: React.FC = () => {
                     </div>
 
                     {/* Google Maps inundation map — FIMAN-style road coloring */}
-                    <div className="dashboard-map-card">
+                    <div className="dashboard-map-card" data-tour-id="map">
                       <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}>
                         <InundationMap
                           waterLevelFt={simulationLevel}
@@ -499,7 +531,7 @@ const Tab2: React.FC = () => {
                       </APIProvider>
                     </div>
 
-                    <div className="dashboard-simulator-card">
+                    <div className="dashboard-simulator-card" data-tour-id="simulator">
                       <InundationSimulator
                         waterLevelFt={simulationLevel}
                         minLevelFt={0.0}
@@ -561,6 +593,13 @@ const Tab2: React.FC = () => {
           config={config}
           waterLevel={chartActionLevel}
         />
+
+        {showIntroTour && (
+          <IntroTourOverlay
+            targetRoot={pageRef}
+            onFinish={() => history.replace('/tab2')}
+          />
+        )}
       </IonContent>
     </IonPage>
   );

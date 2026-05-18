@@ -4,7 +4,6 @@ import {
   IonPage, 
   IonTitle, 
   IonToolbar, 
-  IonText, 
   IonCard, 
   IonCardHeader, 
   IonCardTitle, 
@@ -19,11 +18,14 @@ import {
   pulseOutline, 
   linkOutline,
   informationCircleOutline,
-  cameraOutline
+  cameraOutline,
+  playCircleOutline
 } from 'ionicons/icons';
 
 import { AppLogo } from 'src/components/common/AppLogo';
 import React from 'react';
+import { useHistory } from 'react-router-dom';
+import { INTRO_STORAGE_KEY } from 'src/components/onboarding/IntroTourOverlay';
 import './Tab3.css';
 
 /**
@@ -33,6 +35,18 @@ import './Tab3.css';
  * data sources, and scientific methodology.
  */
 const Tab3: React.FC = () => {
+  const history = useHistory();
+
+  const handleReplayIntro = () => {
+    try {
+      localStorage.removeItem(INTRO_STORAGE_KEY);
+    } catch {
+      // Intro is still reachable if storage is unavailable.
+    }
+
+    history.push('/intro');
+  };
+
   return (
     <IonPage>
       <IonHeader className="ion-no-border">
@@ -50,6 +64,15 @@ const Tab3: React.FC = () => {
             <p className="hero-subtitle">
               Bridging the gap between regional tide tables and local reality in Carolina Beach.
             </p>
+            <IonButton
+              fill="outline"
+              shape="round"
+              className="replay-intro-button"
+              onClick={handleReplayIntro}
+            >
+              <IonIcon icon={playCircleOutline} slot="start" />
+              Replay Intro
+            </IonButton>
           </div>
 
           {/* Mission Section */}

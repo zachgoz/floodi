@@ -22,6 +22,7 @@ import type {
   ProfileUpdateData,
 } from 'src/types/auth';
 import { formatFirebaseAuthError } from 'src/utils/auth';
+import { markPerf, measurePerf } from 'src/lib/perfLogger';
 
 export interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
@@ -67,38 +68,44 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     let unsub: (() => void) | undefined;
     let mounted = true;
     try {
+      markPerf('auth.listener.register');
       unsub = onAuthStateChanged(auth, async (u) => {
         if (!mounted) return;
-        setUser(u);
-        if (u) {
-          try {
-            // Ensure user profile exists for all authenticated users
-            const profile = await ensureUserProfile(u.uid, {
-              email: u.email ?? null,
-              displayName: u.displayName ?? null,
-              photoURL: u.photoURL ?? null,
-            }, { isAnonymous: !!u.isAnonymous });
-            
-            // Touch lastLogin
-            await touchLastLogin(u.uid).catch(() => undefined);
-            
-            setUserProfile(profile);
-            const perms = await fetchPermissions(u.uid);
-            setUserPermissions(perms);
-          } catch (err) {
-            // Non-fatal; keep auth but surface error
-            setError({ code: 'profile/load-failed', message: (err as { message?: string } | null)?.message || 'Failed to load profile' });
+        await measurePerf('auth.onAuthStateChanged', async () => {
+          setUser(u);
+          if (u) {
+            try {
+              // Ensure user profile exists for all authenticated users
+              const profile = await measurePerf('auth.ensureUserProfile', () => ensureUserProfile(u.uid, {
+                email: u.email ?? null,
+                displayName: u.displayName ?? null,
+                photoURL: u.photoURL ?? null,
+              }, { isAnonymous: !!u.isAnonymous }), { uid: u.uid, isAnonymous: !!u.isAnonymous });
+
+              // Touch lastLogin
+              await measurePerf('auth.touchLastLogin', () => touchLastLogin(u.uid).catch(() => undefined), { uid: u.uid });
+
+              setUserProfile(profile);
+              const perms = await measurePerf('auth.fetchPermissions', () => fetchPermissions(u.uid), { uid: u.uid });
+              setUserPermissions(perms);
+            } catch (err) {
+              // Non-fatal; keep auth but surface error
+              setError({ code: 'profile/load-failed', message: (err as { message?: string } | null)?.message || 'Failed to load profile' });
+            }
+          } else {
+            markPerf('auth.noCurrentUser');
+            setUserProfile(null);
+            setUserPermissions(null);
           }
-        } else {
-          setUserProfile(null);
-          setUserPermissions(null);
-        }
-        setLoading(false);
+          setLoading(false);
+          markPerf('auth.loadingComplete', { hasUser: !!u });
+        }, { hasUser: !!u, isAnonymous: !!u?.isAnonymous });
       });
     } catch (e: unknown) {
       if (!mounted) return;
       setError({ code: 'auth/config-error', message: (e as { message?: string } | null)?.message || 'Failed to initialize auth.' });
       setLoading(false);
+      markPerf('auth.configError');
     }
     return () => {
       mounted = false;

@@ -44,6 +44,6 @@ describe('ChartCommentModal', () => {
   it('renders with selected time range', () => {
     const range = { startTime: new Date().toISOString(), endTime: new Date(Date.now()+60000).toISOString() };
     render(<ChartCommentModal isOpen={true} onDismiss={() => {}} range={range as any} config={config} />);
-    expect(screen.getAllByText(/Drop Pin/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Comment/i).length).toBeGreaterThanOrEqual(1);
   });
 });
