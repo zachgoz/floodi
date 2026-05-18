@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { buildAdjustedFuture, fetchPredictions as fetchNoaaPredictions } from 'src/lib/noaa';
-import { 
-  fetchUnifiedObservations, 
-  fetchUnifiedPredictions, 
-  fetchFloodEvents, 
-  extractWeatherData 
+import {
+  fetchUnifiedObservations,
+  fetchUnifiedPredictions,
+  fetchFloodEvents,
+  extractWeatherData
 } from 'src/lib/dataService';
 import type { ChartData, DataState, Point, ThresholdCrossing, AppConfiguration, WindPoint, PrecipPoint } from '../types';
 import { LOCATIONS } from 'src/constants/locations';
+import { markPerf, measurePerf, measurePerfSync } from 'src/lib/perfLogger';
 
 /**
  * Module-level cache to persist data across hook remounts and prevent redundant network requests.
@@ -15,6 +16,17 @@ import { LOCATIONS } from 'src/constants/locations';
  */
 const dataCache: Record<string, { timestamp: number; data: any }> = {};
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const BUFFER_DAYS = 14;
+const REFETCH_THRESHOLD_DAYS = 3;
+const CACHE_BUCKET_MS = 300000;
+
+const dataCacheKey = (
+  stationId: string,
+  start: Date,
+  end: Date,
+  offsetMode: AppConfiguration['offset']['mode'],
+  offsetValue: string
+) => `${stationId}-${Math.floor(start.getTime() / CACHE_BUCKET_MS) * CACHE_BUCKET_MS}-${Math.floor(end.getTime() / CACHE_BUCKET_MS) * CACHE_BUCKET_MS}-${offsetMode}-${offsetValue}`;
 
 /**
  * Convert NOAA series data to Point array format
@@ -44,7 +56,7 @@ export function useChartData(config: AppConfiguration) {
   });
 
 
-  const { locationId, timeRange, offset: configOffset } = config;
+  const { locationId, timeRange } = config;
   const location = LOCATIONS[locationId] || LOCATIONS['carolina-beach'];
   const stationId = location.noaaStationId;
 
@@ -79,11 +91,20 @@ export function useChartData(config: AppConfiguration) {
 
     // Buffer range: +/- 14 days to allow smooth scrolling.
     // We only refetch if we move outside this 28-day window or if we get close to the edges.
-    const BUFFER_DAYS = 14;
-    const REFETCH_THRESHOLD_DAYS = 3;
-
     const fStart = new Date(start.getTime() - BUFFER_DAYS * 24 * 3600 * 1000);
     const fEnd = new Date(end.getTime() + BUFFER_DAYS * 24 * 3600 * 1000);
+    const cacheKey = dataCacheKey(stationId, fStart, fEnd, configOffset.mode, configOffset.value);
+    const cached = dataCache[cacheKey];
+
+    if (!force && cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+      markPerf('chartData.moduleCache.hit', {
+        stationId,
+        locationId,
+        start: start.toISOString(),
+        end: end.toISOString(),
+      });
+      return { data: cached.data, fromCache: true };
+    }
 
     // 1. Check if we already have this range covered in our buffer
     if (!force && fetchRangeRef.current && fetchRangeRef.current.stationId === stationId) {
@@ -92,28 +113,43 @@ export function useChartData(config: AppConfiguration) {
       const endEdgeDiff = (buffered.end.getTime() - end.getTime()) / (24 * 3600 * 1000);
 
       // If we are within the buffer and not too close to the edges, skip fetch
-      if (start >= buffered.start && end <= buffered.end && 
-          startEdgeDiff > REFETCH_THRESHOLD_DAYS && 
+      if (start >= buffered.start && end <= buffered.end &&
+          startEdgeDiff > REFETCH_THRESHOLD_DAYS &&
           endEdgeDiff > REFETCH_THRESHOLD_DAYS) {
+        markPerf('chartData.rangeCache.hit', {
+          stationId,
+          locationId,
+          start: start.toISOString(),
+          end: end.toISOString(),
+        });
         return { data: dataState.data, fromCache: true };
       }
     }
 
     try {
-      const lookahead = timeRange.mode === 'relative' ? (timeRange.lookaheadH + 120) : 
+      const lookahead = timeRange.mode === 'relative' ? (timeRange.lookaheadH + 120) :
         Math.max(1, Math.ceil((fEnd.getTime() - now.getTime()) / 3600_000));
 
       const warnings: string[] = [];
+      const fetchMetadata = {
+        stationId,
+        locationId,
+        force,
+        requestedStart: start.toISOString(),
+        requestedEnd: end.toISOString(),
+        fetchStart: fStart.toISOString(),
+        fetchEnd: fEnd.toISOString(),
+      };
 
       // 2. Fetch base data: Unified functions handle Firestore + Live fallback
-      const [unifiedObs, unifiedPred, floodEvents] = await Promise.all([
+      const [unifiedObs, unifiedPred, floodEvents] = await measurePerf('chartData.fetchUnifiedBundle', () => Promise.all([
         fetchUnifiedObservations(locationId, fStart, fEnd),
         fetchUnifiedPredictions(locationId, fStart, fEnd),
         fetchFloodEvents(locationId, 50).catch(err => {
           console.warn('Firestore fetchFloodEvents failed:', err);
           return [];
         }),
-      ]);
+      ]), fetchMetadata);
 
       // Process weather data using centralized logic
       const { wind: windData, precip: precipData } = extractWeatherData({
@@ -125,7 +161,7 @@ export function useChartData(config: AppConfiguration) {
       const fimanHasData = Object.keys(unifiedObs.fiman || {}).length > 0;
       const noaaHasData = Object.keys(unifiedObs.noaa || {}).length > 0;
 
-      const effectiveSource: 'fiman' | 'noaa' = 
+      const effectiveSource: 'fiman' | 'noaa' =
         (preferredSource === 'fiman' && fimanHasData) ? 'fiman' :
         (preferredSource === 'noaa' && noaaHasData) ? 'noaa' :
         fimanHasData ? 'fiman' : 'noaa';
@@ -139,20 +175,20 @@ export function useChartData(config: AppConfiguration) {
 
       const predictions = { ...unifiedPred.data };
       const lastDbPredT = Math.max(...Object.keys(predictions).map(t => new Date(t).getTime()), 0);
-      
+
       // Secondary gap fill for predictions if range exceeds what's in DB
       if (fEnd.getTime() > lastDbPredT) {
-        const livePred = await fetchNoaaPredictions({
+        const livePred = await measurePerf('chartData.fetchNoaaPredictionGap', () => fetchNoaaPredictions({
           station: stationId,
           start: new Date(Math.max(fStart.getTime(), lastDbPredT)),
           end: fEnd,
           interval: 6,
-        }).catch(() => ({}));
+        }).catch(() => ({})), fetchMetadata);
         Object.assign(predictions, livePred);
       }
 
       // 3. Calculate adjusted forecast
-      const adjustedResult = await buildAdjustedFuture({
+      const adjustedResult = await measurePerf('chartData.buildAdjustedFuture', () => buildAdjustedFuture({
         station: stationId,
         now,
         lookbackHours: 6,
@@ -166,7 +202,7 @@ export function useChartData(config: AppConfiguration) {
         console.warn('buildAdjustedFuture failed:', err);
         warnings.push('Surge forecast calculation failed');
         return { adjusted: {}, offset: 0, timeOffsetMins: 0, source: 'noaa', n: 0 };
-      });
+      }), fetchMetadata);
 
       // 4. Success - Update range ref and cache
       fetchRangeRef.current = { start: fStart, end: fEnd, stationId: stationId };
@@ -187,11 +223,22 @@ export function useChartData(config: AppConfiguration) {
         imagery: observedData.imagery as any,
       };
 
-    const cacheKey = `${stationId}-${Math.floor(fStart.getTime() / 300000) * 300000}-${Math.floor(fEnd.getTime() / 300000) * 300000}-${configOffset.mode}-${configOffset.value}`;
       dataCache[cacheKey] = {
         timestamp: Date.now(),
         data: result
       };
+
+      markPerf('chartData.fetchComplete', {
+        ...fetchMetadata,
+        observedPoints: Object.keys(result.observed).length,
+        predictedPoints: Object.keys(result.predicted).length,
+        adjustedPoints: Object.keys(result.adjusted).length,
+        windPoints: Object.keys(result.wind ?? {}).length,
+        precipPoints: Object.keys(result.precip ?? {}).length,
+        floodEvents: result.floodEvents?.length ?? 0,
+        warnings: result.warnings,
+        source: result.source,
+      });
 
       return { data: result, fromCache: false };
     } catch (error) {
@@ -208,12 +255,19 @@ export function useChartData(config: AppConfiguration) {
     let active = true;
 
     const { start, end } = timeDomain;
-    const { offset: configOffset } = config;
-    const fetchBuffer = 5 * 24 * 3600_000;
+    const fetchBuffer = BUFFER_DAYS * 24 * 3600_000;
     const fStart = new Date(start.getTime() - fetchBuffer);
     const fEnd = new Date(end.getTime() + fetchBuffer);
-    const cacheKey = `${stationId}-${Math.floor(fStart.getTime() / 300000) * 300000}-${Math.floor(fEnd.getTime() / 300000) * 300000}-${configOffset.mode}-${configOffset.value}`;
+    const cacheKey = dataCacheKey(stationId, fStart, fEnd, config.offset.mode, config.offset.value);
     const cached = dataCache[cacheKey];
+
+    markPerf('chartData.effect.start', {
+      stationId,
+      locationId,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      hasFreshCache: !!cached && (Date.now() - cached.timestamp < CACHE_TTL),
+    });
 
     if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
       setDataState({
@@ -244,28 +298,29 @@ export function useChartData(config: AppConfiguration) {
       });
 
     return () => { active = false; };
-  }, [performFetch, timeDomain, stationId, config.offset.mode, config.offset.value]);
+  }, [performFetch, timeDomain, stationId, locationId, config.offset.mode, config.offset.value]);
 
   const processedData = useMemo(() => {
-    const { data } = dataState;
-    const { start, end, now } = timeDomain;
+    const data = dataState.data;
+    const { now } = timeDomain;
 
-    // Note: We deliberately DO NOT filter points to start/end here anymore,
-    // so that the ChartViewer can scroll into the buffered data (+/- 5 days).
-    const shiftMs = data.timeOffsetMins ? data.timeOffsetMins * 60000 : 0;
-    
-    // Observed points are our ground truth at clock time.
-    // We merge the primary source (usually FiMAN local sensors) with the 
-    // alternate source (official NOAA station data) to bridge any gaps up to 'now'.
-    const primaryPoints = seriesToPoints(data.observed, data.source);
+    return measurePerfSync('chartData.processData', () => {
+      // Note: We deliberately DO NOT filter points to start/end here anymore,
+      // so that the ChartViewer can scroll into the buffered data (+/- 5 days).
+      const shiftMs = data.timeOffsetMins ? data.timeOffsetMins * 60000 : 0;
+
+      // Observed points are our ground truth at clock time.
+      // We merge the primary source (usually FiMAN local sensors) with the
+      // alternate source (official NOAA station data) to bridge any gaps up to 'now'.
+      const primaryPoints = seriesToPoints(data.observed, data.source);
     const lastPrimary = primaryPoints.length > 0 ? primaryPoints[primaryPoints.length - 1] : null;
     const lastPrimaryT = lastPrimary?.t.getTime() || 0;
-    
-    // To prevent "non-linear" jumps at the handover point, we calculate the 
+
+    // To prevent "non-linear" jumps at the handover point, we calculate the
     // vertical difference between sources at the last common or nearest timestamp.
     let fallbackOffset = 0;
     const allAltPoints = seriesToPoints(data.alternate || {}, 'noaa');
-    
+
     if (lastPrimary && allAltPoints.length > 0) {
       // Find nearest alternate point to the last primary point to compute offset
       let minDt = Infinity;
@@ -306,7 +361,7 @@ export function useChartData(config: AppConfiguration) {
     // Calculate current 'Live Surge' for the forecast
     // We use the most recent observation vs the localized prediction for a seamless lineup
     const lastObs = observedPoints.length > 0 ? observedPoints[observedPoints.length - 1] : null;
-    const liveSurge = lastObs 
+    const liveSurge = lastObs
       ? lastObs.v - (predictedPoints.find(p => Math.abs(p.t.getTime() - lastObs.t.getTime()) < 360000)?.v ?? lastObs.v)
       : (data.offset ?? 0);
 
@@ -325,7 +380,7 @@ export function useChartData(config: AppConfiguration) {
       .filter(p => p.t.getTime() > lastObsT) // Strictly after
       .sort((a, b) => a.t.getTime() - b.t.getTime());
 
-    // Prepend the last observation point to the adjusted series to ensure 
+    // Prepend the last observation point to the adjusted series to ensure
     // the lines meet perfectly at the handover point with no gap or overlap.
     if (lastObs) {
       adjustedPoints.unshift({ ...lastObs, source: 'fiman' });
@@ -371,7 +426,7 @@ export function useChartData(config: AppConfiguration) {
       .map(([k, v]) => ({ t: new Date(k), value: v as number }))
       .sort((a, b) => a.t.getTime() - b.t.getTime());
 
-    return {
+      return {
       observedPoints,
       predictedPoints,
       adjustedPoints,
@@ -389,7 +444,7 @@ export function useChartData(config: AppConfiguration) {
       thresholdCrossing: ((): ThresholdCrossing | null => {
         // Use the phase-aligned adjusted points if available, otherwise fallback to phase-aligned predicted
         const seriesForCrossing = adjustedPoints.length > 0 ? adjustedPoints : predictedPoints;
-        
+
         // We need to find the next point in the series that exceeds the threshold
         const nextCrossing = seriesForCrossing.find(p => p.t.getTime() > now.getTime() && p.v >= config.thresholds.minor);
         if (!nextCrossing) return null;
@@ -400,7 +455,13 @@ export function useChartData(config: AppConfiguration) {
           threshold: config.thresholds.minor
         };
       })()
-    };
+      };
+    }, {
+      observedKeys: Object.keys(data.observed).length,
+      predictedKeys: Object.keys(data.predicted).length,
+      windKeys: Object.keys(data.wind ?? {}).length,
+      precipKeys: Object.keys(data.precip ?? {}).length,
+    });
   }, [dataState.data, timeDomain, config.offset.mode, config.offset.value, config.thresholds.minor]);
 
   return {

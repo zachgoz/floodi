@@ -16,6 +16,7 @@ import { useUserPermissions } from 'src/hooks/useUserPermissions';
 import { UserRole } from 'src/types/user';
 import { validateCommentContent, validateCommentMetadata, validateCommentPermissions } from 'src/utils/commentValidation';
 import type { AppConfiguration } from 'src/components/Tab2/types';
+import { markPerf, measurePerf } from 'src/lib/perfLogger';
 
 export interface UseCommentsOptions {
   locationId?: string;
@@ -45,19 +46,27 @@ export const useComments = (opts: UseCommentsOptions = {}) => {
     setError(null);
     try {
       let items: Comment[] = [];
-      if (opts.locationId && opts.timeRange) {
-        items = await getCommentsByTimeRange(opts.locationId, opts.timeRange, { includeDeleted, pageSize });
-      } else if (opts.locationId) {
-        const res = await getCommentsByLocation(opts.locationId, { includeDeleted, pageSize });
-        items = res.items;
-        setCursor(res.nextCursor);
-      } else if (opts.stationId) {
-        const res = await getCommentsByStation(opts.stationId, { includeDeleted, pageSize });
-        items = res.items;
-        setCursor(res.nextCursor);
-      } else if (opts.authorUid) {
-        items = await getCommentsByAuthor(opts.authorUid, { includeDeleted, pageSize });
-      }
+      await measurePerf('comments.refresh', async () => {
+        if (opts.locationId && opts.timeRange) {
+          items = await getCommentsByTimeRange(opts.locationId, opts.timeRange, { includeDeleted, pageSize });
+        } else if (opts.locationId) {
+          const res = await getCommentsByLocation(opts.locationId, { includeDeleted, pageSize });
+          items = res.items;
+          setCursor(res.nextCursor);
+        } else if (opts.stationId) {
+          const res = await getCommentsByStation(opts.stationId, { includeDeleted, pageSize });
+          items = res.items;
+          setCursor(res.nextCursor);
+        } else if (opts.authorUid) {
+          items = await getCommentsByAuthor(opts.authorUid, { includeDeleted, pageSize });
+        }
+      }, {
+        locationId: opts.locationId,
+        stationId: opts.stationId,
+        authorUid: opts.authorUid,
+        hasTimeRange: !!opts.timeRange,
+        pageSize,
+      });
       setComments(items);
     } catch (e: unknown) {
       setError((e as { message?: string } | null)?.message || 'Failed to load comments');
@@ -76,18 +85,31 @@ export const useComments = (opts: UseCommentsOptions = {}) => {
     if (!opts.realtime) return;
     if (!opts.locationId && !opts.stationId && !opts.authorUid) return;
     if (unsubRef.current) unsubRef.current();
+    markPerf('comments.realtime.subscribe', {
+      locationId: opts.locationId,
+      stationId: opts.stationId,
+      authorUid: opts.authorUid,
+      hasTimeRange: !!opts.timeRange,
+      pageSize,
+    });
     
     if (opts.locationId && opts.timeRange) {
       unsubRef.current = subscribeToCommentsByTimeRange(
         opts.locationId,
         opts.timeRange,
         { includeDeleted, pageSize },
-        (items) => setComments(items)
+        (items) => {
+          markPerf('comments.realtime.snapshot', { count: items.length, locationId: opts.locationId });
+          setComments(items);
+        }
       );
     } else {
       unsubRef.current = subscribeToComments(
         { locationId: opts.locationId, stationId: opts.stationId, authorUid: opts.authorUid, includeDeleted, pageSize },
-        (items) => setComments(items)
+        (items) => {
+          markPerf('comments.realtime.snapshot', { count: items.length, locationId: opts.locationId, stationId: opts.stationId });
+          setComments(items);
+        }
       );
     }
     return () => {

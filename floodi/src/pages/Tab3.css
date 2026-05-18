@@ -40,6 +40,14 @@
   margin: 0;
 }
 
+.replay-intro-button {
+  margin-top: 22px;
+  --border-color: rgba(var(--ion-color-primary-rgb), 0.35);
+  --color: var(--ion-color-primary);
+  font-weight: 700;
+  text-transform: none;
+}
+
 /* Cards */
 .glass-card {
   margin: 0 0 32px 0;

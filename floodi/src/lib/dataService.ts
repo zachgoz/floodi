@@ -12,6 +12,7 @@ import { ref, getDownloadURL } from 'firebase/storage';
 import { fetchObservedWaterLevels, fetchPredictions as fetchNoaaPredictions } from 'src/lib/noaa';
 import { LOCATIONS } from 'src/constants/locations';
 import type { ObservationBucket, PredictionBucket, WaterLevelPeak, FloodEvent } from 'src/types/data';
+import { markPerf, measurePerf } from 'src/lib/perfLogger';
 
 /**
  * Resolves a URL that might be a storage:// path.
@@ -44,7 +45,11 @@ export async function prefetchMonths(locationId: string, months: string[], type:
       const collection = type === 'obs' ? 'observations' : 'predictions';
       bucketCache[cacheKey] = (async () => {
         try {
-          const snap = await getDoc(doc(db, `locations/${locationId}/${collection}/${month}`));
+          const snap = await measurePerf('firestore.bucket.getDoc', () => getDoc(doc(db, `locations/${locationId}/${collection}/${month}`)), {
+            locationId,
+            collection,
+            month,
+          });
           return snap.exists() ? snap.data() : null;
         } catch (err) {
           console.warn(`Failed to prefetch ${type} for ${month}:`, err);
@@ -59,6 +64,12 @@ export async function prefetchMonths(locationId: string, months: string[], type:
 
 export async function fetchObservations(locationId: string, start: Date, end: Date) {
   const requestedMonths = getMonthsInRange(start, end);
+  const metadata = {
+    locationId,
+    start: start.toISOString(),
+    end: end.toISOString(),
+    requestedMonths,
+  };
   
   // Proactive pre-fetch: Add previous and next month to the fetch list for seamless scrolling
   const prevMonth = new Date(start);
@@ -72,7 +83,10 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
     nextMonth.toISOString().substring(0, 7)
   ])];
 
-  const results = await prefetchMonths(locationId, allMonths, 'obs');
+  const results = await measurePerf('dataService.fetchObservations.prefetchMonths', () => prefetchMonths(locationId, allMonths, 'obs'), {
+    ...metadata,
+    allMonths,
+  });
 
   const merged: { 
     noaa: Record<string, number>; 
@@ -102,6 +116,14 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
     if ((bucket as any).weather) Object.assign(merged.weather, (bucket as any).weather);
   }
 
+  markPerf('dataService.fetchObservations.complete', {
+    ...metadata,
+    noaaPoints: Object.keys(merged.noaa).length,
+    fimanPoints: Object.keys(merged.fiman).length,
+    imageryCameras: Object.keys(merged.imagery).length,
+    weatherPoints: Object.keys(merged.weather).length,
+  });
+
   return merged;
 }
 
@@ -110,7 +132,12 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
  * Fetches from Firestore but falls back to Live NOAA API if data is stale.
  */
 export async function fetchUnifiedObservations(locationId: string, start: Date, end: Date) {
-  const dbData = await fetchObservations(locationId, start, end).catch(err => {
+  const metadata = {
+    locationId,
+    start: start.toISOString(),
+    end: end.toISOString(),
+  };
+  const dbData = await measurePerf('dataService.fetchUnifiedObservations.db', () => fetchObservations(locationId, start, end)).catch(err => {
     console.warn('[dataService] fetchObservations failed:', err);
     return { noaa: {}, fiman: {}, imagery: {}, weather: {} };
   });
@@ -130,14 +157,19 @@ export async function fetchUnifiedObservations(locationId: string, start: Date, 
   if (now.getTime() - lastPrimaryObsT > GAP_FILL_THRESHOLD_MS && end >= now) {
     const gapStart = new Date(Math.max(start.getTime(), lastPrimaryObsT > 0 ? lastPrimaryObsT - 60_000 : start.getTime()));
     console.log(`[dataService] DB data stale (last point: ${lastPrimaryObsT ? new Date(lastPrimaryObsT).toISOString() : 'none'}). Gap-filling with NOAA...`);
+    markPerf('dataService.fetchUnifiedObservations.gapFillNeeded', {
+      ...metadata,
+      gapStart: gapStart.toISOString(),
+      lastPrimaryObservation: lastPrimaryObsT ? new Date(lastPrimaryObsT).toISOString() : null,
+    });
 
-    const noaaLive = await fetchObservedWaterLevels({
+    const noaaLive = await measurePerf('dataService.fetchUnifiedObservations.noaaGapFill', () => fetchObservedWaterLevels({
       station: stationId,
       start: gapStart,
       end: now,
       interval: 6,
       provider: 'noaa',
-    }).catch(() => null);
+    }).catch(() => null), metadata);
 
     if (noaaLive?.data) {
       // Merge live data into the NOAA series
@@ -146,6 +178,14 @@ export async function fetchUnifiedObservations(locationId: string, start: Date, 
     }
   }
 
+  markPerf('dataService.fetchUnifiedObservations.complete', {
+    ...metadata,
+    noaaPoints: Object.keys(dbData.noaa).length,
+    fimanPoints: Object.keys(dbData.fiman).length,
+    imageryCameras: Object.keys(dbData.imagery).length,
+    weatherPoints: Object.keys(dbData.weather).length,
+  });
+
   return dbData;
 }
 
@@ -153,7 +193,11 @@ export async function fetchUnifiedObservations(locationId: string, start: Date, 
  * Unified predictions fetcher
  */
 export async function fetchUnifiedPredictions(locationId: string, start: Date, end: Date) {
-  const dbData = await fetchPredictions(locationId, start, end).catch(err => {
+  const dbData = await measurePerf('dataService.fetchUnifiedPredictions.db', () => fetchPredictions(locationId, start, end), {
+    locationId,
+    start: start.toISOString(),
+    end: end.toISOString(),
+  }).catch(err => {
     console.warn('[dataService] fetchPredictions failed:', err);
     return { data: {}, weather: {} };
   });
@@ -186,6 +230,12 @@ export function extractWeatherData(mergedData: { weather: Record<string, any> })
 
 export async function fetchPredictions(locationId: string, start: Date, end: Date) {
   const requestedMonths = getMonthsInRange(start, end);
+  const metadata = {
+    locationId,
+    start: start.toISOString(),
+    end: end.toISOString(),
+    requestedMonths,
+  };
   
   // Pre-fetch: Add next month for future planning
   const nextMonth = new Date(end);
@@ -196,7 +246,10 @@ export async function fetchPredictions(locationId: string, start: Date, end: Dat
     nextMonth.toISOString().substring(0, 7)
   ])];
 
-  const results = await prefetchMonths(locationId, allMonths, 'pred');
+  const results = await measurePerf('dataService.fetchPredictions.prefetchMonths', () => prefetchMonths(locationId, allMonths, 'pred'), {
+    ...metadata,
+    allMonths,
+  });
 
   const merged: { data: Record<string, number>; weather: Record<string, any> } = {
     data: {},
@@ -214,6 +267,12 @@ export async function fetchPredictions(locationId: string, start: Date, end: Dat
     // @ts-ignore
     if (bucket.weather) Object.assign(merged.weather, bucket.weather);
   }
+
+  markPerf('dataService.fetchPredictions.complete', {
+    ...metadata,
+    predictionPoints: Object.keys(merged.data).length,
+    weatherPoints: Object.keys(merged.weather).length,
+  });
 
   return merged;
 }
@@ -237,7 +296,7 @@ export async function fetchFloodEvents(locationId: string, limitCount = 50) {
     limit(limitCount)
   );
 
-  const snap = await getDocs(q);
+  const snap = await measurePerf('firestore.floodEvents.getDocs', () => getDocs(q), { locationId, limitCount });
   return snap.docs.map(d => d.data() as FloodEvent);
 }
 

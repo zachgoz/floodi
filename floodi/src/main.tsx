@@ -18,6 +18,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { AuthProvider } from 'src/contexts/AuthContext';
+import { installPerfLogger, markPerf } from 'src/lib/perfLogger';
 
 /**
  * Initialize and mount the FloodCast React application
@@ -37,8 +38,13 @@ import { AuthProvider } from 'src/contexts/AuthContext';
 // Get the root DOM element where the app will be mounted
 const container = document.getElementById('root');
 
+installPerfLogger();
+markPerf('main.beforeCreateRoot');
+
 // Create React 18 root with concurrent features enabled
 const root = createRoot(container!);
+
+markPerf('main.beforeRender');
 
 // Render the application with StrictMode enabled for development benefits
 root.render(
@@ -48,3 +54,5 @@ root.render(
     </AuthProvider>
   </React.StrictMode>
 );
+
+markPerf('main.renderCalled');

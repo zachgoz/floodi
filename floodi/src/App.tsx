@@ -9,7 +9,7 @@
  * - Ionic framework initialization and theming
  */
 
-import { Redirect, Route } from 'react-router-dom';
+import { Redirect, Route, useLocation } from 'react-router-dom';
 import {
   IonApp,
   IonIcon,
@@ -21,7 +21,7 @@ import {
   setupIonicReact
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import { ellipse, informationCircleOutline, chatbubblesOutline } from 'ionicons/icons';
+import { ellipse, informationCircleOutline } from 'ionicons/icons';
 import Intro from './pages/Intro';
 import React from 'react';
 import Tab2 from './pages/Tab2';
@@ -31,6 +31,8 @@ import { PrivateRoute, AdminRoute } from 'src/components/routing';
 import { UserRoleManager } from 'src/components/admin';
 import { SimpleAdminBootstrap } from 'src/components/admin/SimpleAdminBootstrap';
 import { useAuth } from 'src/contexts/AuthContext';
+import { markPerf } from 'src/lib/perfLogger';
+import { INTRO_STORAGE_KEY } from 'src/components/onboarding/IntroTourOverlay';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -83,21 +85,26 @@ setupIonicReact();
  */
 const InitialRoute: React.FC = () => {
   const { loading } = useAuth();
+  React.useEffect(() => {
+    markPerf('route.initial.mounted');
+  }, []);
+
   // Check localStorage to determine if user has seen intro before
   const seen = (() => {
     try {
-      return localStorage.getItem('floodcast_intro_seen') === '1';
+      return localStorage.getItem(INTRO_STORAGE_KEY) === '1';
     } catch {
       // If localStorage is unavailable (privacy mode, etc.), skip intro
       // This ensures the app still works in restrictive environments
       return true;
     }
   })();
-  
+
   // Route based on intro and auth state
   if (!seen) return <Redirect to={'/intro'} />;
   // While auth state is being determined, show a minimal spinner
   if (loading) {
+    markPerf('route.initial.waitingForAuth');
     return (
       <div className="ion-padding ion-text-center">
         <span className="sr-only">Loading…</span>
@@ -105,6 +112,7 @@ const InitialRoute: React.FC = () => {
     );
   }
   // After intro, everyone goes to main tab regardless of authentication
+  markPerf('route.initial.redirectTab2');
   return <Redirect to={'/tab2'} />;
 };
 
@@ -137,53 +145,56 @@ const applyTheme = (mode: 'auto' | 'light' | 'dark') => {
   root.classList.toggle('ion-palette-light', !shouldDark);
 };
 
-const App: React.FC = () => (
-  <IonApp>
-    <IonReactRouter>
-      <IonTabs>
-        {/* Main content area with route-based page switching */}
-        <IonRouterOutlet>
-          {/* One-time intro screen route */}
-          <Route exact path="/intro">
-            <Intro />
-          </Route>
-          {/* Auth routes */}
-          <Route exact path="/login">
-            <Login />
-          </Route>
-          <Route exact path="/register">
-            <Register />
-          </Route>
-          <Route exact path="/reset-password">
-            <ResetPassword />
-          </Route>
-          {/* Primary FloodCast functionality - tide and flood data visualization */}
-          <Route exact path="/tab2">
-            <Tab2 />
-          </Route>
-          {/* App information and about page */}
-          <Route path="/tab3">
-            <Tab3 />
-          </Route>
-          {/* Profile route accessible to all; content adapts to auth state */}
-          <PrivateRoute exact path="/profile" requireAuth={false}>
-            <Profile />
-          </PrivateRoute>
-          {/* Admin user management route - admin only */}
-          <AdminRoute exact path="/admin/users" redirectTo="/profile">
-            <UserRoleManager />
-          </AdminRoute>
-          {/* Admin bootstrap route - for first-time admin setup */}
-          <PrivateRoute exact path="/admin/bootstrap" requireAuth={true}>
-            <SimpleAdminBootstrap />
-          </PrivateRoute>
-          {/* Root route with conditional intro/main app logic */}
-          <Route exact path="/">
-            <InitialRoute />
-          </Route>
-        </IonRouterOutlet>
-        
-        {/* Bottom tab navigation bar - persistent across main app pages */}
+const AppTabs: React.FC = () => {
+  const location = useLocation();
+  const showTabBar = location.pathname !== '/intro';
+
+  return (
+    <IonTabs>
+      {/* Main content area with route-based page switching */}
+      <IonRouterOutlet>
+        {/* One-time intro screen route */}
+        <Route exact path="/intro">
+          <Intro />
+        </Route>
+        {/* Auth routes */}
+        <Route exact path="/login">
+          <Login />
+        </Route>
+        <Route exact path="/register">
+          <Register />
+        </Route>
+        <Route exact path="/reset-password">
+          <ResetPassword />
+        </Route>
+        {/* Primary FloodCast functionality - tide and flood data visualization */}
+        <Route exact path="/tab2">
+          <Tab2 />
+        </Route>
+        {/* App information and about page */}
+        <Route path="/tab3">
+          <Tab3 />
+        </Route>
+        {/* Profile route accessible to all; content adapts to auth state */}
+        <PrivateRoute exact path="/profile" requireAuth={false}>
+          <Profile />
+        </PrivateRoute>
+        {/* Admin user management route - admin only */}
+        <AdminRoute exact path="/admin/users" redirectTo="/profile">
+          <UserRoleManager />
+        </AdminRoute>
+        {/* Admin bootstrap route - for first-time admin setup */}
+        <PrivateRoute exact path="/admin/bootstrap" requireAuth={true}>
+          <SimpleAdminBootstrap />
+        </PrivateRoute>
+        {/* Root route with conditional intro/main app logic */}
+        <Route exact path="/">
+          <InitialRoute />
+        </Route>
+      </IonRouterOutlet>
+
+      {showTabBar && (
+        /* Bottom tab navigation bar - persistent across main app pages */
         <IonTabBar slot="bottom">
           {/* Primary FloodCast tab - main functionality */}
           <IonTabButton tab="tab2" href="/tab2">
@@ -196,7 +207,15 @@ const App: React.FC = () => (
             <IonLabel>About</IonLabel>
           </IonTabButton>
         </IonTabBar>
-      </IonTabs>
+      )}
+    </IonTabs>
+  );
+};
+
+const App: React.FC = () => (
+  <IonApp>
+    <IonReactRouter>
+      <AppTabs />
     </IonReactRouter>
   </IonApp>
 );

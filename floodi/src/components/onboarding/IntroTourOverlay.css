@@ -1,0 +1,173 @@
+.intro-tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+.intro-tour-mask {
+  position: fixed;
+  z-index: 0;
+  background: rgba(6, 20, 31, 0.58);
+  pointer-events: auto;
+  transition: top 180ms ease, left 180ms ease, width 180ms ease, height 180ms ease;
+}
+
+.intro-tour-spotlight {
+  position: fixed;
+  z-index: 1;
+  border: 2px solid rgba(255, 255, 255, 0.94);
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 8px rgba(var(--ion-color-primary-rgb), 0.24),
+    0 18px 46px rgba(0, 0, 0, 0.22),
+    inset 0 0 0 1px rgba(var(--ion-color-primary-rgb), 0.32);
+  pointer-events: none;
+  transition: top 180ms ease, left 180ms ease, width 180ms ease, height 180ms ease;
+}
+
+.intro-tour-card {
+  position: fixed;
+  z-index: 2;
+  border-radius: 8px;
+  padding: 18px;
+  max-height: calc(100vh - 196px);
+  overflow: auto;
+  color: var(--ion-text-color, #111827);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 83, 118, 0.16);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.28);
+  pointer-events: auto;
+  transition: bottom 180ms ease, left 180ms ease;
+}
+
+.ion-palette-dark .intro-tour-card {
+  color: #eff6ff;
+  background: rgba(13, 32, 49, 0.96);
+  border-color: rgba(125, 211, 252, 0.18);
+}
+
+.intro-tour-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.intro-tour-step-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--ion-color-primary);
+  background: rgba(0, 180, 216, 0.14);
+}
+
+.intro-tour-step-icon ion-icon {
+  font-size: 1.7rem;
+}
+
+.intro-tour-close {
+  appearance: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: var(--ion-color-medium);
+  background: rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+}
+
+.ion-palette-dark .intro-tour-close {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.intro-tour-eyebrow {
+  margin: 14px 0 8px;
+  color: var(--ion-color-tertiary);
+  font-size: 0.74rem;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.intro-tour-card h2 {
+  margin: 0;
+  color: var(--dash-title-color, #122033);
+  font-size: 1.45rem;
+  line-height: 1.1;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.ion-palette-dark .intro-tour-card h2 {
+  color: #eff6ff;
+}
+
+.intro-tour-card p:not(.intro-tour-eyebrow) {
+  margin: 10px 0 0;
+  color: rgba(17, 24, 39, 0.72);
+  line-height: 1.45;
+}
+
+.ion-palette-dark .intro-tour-card p:not(.intro-tour-eyebrow) {
+  color: rgba(239, 246, 255, 0.76);
+}
+
+.intro-tour-step-list {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.intro-tour-dot {
+  appearance: none;
+  width: 9px;
+  height: 9px;
+  border: 0;
+  border-radius: 99px;
+  padding: 0;
+  background: rgba(0, 119, 182, 0.25);
+  cursor: pointer;
+}
+
+.intro-tour-dot.active {
+  width: 28px;
+  background: var(--ion-color-tertiary);
+}
+
+.intro-tour-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.intro-tour-back,
+.intro-tour-next {
+  --border-radius: 999px;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.intro-tour-next {
+  --background: linear-gradient(135deg, #0077b6, #00a6c8);
+  --background-activated: linear-gradient(135deg, #0069a0, #0096b7);
+}
+
+@media (max-width: 680px) {
+  .intro-tour-card {
+    left: 14px !important;
+    right: 14px;
+    width: auto !important;
+    max-height: 356px;
+    overflow: auto;
+  }
+
+  .intro-tour-spotlight {
+    border-radius: 8px;
+  }
+}

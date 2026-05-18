@@ -15,7 +15,7 @@ import {
 } from '@ionic/react';
 import { Link, useHistory, useLocation } from 'react-router-dom';
 import { useAuth } from 'src/contexts/AuthContext';
-import { isValidEmail, isValidPassword, isValidDisplayName, isValidAvatarUrl, getRedirectFromSearch, formatFirebaseAuthError } from 'src/utils/auth';
+import { isValidEmail, isValidPassword, isValidDisplayName, getRedirectFromSearch, formatFirebaseAuthError } from 'src/utils/auth';
 
 const Register: React.FC = () => {
   const { register, convertAnonymousToRegistered, signInAnonymously, user, isAnonymous } = useAuth();
@@ -25,7 +25,6 @@ const Register: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [photoURL, setPhotoURL] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -44,13 +43,12 @@ const Register: React.FC = () => {
     if (!isValidPassword(password)) return setErrorMsg('Password must be greater than 6 characters.');
     if (password !== confirm) return setErrorMsg('Passwords do not match.');
     if (displayName && !isValidDisplayName(displayName)) return setErrorMsg('Display name must be 2–50 characters.');
-    if (photoURL && !isValidAvatarUrl(photoURL)) return setErrorMsg('Please enter a valid image URL.');
     try {
       setLoading(true);
       if (isAnonymous) {
-        await convertAnonymousToRegistered(email, password, displayName || undefined, photoURL || undefined);
+        await convertAnonymousToRegistered(email, password, displayName || undefined);
       } else {
-        await register(email, password, displayName || undefined, photoURL || undefined);
+        await register(email, password, displayName || undefined);
       }
       setSuccessMsg('Account created! Redirecting...');
       setTimeout(() => history.replace(redirectTo), 1000);
@@ -86,10 +84,6 @@ const Register: React.FC = () => {
             <IonItem>
               <IonLabel position="stacked">Display Name (optional)</IonLabel>
               <IonInput value={displayName} onIonChange={(e) => setDisplayName(e.detail.value || '')} />
-            </IonItem>
-            <IonItem>
-              <IonLabel position="stacked">Avatar URL (optional)</IonLabel>
-              <IonInput value={photoURL} onIonChange={(e) => setPhotoURL(e.detail.value || '')} />
             </IonItem>
           </IonList>
           <div className="ion-padding-top">

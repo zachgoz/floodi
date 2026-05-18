@@ -1,17 +1,8 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   IonButton,
-  IonButtons,
-  IonCard,
-  IonCardContent,
-  IonCardHeader,
-  IonCardTitle,
-  IonCol,
-  IonGrid,
-  IonItem,
   IonLabel,
   IonNote,
-  IonRow,
   IonSpinner,
   IonTextarea,
 } from '@ionic/react';
@@ -38,15 +29,16 @@ export interface CommentFormProps {
   loading?: boolean;
   onSubmit: (values: CommentFormValues) => Promise<void> | void;
   onCancel?: () => void;
+  onEditorFocus?: () => void;
 }
 
 export const CommentForm: React.FC<CommentFormProps> = ({
-  stationId,
   initialContent = '',
   initialRange,
   loading = false,
   onSubmit,
   onCancel,
+  onEditorFocus,
 }) => {
   const { user, isAnonymous, userProfile } = useAuth?.() ?? { user: undefined, isAnonymous: true, userProfile: null };
   const perms = useCommentPermissions();
@@ -57,14 +49,15 @@ export const CommentForm: React.FC<CommentFormProps> = ({
 
   const characterCount = content.length;
   const characterLimit = 2000;
+  const canCreateComments = perms?.canCreate() ?? false;
 
   const canSubmit = useMemo(() => {
     if (loading || submitting) return false;
-    if (!perms?.canCreate()) return false;
+    if (!canCreateComments) return false;
     if (!initialRange) return false;
     if (characterCount === 0 || characterCount > characterLimit) return false;
     return true;
-  }, [loading, submitting, perms?.canCreate, initialRange, characterCount]);
+  }, [loading, submitting, canCreateComments, initialRange, characterCount]);
 
   const validate = useCallback(() => {
     try {
@@ -94,28 +87,52 @@ export const CommentForm: React.FC<CommentFormProps> = ({
         threshold: undefined 
       });
       setContent('');
-    } catch (e: any) {
-      setError(e?.message || 'Failed to submit comment.');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to submit comment.');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleCreateAccount = () => {
+    onCancel?.();
+  };
+
+  if (!user || isAnonymous) {
+    return (
+      <div className="premium-form-container comment-auth-cta" aria-label="Create account to comment">
+        <div className="comment-auth-copy">
+          <IonNote color="warning">Sign in or create an account to comment on the chart.</IonNote>
+          <p>Create an account to add observations and keep track of your comments.</p>
+        </div>
+        <div className="form-actions">
+          {onCancel && (
+            <IonButton className="ghost-btn" fill="clear" onClick={onCancel}>
+              Cancel
+            </IonButton>
+          )}
+          <IonButton
+            className="gradient-btn"
+            onClick={handleCreateAccount}
+            routerLink="/register"
+            fill="solid"
+            aria-label="Create account"
+          >
+            Create Account
+          </IonButton>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="premium-form-container" aria-label="Create comment form">
-        {!perms?.canCreate() && (
+        {!canCreateComments && (
           <IonNote color="warning">
-            {!user || isAnonymous
-              ? "Please sign in to drop a pin."
-              : userProfile
-                ? `Your account role (${userProfile.role}) does not allow dropping pins. Contact an administrator if you believe this is an error.`
+            {userProfile
+                ? `Your account role (${userProfile.role}) does not allow comments. Contact an administrator if you believe this is an error.`
                 : "Loading user permissions... If this persists, please refresh the page."
             }
-          </IonNote>
-        )}
-        {(!user || isAnonymous) && (
-          <IonNote color="medium" className="comments-upgrade-note" style={{display: 'block', marginTop: '8px', marginBottom: '8px'}}>
-            Create an account to drop pins natively onto the chart!
           </IonNote>
         )}
 
@@ -125,6 +142,7 @@ export const CommentForm: React.FC<CommentFormProps> = ({
             className="premium-textarea"
             value={content}
             onIonInput={(e) => setContent((e.detail.value as string) ?? '')}
+            onIonFocus={onEditorFocus}
             autoGrow
             aria-label="Comment content"
             placeholder="E.g. The water is cresting over the sidewalk here."
@@ -154,7 +172,7 @@ export const CommentForm: React.FC<CommentFormProps> = ({
             fill="solid"
             aria-label="Submit comment"
           >
-            {loading || submitting ? <IonSpinner name="dots" /> : 'Drop Pin'}
+            {loading || submitting ? <IonSpinner name="dots" /> : 'Comment'}
           </IonButton>
         </div>
     </div>
