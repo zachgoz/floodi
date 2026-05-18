@@ -574,13 +574,46 @@ export function estimateSurgeAndTimeOffset(
     return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   };
 
+  const predByMs = new Map(
+    Object.entries(predicted)
+      .map(([k, v]) => [new Date(k).getTime(), v] as const)
+      .filter(([ms, v]) => Number.isFinite(ms) && Number.isFinite(v))
+  );
+  const predTimes = [...predByMs.keys()].sort((a, b) => a - b);
+  const MAX_MATCH_DELTA_MS = 3.5 * 60 * 1000;
+
+  const findNearestPredicted = (targetMs: number): number | null => {
+    if (!predTimes.length) return null;
+
+    let low = 0;
+    let high = predTimes.length - 1;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (predTimes[mid] < targetMs) low = mid + 1;
+      else high = mid;
+    }
+
+    const candidates = [predTimes[low], predTimes[low - 1]].filter((ms): ms is number => ms !== undefined);
+    let bestMs: number | null = null;
+    let bestDt = Infinity;
+    for (const ms of candidates) {
+      const dt = Math.abs(ms - targetMs);
+      if (dt < bestDt) {
+        bestMs = ms;
+        bestDt = dt;
+      }
+    }
+
+    if (bestMs === null || bestDt > MAX_MATCH_DELTA_MS) return null;
+    return predByMs.get(bestMs) ?? null;
+  };
+
   // If source is noaa, we use the default 60 mins time offset.
   if (source === 'noaa') {
     const diffs: number[] = [];
     for (const k of obsKeys) {
-      if (k in predicted) {
-        diffs.push(observed[k] - predicted[k]);
-      }
+      const predictedValue = findNearestPredicted(new Date(k).getTime());
+      if (predictedValue !== null) diffs.push(observed[k] - predictedValue);
     }
     const offset = diffs.length > 0 ? getMedian(diffs) : 0;
     return { offset, timeOffsetMins: 60, n: diffs.length, source };
@@ -600,16 +633,14 @@ export function estimateSurgeAndTimeOffset(
     // shift NOAA predicted FORWARD to match FiMAN time
     for (const fimanTimeStr of obsKeys) {
       const fimanTime = new Date(fimanTimeStr).getTime();
-      const predTimeStr = new Date(fimanTime - shiftMs).toISOString();
-      if (predTimeStr in predicted) {
-        diffs.push(observed[fimanTimeStr] - predicted[predTimeStr]);
-      }
+      const predictedValue = findNearestPredicted(fimanTime - shiftMs);
+      if (predictedValue !== null) diffs.push(observed[fimanTimeStr] - predictedValue);
     }
 
     if (diffs.length > 0) {
       const median = getMedian(diffs);
       const variance = diffs.reduce((acc, val) => acc + Math.pow(val - median, 2), 0) / diffs.length;
-      if (variance < minVariance) {
+      if (diffs.length > maxCount || (diffs.length === maxCount && variance < minVariance)) {
         minVariance = variance;
         bestTimeOffset = shiftMins;
         bestVerticalOffset = median;
@@ -745,9 +776,23 @@ export async function buildAdjustedFuture(opts: {
   datum?: string;
   units?: 'english' | 'metric';
   existingObserved?: TimeSeries;
+  existingObservedSource?: 'fiman' | 'noaa';
+  existingAlternateObserved?: TimeSeries;
   existingPredicted?: TimeSeries;
 }): Promise<{ adjusted: TimeSeries; offset: number; timeOffsetMins: number; source: 'fiman' | 'noaa'; n: number; observations?: ObservedWaterLevelResult }> {
-  const { station, now, lookbackHours, lookaheadHours, interval = 6, datum = 'MLLW', units = 'english', existingObserved, existingPredicted } = opts;
+  const {
+    station,
+    now,
+    lookbackHours,
+    lookaheadHours,
+    interval = 6,
+    datum = 'MLLW',
+    units = 'english',
+    existingObserved,
+    existingObservedSource = 'fiman',
+    existingAlternateObserved,
+    existingPredicted
+  } = opts;
   const metadata = {
     station,
     now: now.toISOString(),
@@ -762,13 +807,29 @@ export async function buildAdjustedFuture(opts: {
     const pastStart = new Date(now.getTime() - lookbackHours * 3600_000);
     const pastEnd = now;
 
+    const filterSeries = (series: TimeSeries | undefined, start: Date, end: Date): TimeSeries => {
+      const out: TimeSeries = {};
+      if (!series) return out;
+      const startMs = start.getTime();
+      const endMs = end.getTime();
+      for (const [k, v] of Object.entries(series)) {
+        const ms = new Date(k).getTime();
+        if (Number.isFinite(ms) && ms >= startMs && ms <= endMs) out[k] = v;
+      }
+      return out;
+    };
+
     // Fetch historical data in parallel if not provided
     const [observedObj, predictedPast] = await measurePerf('noaa.buildAdjustedFuture.inputs', () => Promise.all([
       existingObserved
-        ? Promise.resolve<ObservedWaterLevelResult>({ data: existingObserved, source: 'fiman' })
+        ? Promise.resolve<ObservedWaterLevelResult>({
+            data: filterSeries(existingObserved, pastStart, pastEnd),
+            source: existingObservedSource,
+            alternate: filterSeries(existingAlternateObserved, pastStart, pastEnd),
+          })
         : fetchObservedWaterLevels({ station, start: pastStart, end: pastEnd, interval, datum, units, provider: 'both' }),
       existingPredicted
-        ? Promise.resolve(existingPredicted)
+        ? Promise.resolve(filterSeries(existingPredicted, pastStart, pastEnd))
         : fetchPredictions({ station, start: pastStart, end: pastEnd, interval, datum, units }),
     ]), metadata);
 

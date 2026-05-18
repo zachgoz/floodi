@@ -6,13 +6,11 @@ import {
   IonListHeader,
   IonNote,
   IonInput,
-  IonSegment,
-  IonSegmentButton,
   IonIcon,
-  IonToggle,
+  IonAccordion,
+  IonAccordionGroup,
 } from '@ionic/react';
 import { warningOutline } from 'ionicons/icons';
-import type { OffsetConfig } from './types';
 import type { AppConfiguration } from './types';
 
 /**
@@ -23,22 +21,6 @@ interface FloodSettingsProps {
   thresholds: AppConfiguration['thresholds'];
   /** Callback when thresholds change */
   onThresholdsChange: (thresholds: Partial<AppConfiguration['thresholds']>) => void;
-  /** Current offset configuration */
-  offsetConfig: OffsetConfig;
-  /** Callback when offset configuration changes */
-  onOffsetConfigChange: (config: Partial<OffsetConfig>) => void;
-  /** Computed surge offset from auto mode (can be null) */
-  computedOffset: number | null;
-  /** Number of data points used for offset calculation */
-  offsetDataPoints: number;
-  /** The data source for observations */
-  dataSource?: 'fiman' | 'noaa';
-  /** The active time offset in minutes */
-  timeOffsetMins?: number;
-  /** Whether to show surge offset trend (Δ obs - pred and forecast) */
-  showDelta?: boolean;
-  /** Callback when surge trend visibility changes */
-  onShowDeltaChange?: (show: boolean) => void;
 }
 
 /**
@@ -53,50 +35,19 @@ interface FloodSettingsProps {
 export const FloodSettings: React.FC<FloodSettingsProps> = ({
   thresholds,
   onThresholdsChange,
-  offsetConfig,
-  onOffsetConfigChange,
-  computedOffset,
-  offsetDataPoints,
-  dataSource,
-  timeOffsetMins,
-  showDelta,
-  onShowDeltaChange,
 }) => {
   /**
    * Handle threshold input changes with validation
    */
-  const handleThresholdChange = (key: keyof AppConfiguration['thresholds']) => (event: any) => {
-    const value = event.detail.value || '';
+  const handleThresholdChange = (key: keyof AppConfiguration['thresholds']) => (
+    event: CustomEvent<{ value?: string | number | null }>
+  ) => {
+    const value = `${event.detail.value || ''}`;
     const numericValue = parseFloat(value);
     
     if (!isNaN(numericValue) && numericValue > 0) {
       onThresholdsChange({ [key]: numericValue });
     }
-  };
-
-  /**
-   * Handle offset mode selection
-   */
-  const handleOffsetModeChange = (event: any) => {
-    const mode = (event.detail.value || 'auto');
-    onOffsetConfigChange({ mode });
-  };
-
-  /**
-   * Handle manual offset value changes
-   */
-  const handleManualOffsetChange = (event: any) => {
-    const value = event.detail.value || '';
-    onOffsetConfigChange({ value });
-  };
-
-  /**
-   * Format computed offset display
-   */
-  const formatComputedOffset = (): string => {
-    if (computedOffset === null) return '—';
-    const sign = computedOffset >= 0 ? '+' : '';
-    return `${sign}${computedOffset.toFixed(2)} ft (${offsetDataPoints} pts)`;
   };
 
   return (
@@ -106,144 +57,72 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
         <IonLabel>Flood Settings</IonLabel>
       </IonListHeader>
 
-      {/* Flood Threshold Section */}
-      <IonItem lines="none">
-        <IonNote color="medium">
-          Flood threshold defines when water levels are considered flooding (shown in red on chart).
-        </IonNote>
-      </IonItem>
-
-      <IonItem>
-        <IonLabel position="stacked">Minor Flood (ft, MLLW)</IonLabel>
-        <IonInput
-          type="number"
-          value={thresholds.minor.toString()}
-          onIonInput={handleThresholdChange('minor')}
-          placeholder="Enter threshold in feet"
-          min="0"
-          step="0.1"
-          className="threshold-input"
-        />
-      </IonItem>
-      <IonItem>
-        <IonLabel position="stacked">Moderate Flood (ft, MLLW)</IonLabel>
-        <IonInput
-          type="number"
-          value={thresholds.moderate.toString()}
-          onIonInput={handleThresholdChange('moderate')}
-          placeholder="Enter threshold in feet"
-          min="0"
-          step="0.1"
-          className="threshold-input"
-        />
-      </IonItem>
-      <IonItem>
-        <IonLabel position="stacked">Major Flood (ft, MLLW)</IonLabel>
-        <IonInput
-          type="number"
-          value={thresholds.major.toString()}
-          onIonInput={handleThresholdChange('major')}
-          placeholder="Enter threshold in feet"
-          min="0"
-          step="0.1"
-          className="threshold-input"
-        />
-      </IonItem>
-      <IonItem>
-        <IonLabel position="stacked">Extreme Flood (ft, MLLW)</IonLabel>
-        <IonInput
-          type="number"
-          value={thresholds.extreme.toString()}
-          onIonInput={handleThresholdChange('extreme')}
-          placeholder="Enter threshold in feet"
-          min="0"
-          step="0.1"
-          className="threshold-input"
-        />
-      </IonItem>
-
-      {/* Surge Offset Section */}
-      <IonItem lines="none">
-        <IonNote color="medium">
-          Surge offset shifts predictions using recent observed vs predicted differences to improve accuracy.
-        </IonNote>
-      </IonItem>
-
-      <IonItem>
-        <div className="time-field">
-          <IonLabel>Offset Mode</IonLabel>
-          <IonSegment
-            value={offsetConfig.mode}
-            onIonChange={handleOffsetModeChange}
-          >
-            <IonSegmentButton value="auto">
-              <IonLabel>Auto</IonLabel>
-            </IonSegmentButton>
-            <IonSegmentButton value="manual">
-              <IonLabel>Manual</IonLabel>
-            </IonSegmentButton>
-          </IonSegment>
-        </div>
-      </IonItem>
-
-      {offsetConfig.mode === 'manual' ? (
-        <IonItem>
-          <IonLabel position="stacked">Manual Offset (ft)</IonLabel>
-          <IonInput
-            type="number"
-            value={offsetConfig.value}
-            onIonInput={handleManualOffsetChange}
-            placeholder="Enter offset in feet"
-            step="0.01"
-            className="offset-input"
-          />
-          <IonNote slot="helper" color="medium">
-            Positive values raise predictions, negative values lower them
-          </IonNote>
-        </IonItem>
-      ) : (
-        <>
-          <IonItem>
-            <IonLabel position="stacked">Active Data Source</IonLabel>
-            <IonNote slot="end" color={dataSource === 'fiman' ? 'primary' : 'medium'}>
-              {dataSource === 'fiman' ? 'Live (FiMAN)' : 'Default (NOAA)'}
-            </IonNote>
-            <IonNote slot="helper" color="medium">
-              Source of observed water levels used for offset alignment
-            </IonNote>
+      <IonAccordionGroup className="threshold-accordion">
+        <IonAccordion value="thresholds">
+          <IonItem slot="header" lines="full">
+            <IonLabel>
+              <h3>Flood Thresholds</h3>
+              <p>Minor {thresholds.minor.toFixed(1)} ft · Moderate {thresholds.moderate.toFixed(1)} ft · Major {thresholds.major.toFixed(1)} ft</p>
+            </IonLabel>
           </IonItem>
-          <IonItem>
-            <IonLabel position="stacked">Computed Time Offset</IonLabel>
-            <IonNote slot="end" color="medium">
-              {timeOffsetMins !== undefined ? `${timeOffsetMins} mins` : '—'}
-            </IonNote>
-            <IonNote slot="helper" color="medium">
-              Time shift applied to align predictions
-            </IonNote>
-          </IonItem>
-          <IonItem>
-            <IonLabel position="stacked">Computed Surge Offset</IonLabel>
-            <IonNote slot="end" color="medium">
-              {formatComputedOffset()}
-            </IonNote>
-            <IonNote slot="helper" color="medium">
-              Automatically calculated from recent observation differences
-            </IonNote>
-          </IonItem>
-        </>
-      )}
+          <div slot="content" className="threshold-panel">
+            <IonItem lines="none">
+              <IonNote color="medium">
+                Levels are in feet MLLW and drive chart flood highlighting.
+              </IonNote>
+            </IonItem>
 
-      {/* Surge offset trend toggle */}
-      <IonItem>
-        <IonLabel>
-          <h3>Show surge offset trend</h3>
-          <p>Display past Δ (obs - pred) and forecast offset</p>
-        </IonLabel>
-        <IonToggle
-          checked={!!showDelta}
-          onIonChange={(e: CustomEvent<{ checked: boolean }>) => onShowDeltaChange?.(!!e.detail.checked)}
-        />
-      </IonItem>
+            <IonItem>
+              <IonLabel position="stacked">Minor Flood</IonLabel>
+              <IonInput
+                type="number"
+                value={thresholds.minor.toString()}
+                onIonInput={handleThresholdChange('minor')}
+                placeholder="Feet"
+                min="0"
+                step="0.1"
+                className="threshold-input"
+              />
+            </IonItem>
+            <IonItem>
+              <IonLabel position="stacked">Moderate Flood</IonLabel>
+              <IonInput
+                type="number"
+                value={thresholds.moderate.toString()}
+                onIonInput={handleThresholdChange('moderate')}
+                placeholder="Feet"
+                min="0"
+                step="0.1"
+                className="threshold-input"
+              />
+            </IonItem>
+            <IonItem>
+              <IonLabel position="stacked">Major Flood</IonLabel>
+              <IonInput
+                type="number"
+                value={thresholds.major.toString()}
+                onIonInput={handleThresholdChange('major')}
+                placeholder="Feet"
+                min="0"
+                step="0.1"
+                className="threshold-input"
+              />
+            </IonItem>
+            <IonItem>
+              <IonLabel position="stacked">Extreme Flood</IonLabel>
+              <IonInput
+                type="number"
+                value={thresholds.extreme.toString()}
+                onIonInput={handleThresholdChange('extreme')}
+                placeholder="Feet"
+                min="0"
+                step="0.1"
+                className="threshold-input"
+              />
+            </IonItem>
+          </div>
+        </IonAccordion>
+      </IonAccordionGroup>
     </IonList>
   );
 };

@@ -1,5 +1,11 @@
 import React from 'react';
-import { IonButton } from '@ionic/react';
+import {
+  IonAccordion,
+  IonAccordionGroup,
+  IonButton,
+  IonItem,
+  IonLabel,
+} from '@ionic/react';
 import './HydrologicalInsightContent.css';
 import { AtmosphereMetrics, WaterLevelMetric } from './MetricPills';
 import {
@@ -50,6 +56,7 @@ function formatWindowTime(date: Date): string {
 function getDataSourceDetails(sourceId?: string, dataSource?: string) {
   if (sourceId === 'fiman') {
     return {
+      summaryLabel: 'FiMAN observed water level',
       label: 'Observed Water Level (Fiman station Myrtle Grove Sound @ Canal Dr & Sandpiper Ln - Site ID: 30046)',
       url: 'https://fiman.nc.gov/?id=30046',
       linkLabel: 'View FIMAN Station',
@@ -58,13 +65,14 @@ function getDataSourceDetails(sourceId?: string, dataSource?: string) {
 
   if (sourceId === 'noaa') {
     return {
+      summaryLabel: 'NOAA Wrightsville Beach',
       label: 'NOAA Wrightsville Beach Station',
       url: 'https://tidesandcurrents.noaa.gov/waterlevels.html?id=8658163',
       linkLabel: 'View NOAA Station',
     };
   }
 
-  return dataSource ? { label: dataSource } : null;
+  return dataSource ? { summaryLabel: dataSource, label: dataSource } : null;
 }
 
 export const HydrologicalInsightContent: React.FC<HydrologicalInsightContentProps> = ({
@@ -176,24 +184,34 @@ export const HydrologicalInsightContent: React.FC<HydrologicalInsightContentProp
 
       <div className="datum-source-footer">
         {dataSourceDetails && (
-          <h4>
-            Data Source: {dataSourceDetails.label}
-            {dataSourceDetails.url && (
-              <a
-                href={dataSourceDetails.url}
-                target="_blank"
-                rel="noreferrer"
-                className="datum-source-link"
-              >
-                {dataSourceDetails.linkLabel}
-              </a>
-            )}
-          </h4>
+          <IonAccordionGroup className="datum-source-accordion">
+            <IonAccordion value="data-source">
+              <IonItem slot="header" lines="none">
+                <IonLabel>
+                  <h4>Data Source</h4>
+                  <p>{dataSourceDetails.summaryLabel}</p>
+                </IonLabel>
+              </IonItem>
+              <div slot="content" className="datum-source-accordion-content">
+                <p>{dataSourceDetails.label}</p>
+                {dataSourceDetails.url && (
+                  <a
+                    href={dataSourceDetails.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="datum-source-link"
+                  >
+                    {dataSourceDetails.linkLabel}
+                  </a>
+                )}
+                <p className="datum-source-datum-note">
+                  Value is relative to the <strong>MLLW (Mean Lower Low Water)</strong> datum.
+                  {sourceId === 'floodcast' && " FloodCast uses recent surge trends to improve upon standard NOAA harmonic predictions."}
+                </p>
+              </div>
+            </IonAccordion>
+          </IonAccordionGroup>
         )}
-        <p>
-          Value is relative to the <strong>MLLW (Mean Lower Low Water)</strong> datum.
-          {sourceId === 'floodcast' && " FloodCast uses recent surge trends to improve upon standard NOAA harmonic predictions."}
-        </p>
       </div>
 
       {onClose && (

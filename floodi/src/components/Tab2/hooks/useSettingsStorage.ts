@@ -153,7 +153,12 @@ export function useSettingsStorage() {
           return (storedTheme === 'auto' || storedTheme === 'light' || storedTheme === 'dark') ? storedTheme : DEFAULT_CONFIG.display.theme;
         })(),
         viewMode: safeGetStorageItem(STORAGE_KEYS.VIEW_MODE, DEFAULT_CONFIG.display.viewMode!) as 'basic' | 'advanced',
-        dataSource: safeGetStorageItem(STORAGE_KEYS.DATA_SOURCE, DEFAULT_CONFIG.display.dataSource) as 'fiman' | 'noaa',
+        dataSource: (() => {
+          const stored = safeGetStorageItem(STORAGE_KEYS.DATA_SOURCE, DEFAULT_CONFIG.display.dataSource);
+          return (stored === 'auto' || stored === 'fiman' || stored === 'noaa')
+            ? stored
+            : DEFAULT_CONFIG.display.dataSource;
+        })(),
       },
     };
   });

@@ -33,6 +33,7 @@ import { SimpleAdminBootstrap } from 'src/components/admin/SimpleAdminBootstrap'
 import { useAuth } from 'src/contexts/AuthContext';
 import { markPerf } from 'src/lib/perfLogger';
 import { INTRO_STORAGE_KEY } from 'src/components/onboarding/IntroTourOverlay';
+import { trackScreenView } from 'src/lib/analytics';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -148,6 +149,10 @@ const applyTheme = (mode: 'auto' | 'light' | 'dark') => {
 const AppTabs: React.FC = () => {
   const location = useLocation();
   const showTabBar = location.pathname !== '/intro';
+
+  React.useEffect(() => {
+    trackScreenView(location.pathname);
+  }, [location.pathname]);
 
   return (
     <IonTabs>

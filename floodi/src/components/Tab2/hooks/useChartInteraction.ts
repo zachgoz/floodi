@@ -185,8 +185,8 @@ export function useChartInteraction(): ChartInteraction & {
       });
     }
 
-    // Delta data (observed - predicted) - ONLY in advanced mode
-    if (viewMode === 'advanced' && showDelta && nearestDelta) {
+    // Delta data (observed - predicted)
+    if (showDelta && nearestDelta) {
       const deltaValue = nearestDelta.point.v;
       rows.push({
         label: 'Surge (Obs-Pred)',

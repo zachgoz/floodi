@@ -34,3 +34,50 @@
 .insight-paragraph p {
   margin: 8px 0;
 }
+
+.datum-source-accordion {
+  margin-bottom: 12px;
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.12);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(var(--ion-color-primary-rgb), 0.04);
+}
+
+.datum-source-accordion ion-item {
+  --background: transparent;
+  --padding-start: 12px;
+  --inner-padding-end: 12px;
+  --min-height: 50px;
+}
+
+.datum-source-footer .datum-source-accordion h4 {
+  margin: 0 0 2px;
+  color: var(--sentinel-text-main, var(--ion-text-color));
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.datum-source-footer .datum-source-accordion ion-label p,
+.datum-source-footer .datum-source-accordion-content p {
+  margin: 0;
+  color: var(--sentinel-text-dim, var(--ion-color-medium));
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.datum-source-accordion-content {
+  padding: 0 12px 12px;
+}
+
+.datum-source-accordion-content .datum-source-link {
+  display: inline-flex;
+  margin-top: 8px;
+}
+
+.datum-source-accordion-content .datum-source-datum-note {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(var(--ion-color-primary-rgb), 0.12);
+}

@@ -14,7 +14,7 @@ interface LogoProps {
 export const AppLogo: React.FC<LogoProps> = ({ className, style }) => {
   return (
     <svg 
-      viewBox="0 0 600 160" 
+      viewBox="0 0 760 160"
       className={className} 
       style={{ ...style, borderRadius: '24px', overflow: 'hidden' }}
       xmlns="http://www.w3.org/2000/svg"
@@ -28,7 +28,7 @@ export const AppLogo: React.FC<LogoProps> = ({ className, style }) => {
       
       {/* Background - using themed variable */}
       <rect 
-        width="600" 
+        width="760"
         height="160" 
         fill="var(--logo-bg, transparent)" 
         className="logo-background"

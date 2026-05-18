@@ -16,6 +16,7 @@ import {
 } from 'ionicons/icons';
 import { WEBCAMS } from '../../constants/webcams';
 import './WebcamFeedCard.css';
+import { trackWebcamChange, trackWebcamTimeShift } from 'src/lib/analytics';
 
 interface WebcamFeedCardProps {
   locationName: string;
@@ -136,6 +137,7 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
 
   const shiftTime = (hours: number) => {
     if (!onTimeChange) return;
+    trackWebcamTimeShift(hours, cameraId);
     const newTime = new Date(targetTime.getTime() + hours * 3600 * 1000);
     // Don't go into the future more than 5 mins
     if (newTime.getTime() > Date.now() + 300000) {
@@ -159,7 +161,12 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
                   value={cameraId}
                   interface="popover"
                   className="camera-selector"
-                  onIonChange={e => onCameraChange?.(e.detail.value)}
+                  onIonChange={e => {
+                    const val = e.detail.value;
+                    onCameraChange?.(val);
+                    const name = WEBCAMS.find(c => c.id === val)?.name || val;
+                    trackWebcamChange(val, name);
+                  }}
                 >
                   {WEBCAMS.map(cam => (
                     <IonSelectOption key={cam.id} value={cam.id}>

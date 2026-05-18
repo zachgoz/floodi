@@ -1220,8 +1220,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           />
         )}
 
-        {/* Delta series (past) - ONLY in advanced mode */}
-        {viewMode === 'advanced' && showDelta && deltaPoints.length > 1 && (
+        {/* Surge offset trend */}
+        {showDelta && deltaPoints.length > 1 && (
           <g>
             <line
               x1={margins.l}

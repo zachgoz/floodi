@@ -25,8 +25,9 @@ const dataCacheKey = (
   start: Date,
   end: Date,
   offsetMode: AppConfiguration['offset']['mode'],
-  offsetValue: string
-) => `${stationId}-${Math.floor(start.getTime() / CACHE_BUCKET_MS) * CACHE_BUCKET_MS}-${Math.floor(end.getTime() / CACHE_BUCKET_MS) * CACHE_BUCKET_MS}-${offsetMode}-${offsetValue}`;
+  offsetValue: string,
+  dataSource: AppConfiguration['display']['dataSource']
+) => `${stationId}-${Math.floor(start.getTime() / CACHE_BUCKET_MS) * CACHE_BUCKET_MS}-${Math.floor(end.getTime() / CACHE_BUCKET_MS) * CACHE_BUCKET_MS}-${offsetMode}-${offsetValue}-${dataSource}`;
 
 /**
  * Convert NOAA series data to Point array format
@@ -82,18 +83,24 @@ export function useChartData(config: AppConfiguration) {
     return { start, end, now };
   }, [mode, lookbackH, lookaheadH, absStart, absEnd]);
 
-  const fetchRangeRef = useRef<{ start: Date; end: Date; stationId: string } | null>(null);
+  const fetchRangeRef = useRef<{
+    start: Date;
+    end: Date;
+    stationId: string;
+    dataSource: AppConfiguration['display']['dataSource'];
+  } | null>(null);
 
   // Main data fetching logic
   const performFetch = useCallback(async (force = false) => {
     const { start, end, now } = timeDomain;
     const { timeRange, offset: configOffset } = config;
+    const requestedDataSource = config.display.dataSource;
 
     // Buffer range: +/- 14 days to allow smooth scrolling.
     // We only refetch if we move outside this 28-day window or if we get close to the edges.
     const fStart = new Date(start.getTime() - BUFFER_DAYS * 24 * 3600 * 1000);
     const fEnd = new Date(end.getTime() + BUFFER_DAYS * 24 * 3600 * 1000);
-    const cacheKey = dataCacheKey(stationId, fStart, fEnd, configOffset.mode, configOffset.value);
+    const cacheKey = dataCacheKey(stationId, fStart, fEnd, configOffset.mode, configOffset.value, requestedDataSource);
     const cached = dataCache[cacheKey];
 
     if (!force && cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
@@ -107,7 +114,12 @@ export function useChartData(config: AppConfiguration) {
     }
 
     // 1. Check if we already have this range covered in our buffer
-    if (!force && fetchRangeRef.current && fetchRangeRef.current.stationId === stationId) {
+    if (
+      !force &&
+      fetchRangeRef.current &&
+      fetchRangeRef.current.stationId === stationId &&
+      fetchRangeRef.current.dataSource === requestedDataSource
+    ) {
       const buffered = fetchRangeRef.current;
       const startEdgeDiff = (start.getTime() - buffered.start.getTime()) / (24 * 3600 * 1000);
       const endEdgeDiff = (buffered.end.getTime() - end.getTime()) / (24 * 3600 * 1000);
@@ -197,6 +209,8 @@ export function useChartData(config: AppConfiguration) {
         datum: 'MLLW',
         units: 'english',
         existingObserved: observedData.data,
+        existingObservedSource: observedData.source,
+        existingAlternateObserved: observedData.alternate,
         existingPredicted: predictions
       }).catch(err => {
         console.warn('buildAdjustedFuture failed:', err);
@@ -205,7 +219,7 @@ export function useChartData(config: AppConfiguration) {
       }), fetchMetadata);
 
       // 4. Success - Update range ref and cache
-      fetchRangeRef.current = { start: fStart, end: fEnd, stationId: stationId };
+      fetchRangeRef.current = { start: fStart, end: fEnd, stationId, dataSource: requestedDataSource };
 
       const result: ChartData = {
         observed: observedData.data as any,
@@ -258,7 +272,7 @@ export function useChartData(config: AppConfiguration) {
     const fetchBuffer = BUFFER_DAYS * 24 * 3600_000;
     const fStart = new Date(start.getTime() - fetchBuffer);
     const fEnd = new Date(end.getTime() + fetchBuffer);
-    const cacheKey = dataCacheKey(stationId, fStart, fEnd, config.offset.mode, config.offset.value);
+    const cacheKey = dataCacheKey(stationId, fStart, fEnd, config.offset.mode, config.offset.value, config.display.dataSource);
     const cached = dataCache[cacheKey];
 
     markPerf('chartData.effect.start', {
@@ -309,17 +323,24 @@ export function useChartData(config: AppConfiguration) {
       // so that the ChartViewer can scroll into the buffered data (+/- 5 days).
       const shiftMs = data.timeOffsetMins ? data.timeOffsetMins * 60000 : 0;
 
-      // Observed points are our ground truth at clock time.
-      // We merge the primary source (usually FiMAN local sensors) with the
-      // alternate source (official NOAA station data) to bridge any gaps up to 'now'.
-      const primaryPoints = seriesToPoints(data.observed, data.source);
+      // Observed points are our ground truth at local/FiMAN time. NOAA station
+      // observations use the same phase alignment as NOAA predictions so the
+      // station curve lines up with the local sensor curve.
+      const alignObservedPoint = (point: Point): Point => (
+        point.source === 'noaa'
+          ? { ...point, t: new Date(point.t.getTime() + shiftMs) }
+          : point
+      );
+
+      const primaryPoints = seriesToPoints(data.observed, data.source).map(alignObservedPoint);
     const lastPrimary = primaryPoints.length > 0 ? primaryPoints[primaryPoints.length - 1] : null;
     const lastPrimaryT = lastPrimary?.t.getTime() || 0;
 
     // To prevent "non-linear" jumps at the handover point, we calculate the
     // vertical difference between sources at the last common or nearest timestamp.
     let fallbackOffset = 0;
-    const allAltPoints = seriesToPoints(data.alternate || {}, 'noaa');
+    const alternateSource: 'fiman' | 'noaa' = data.source === 'fiman' ? 'noaa' : 'fiman';
+    const allAltPoints = seriesToPoints(data.alternate || {}, alternateSource).map(alignObservedPoint);
 
     if (lastPrimary && allAltPoints.length > 0) {
       // Find nearest alternate point to the last primary point to compute offset
@@ -383,7 +404,7 @@ export function useChartData(config: AppConfiguration) {
     // Prepend the last observation point to the adjusted series to ensure
     // the lines meet perfectly at the handover point with no gap or overlap.
     if (lastObs) {
-      adjustedPoints.unshift({ ...lastObs, source: 'fiman' });
+      adjustedPoints.unshift({ ...lastObs });
     }
 
     const deltaPoints: Point[] = [];

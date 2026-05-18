@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { IonIcon, IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent } from '@ionic/react';
 import { waterOutline, timeOutline, helpCircleOutline, closeOutline } from 'ionicons/icons';
 import type { AppConfiguration } from '../Tab2/types';
+import { trackSimulationLevel } from 'src/lib/analytics';
+import { LOCATIONS } from 'src/constants/locations';
 import './InundationSimulator.css';
 
 interface InundationSimulatorProps {
@@ -10,6 +12,7 @@ interface InundationSimulatorProps {
   maxLevelFt?: number;
   onLevelChange: (level: number) => void;
   thresholds: AppConfiguration['thresholds'];
+  locationId?: string;
   simulationContext?: {
     targetTime: Date;
     wind?: { speed: number; dir: number };
@@ -27,9 +30,28 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
   maxLevelFt = 10.0,
   onLevelChange,
   thresholds,
+  locationId,
   simulationContext,
 }) => {
   const [showDatumInfo, setShowDatumInfo] = useState(false);
+
+  const noaaStationId = useMemo(() => {
+    if (locationId && LOCATIONS[locationId]) {
+      return LOCATIONS[locationId].noaaStationId;
+    }
+    return '8658163'; // Fallback to default
+  }, [locationId]);
+
+  const lastTrackedLevelRef = useRef<number | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   const pct = (ft: number) =>
     Math.max(0, Math.min(100, Math.round(((ft - minLevelFt) / (maxLevelFt - minLevelFt)) * 100)));
@@ -97,7 +119,18 @@ export const InundationSimulator: React.FC<InundationSimulatorProps> = ({
           step={0.05}
           value={waterLevelFt}
           onChange={(e) => {
-            onLevelChange(parseFloat(e.target.value));
+            const val = parseFloat(e.target.value);
+            onLevelChange(val);
+
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+            }
+            timeoutRef.current = setTimeout(() => {
+              if (lastTrackedLevelRef.current !== val) {
+                trackSimulationLevel(noaaStationId, val);
+                lastTrackedLevelRef.current = val;
+              }
+            }, 1000);
           }}
           className="simulator-slider"
           aria-label="Adjust flood simulation water level (ft MLLW)"

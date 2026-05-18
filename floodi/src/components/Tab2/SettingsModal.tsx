@@ -13,7 +13,6 @@ import {
 import { closeOutline } from 'ionicons/icons';
 import { FloodSettings } from './FloodSettings';
 import { LocationSettings } from './LocationSettings';
-import { TimeSettings } from './TimeSettings';
 import { DisplaySettings } from './DisplaySettings';
 import type { AppConfiguration } from './types';
 import { UserMenu } from 'src/components/auth';
@@ -35,8 +34,6 @@ interface SettingsModalProps {
   onThresholdsChange: (thresholds: Partial<AppConfiguration['thresholds']>) => void;
   /** Callback when offset configuration changes */
   onOffsetConfigChange: (config: Partial<AppConfiguration['offset']>) => void;
-  /** Callback when time range changes */
-  onTimeRangeChange: (timeRange: Partial<AppConfiguration['timeRange']>) => void;
   /** Callback when display settings change */
   onDisplayChange: (display: Partial<AppConfiguration['display']>) => void;
   /** Computed surge offset from auto mode */
@@ -45,8 +42,6 @@ interface SettingsModalProps {
   offsetDataPoints: number;
   /** The data source for observations */
   dataSource?: 'fiman' | 'noaa';
-  /** The active time offset in minutes */
-  timeOffsetMins?: number;
   /** Success message to show in toast */
   successMessage?: string | null;
   /** Error message to show */
@@ -79,12 +74,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onLocationChange,
   onThresholdsChange,
   onOffsetConfigChange,
-  onTimeRangeChange,
   onDisplayChange,
   computedOffset,
   offsetDataPoints,
   dataSource,
-  timeOffsetMins,
   successMessage,
   errorMessage,
   onClearMessages,
@@ -139,20 +132,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onLocationChange={onLocationChange}
           />
 
-          {/* Flood Settings */}
-          <FloodSettings
-            thresholds={config.thresholds}
-            onThresholdsChange={onThresholdsChange}
-            offsetConfig={config.offset}
-            onOffsetConfigChange={onOffsetConfigChange}
-            computedOffset={computedOffset}
-            offsetDataPoints={offsetDataPoints}
-            dataSource={dataSource}
-            timeOffsetMins={timeOffsetMins}
-            showDelta={config.display.showDelta}
-            onShowDeltaChange={(show) => onDisplayChange({ showDelta: show })}
-          />
-
           {/* Display Settings */}
           <DisplaySettings
             theme={config.display.theme || 'auto'}
@@ -161,17 +140,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onViewModeChange={(viewMode) => onDisplayChange({ viewMode })}
             dataSource={config.display.dataSource || 'auto'}
             onDataSourceChange={(dataSource) => onDisplayChange({ dataSource })}
+            offsetConfig={config.offset}
+            onOffsetConfigChange={onOffsetConfigChange}
+            computedOffset={computedOffset}
+            offsetDataPoints={offsetDataPoints}
+            observedSource={dataSource}
+            showDelta={config.display.showDelta}
+            onShowDeltaChange={(show) => onDisplayChange({ showDelta: show })}
             showComments={showComments}
             commentCount={commentCount}
             onShowCommentsChange={onShowCommentsChange}
           />
 
-          {/* Time Settings */}
-          <TimeSettings
-            timeRange={config.timeRange}
-            onTimeRangeChange={onTimeRangeChange}
-            timezone={config.display.timezone}
-            onTimezoneChange={(timezone) => onDisplayChange({ timezone })}
+          {/* Flood Settings */}
+          <FloodSettings
+            thresholds={config.thresholds}
+            onThresholdsChange={onThresholdsChange}
           />
 
           <div style={{ padding: '24px 16px 40px' }}>

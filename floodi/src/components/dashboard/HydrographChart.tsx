@@ -28,6 +28,8 @@ interface HydrographChartProps extends ChartViewerProps {
   source?: string;
   /** Historical flood events to highlight on the timeline */
   floodEvents?: any[];
+  /** Open time-window settings from the date pill */
+  onTimeSettingsClick?: () => void;
 }
 
 export const HydrographChart: React.FC<HydrographChartProps> = ({
@@ -40,6 +42,7 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
   onResetToLive,
   warnings,
   floodEvents,
+  onTimeSettingsClick,
   ...chartProps
 }) => {
   return (
@@ -62,7 +65,7 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
             <div className={`hydrograph-subtitle ${isLive ? 'is-live' : 'is-historical'}`}>
               {isLive && <span className="subtitle-dot" />}
               {isLive && <span className="subtitle-text">Live</span>}
-              <ViewingTimePill time={time} />
+              <ViewingTimePill time={time} onClick={onTimeSettingsClick} />
               {!isLive && onResetToLive && (
                 <button
                   className="reset-to-live-btn"

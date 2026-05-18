@@ -218,6 +218,7 @@ export const DashboardView: React.FC = () => {
                 waterLevelFt={simulationLevel}
                 onLevelChange={setSimulationLevel}
                 thresholds={DEFAULT_CONFIG.thresholds}
+                locationId={DEFAULT_CONFIG.locationId}
               />
             </div>
 

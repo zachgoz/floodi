@@ -23,6 +23,7 @@ import {
 } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
+import { getAnalytics, type Analytics, isSupported } from 'firebase/analytics';
 
 type FirebaseConfig = {
   apiKey: string;
@@ -79,6 +80,19 @@ export const db: Firestore = getFirestore(app);
 
 /** Firebase Storage instance */
 export const storage: FirebaseStorage = getStorage(app);
+
+/** Firebase Analytics instance */
+export let analytics: Analytics | undefined = undefined;
+
+isSupported()
+  .then((supported) => {
+    if (supported) {
+      analytics = getAnalytics(app);
+    }
+  })
+  .catch((err) => {
+    console.warn('Firebase Analytics check failed:', err);
+  });
 
 /**
  * Usage:

@@ -13,6 +13,7 @@ import {
 } from '@ionic/react';
 import { settingsOutline } from 'ionicons/icons';
 import { SettingsModal } from 'src/components/Tab2/SettingsModal';
+import { TimeSettingsModal } from 'src/components/Tab2/TimeSettingsModal';
 import { useSettingsStorage } from 'src/components/Tab2/hooks/useSettingsStorage';
 import { useChartData } from 'src/components/Tab2/hooks/useChartData';
 import { useAtmosphericState } from 'src/components/Tab2/hooks/useAtmosphericState';
@@ -56,6 +57,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
 
   // Settings modal state
   const [showSettings, setShowSettings] = useState(false);
+  const [showTimeSettings, setShowTimeSettings] = useState(false);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
 
   // User feedback messages
@@ -507,6 +509,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         loading={loading}
                         mode={config.timeRange.mode}
                         onResetToLive={resetToLive}
+                        onTimeSettingsClick={() => setShowTimeSettings(true)}
                         centerRequest={centerRequest}
                         resetKey={resetCount}
                         warnings={processedData?.warnings || []}
@@ -541,6 +544,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                           setIsUserSimulating(true);
                         }}
                         thresholds={config.thresholds}
+                        locationId={config.locationId}
                         simulationContext={{
                           targetTime: activeAtmo.targetTime ?? new Date(),
                           wind: activeAtmo.wind ?? undefined,
@@ -565,13 +569,11 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
           onLocationChange={handleLocationChange}
           onThresholdsChange={updateThresholds}
           onOffsetConfigChange={updateOffset}
-          onTimeRangeChange={updateTimeRange}
           onDisplayChange={updateDisplay}
           onResetDefaults={resetToDefaults}
-          computedOffset={data?.offset || 0}
+          computedOffset={processedData?.effectiveOffset ?? null}
           offsetDataPoints={data?.nPoints || 0}
           dataSource={data?.source as 'fiman' | 'noaa' | undefined}
-          timeOffsetMins={data?.timeOffsetMins}
           successMessage={messages.success}
           errorMessage={messages.error}
           onClearMessages={clearMessages}
@@ -582,6 +584,15 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
               toggleCommentOverlay();
             }
           }}
+        />
+
+        <TimeSettingsModal
+          isOpen={showTimeSettings}
+          onDismiss={() => setShowTimeSettings(false)}
+          timeRange={config.timeRange}
+          onTimeRangeChange={updateTimeRange}
+          timezone={config.display.timezone}
+          onTimezoneChange={(timezone) => updateDisplay({ timezone })}
         />
 
         {/* Chart comment creation modal */}

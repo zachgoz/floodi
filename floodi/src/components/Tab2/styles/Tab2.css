@@ -146,7 +146,8 @@
    Settings Modal Components
    ========================================================================== */
 
-.settings-modal {
+.settings-modal,
+.time-settings-modal {
   --width: min(90vw, 600px);
   --max-width: 600px;
   --height: 90vh;
@@ -154,12 +155,14 @@
 }
 
 /* iOS safe-area: ensure modal header is not clipped by the notch */
-.ios .settings-modal {
+.ios .settings-modal,
+.ios .time-settings-modal {
   /* Reduce modal height to account for the top inset */
   --height: calc(90vh - env(safe-area-inset-top));
 }
 
-.ios ion-modal.settings-modal::part(content) {
+.ios ion-modal.settings-modal::part(content),
+.ios ion-modal.time-settings-modal::part(content) {
   /* Offset the entire modal content below the notch */
   margin-top: env(safe-area-inset-top);
 }
@@ -174,14 +177,16 @@
 }
 
 /* Professional settings sections using Ionic list styling */
-.settings-modal ion-list {
+.settings-modal ion-list,
+.time-settings-modal ion-list {
   margin: var(--floodcast-spacing-sm) var(--floodcast-spacing-md);
   --border-radius: var(--ion-border-radius, 12px);
   --background: var(--ion-item-background);
   box-shadow: var(--floodcast-shadow-sm);
 }
 
-.settings-modal ion-list-header {
+.settings-modal ion-list-header,
+.time-settings-modal ion-list-header {
   --background: var(--ion-color-step-100);
   --color: var(--ion-color-step-800);
   font-size: 1.1rem;
@@ -191,18 +196,21 @@
   padding: var(--floodcast-spacing-md);
 }
 
-.settings-modal ion-list-header ion-icon {
+.settings-modal ion-list-header ion-icon,
+.time-settings-modal ion-list-header ion-icon {
   margin-inline-end: var(--floodcast-spacing-sm);
   color: var(--ion-color-primary);
 }
 
-.settings-modal ion-item {
+.settings-modal ion-item,
+.time-settings-modal ion-item {
   --min-height: 48px;
   --padding-start: var(--floodcast-spacing-md);
   --inner-padding-end: var(--floodcast-spacing-md);
 }
 
-.settings-modal ion-note {
+.settings-modal ion-note,
+.time-settings-modal ion-note {
   font-size: 0.9rem;
   line-height: 1.4;
 }
@@ -315,6 +323,49 @@
   --placeholder-color: var(--ion-color-medium);
 }
 
+.surge-offset-accordion,
+.threshold-accordion {
+  margin: 0;
+}
+
+.surge-offset-accordion ion-accordion,
+.threshold-accordion ion-accordion {
+  background: var(--ion-item-background);
+}
+
+.surge-offset-accordion ion-accordion ion-item[slot="header"] h3,
+.threshold-accordion ion-accordion ion-item[slot="header"] h3 {
+  margin: 0 0 3px;
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.surge-offset-accordion ion-accordion ion-item[slot="header"] p,
+.threshold-accordion ion-accordion ion-item[slot="header"] p {
+  margin: 0;
+  color: var(--ion-color-step-600);
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.surge-offset-panel,
+.threshold-panel {
+  padding-bottom: var(--floodcast-spacing-sm);
+}
+
+.surge-offset-panel ion-label h3 {
+  margin: 0 0 3px;
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.surge-offset-panel ion-label p {
+  margin: 0;
+  color: var(--ion-color-step-600);
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
 /* ==========================================================================
    Crossing Information
    ========================================================================== */
@@ -342,7 +393,8 @@
     padding: 0;
   }
   
-  .settings-modal {
+  .settings-modal,
+  .time-settings-modal {
     --width: 95vw;
     --height: 95vh;
   }
@@ -363,7 +415,8 @@
     height: 100%;
   }
   
-  .settings-modal {
+  .settings-modal,
+  .time-settings-modal {
     --width: 80vw;
     --max-width: 700px;
   }
@@ -376,7 +429,8 @@
     max-height: 600px;
   }
   
-  .settings-modal {
+  .settings-modal,
+  .time-settings-modal {
     --width: 70vw;
     --max-width: 800px;
   }
@@ -407,6 +461,7 @@
 
 /* Focus indicators for keyboard navigation */
 .settings-modal ion-button:focus-visible,
+.time-settings-modal ion-button:focus-visible,
 .station-display-button:focus-visible {
   outline: 2px solid var(--ion-color-primary);
   outline-offset: 2px;
@@ -419,6 +474,7 @@
 @media print {
   .floodcast-page ion-header,
   .settings-modal,
+  .time-settings-modal,
   .loading-container,
   .error-item {
     display: none !important;

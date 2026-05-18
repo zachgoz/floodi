@@ -20,6 +20,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from 'src/lib/firebase';
+import { trackCommentSubmit } from 'src/lib/analytics';
 import type {
   Comment,
   CreateCommentData,
@@ -107,7 +108,13 @@ export const createComment = async (
   }
   
   if (!snap.exists()) throw new Error('Failed to create comment');
-  return { id: snap.id, ...(snap.data() as Omit<Comment, 'id'>) } as Comment;
+  const created = { id: snap.id, ...(snap.data() as Omit<Comment, 'id'>) } as Comment;
+  try {
+    trackCommentSubmit(created.metadata.station.id, created.metadata.locationId);
+  } catch (e) {
+    console.warn('[Analytics] trackCommentSubmit error:', e);
+  }
+  return created;
 };
 
 /** Fetch a single comment by id. */
