@@ -37,7 +37,8 @@ export const WaterLevelMetric: React.FC<WaterLevelMetricProps> = ({
   <div
     className={`metric-item water-level highlight${interactive ? ' interactive' : ''}${loading ? ' is-loading' : ''}`}
     title={interactive && !loading ? 'Click for details' : undefined}
-    onClick={!loading ? onClick : undefined}
+    onClick={interactive && !loading ? onClick : undefined}
+    style={!loading ? { '--wl-color': wlColor } as React.CSSProperties : undefined}
   >
     <div className="metric-icon-box">
       {loading ? (

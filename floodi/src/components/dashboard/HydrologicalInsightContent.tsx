@@ -8,6 +8,7 @@ import {
 } from '@ionic/react';
 import './HydrologicalInsightContent.css';
 import { AtmosphereMetrics, WaterLevelMetric } from './MetricPills';
+import { NextTideInfo } from 'src/utils/tideExtrema';
 import {
   getFloodSeverityColor,
   getFloodSeverityForLevel,
@@ -16,6 +17,7 @@ import {
 } from 'src/utils/floodSeverity';
 
 interface HydrologicalInsightContentProps {
+  nextTideInfo?: NextTideInfo;
   precipitationAccumulation: number;
   windSpeed: number;
   windDirection: number;
@@ -76,6 +78,7 @@ function getDataSourceDetails(sourceId?: string, dataSource?: string) {
 }
 
 export const HydrologicalInsightContent: React.FC<HydrologicalInsightContentProps> = ({
+  nextTideInfo,
   precipitationAccumulation,
   windSpeed,
   windDirection,
@@ -164,6 +167,28 @@ export const HydrologicalInsightContent: React.FC<HydrologicalInsightContentProp
             <span className="insight-value insight-time-value">
               {formatWindowTime(floodStartTime)} - {formatWindowTime(floodEndTime)}
               {floodDuration ? ` (${floodDuration})` : ''}
+            </span>
+          </div>
+        )}
+
+        {nextTideInfo && (
+          <div className="insight-row next-tide-row">
+            <span className="insight-label">Next Tide:</span>
+            <span className="insight-value insight-next-tide-value">
+              <span className={`tide-type-badge ${nextTideInfo.type}`}>
+                {nextTideInfo.type === 'high' ? 'High' : 'Low'} Tide
+              </span>
+              <span className="tide-timer">
+                in {nextTideInfo.minutesRemaining >= 60
+                  ? `${Math.floor(nextTideInfo.minutesRemaining / 60)}h ${nextTideInfo.minutesRemaining % 60}m`
+                  : `${nextTideInfo.minutesRemaining}m`}
+              </span>
+              <span className="tide-delta-info">
+                ({nextTideInfo.heightDelta >= 0 ? 'rising' : 'falling'}{' '}
+                <strong className="tide-delta-val">{Math.abs(nextTideInfo.heightDelta).toFixed(2)} ft</strong>
+                {' '}to{' '}
+                <strong className="tide-peak-val">{nextTideInfo.value.toFixed(2)} ft</strong>)
+              </span>
             </span>
           </div>
         )}

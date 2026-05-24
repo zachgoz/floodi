@@ -95,6 +95,25 @@
   box-sizing: border-box;
 }
 
+.sentinel-metrics.interactive {
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.sentinel-metrics.interactive:hover {
+  background: rgba(var(--ion-color-primary-rgb), 0.15) !important;
+  border-color: var(--wl-color, rgba(var(--ion-color-primary-rgb), 0.35)) !important;
+  transform: translateY(-1.5px) scale(1.03);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18), 0 0 10px 1.5px var(--wl-color, rgba(var(--ion-color-primary-rgb), 0.2)), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.sentinel-metrics.interactive:active {
+  transform: translateY(0) scale(0.97);
+  background: rgba(var(--ion-color-primary-rgb), 0.2) !important;
+  border-color: var(--wl-color, rgba(var(--ion-color-primary-rgb), 0.45)) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12), 0 0 4px 1px var(--wl-color, rgba(var(--ion-color-primary-rgb), 0.15));
+}
+
 @media (max-width: 600px) {
   .sentinel-metrics {
     gap: 10px;
@@ -344,20 +363,22 @@
 /* Interactive Water Level Pill */
 .metric-item.interactive {
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
   position: relative;
 }
 
 .metric-item.interactive:hover {
-  background: rgba(var(--ion-color-primary-rgb), 0.25) !important;
-  border-color: rgba(var(--ion-color-primary-rgb), 0.5) !important;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(var(--ion-color-primary-rgb), 0.15);
+  background: rgba(var(--ion-color-primary-rgb), 0.15) !important;
+  border-color: var(--wl-color, rgba(var(--ion-color-primary-rgb), 0.35)) !important;
+  transform: translateY(-1.5px) scale(1.03);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18), 0 0 10px 1.5px var(--wl-color, rgba(var(--ion-color-primary-rgb), 0.2)), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .metric-item.interactive:active {
-  transform: translateY(0);
-  background: rgba(var(--ion-color-primary-rgb), 0.3) !important;
+  transform: translateY(0) scale(0.97);
+  background: rgba(var(--ion-color-primary-rgb), 0.2) !important;
+  border-color: var(--wl-color, rgba(var(--ion-color-primary-rgb), 0.45)) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12), 0 0 4px 1px var(--wl-color, rgba(var(--ion-color-primary-rgb), 0.15));
 }
 
 .metric-help-icon {
@@ -658,3 +679,154 @@
   width: fit-content;
   max-width: 100%;
 }
+
+/* ==========================================
+   Premium Glassmorphic Next-Tide Header Badge
+   ========================================== */
+
+.next-tide-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sentinel-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--sentinel-border);
+  border-radius: 12px;
+  padding: 6px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--sentinel-text-main);
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  min-height: 40px;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.next-tide-badge:hover {
+  transform: translateY(-1.5px) scale(1.03);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.next-tide-badge:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+
+/* Ensure child text elements layer on top of waves */
+.next-tide-badge span {
+  position: relative;
+  z-index: 1;
+}
+
+.next-tide-badge .tide-type {
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: text-shadow 0.2s ease;
+}
+
+.next-tide-badge .tide-type.high {
+  color: var(--ion-color-danger, #eb445a);
+  text-shadow: 0 0 10px rgba(235, 68, 90, 0.45);
+}
+
+.next-tide-badge .tide-type.low {
+  color: var(--ion-color-primary, #0077b6);
+  text-shadow: 0 0 10px rgba(0, 180, 216, 0.5); /* Teal glow overlay */
+}
+
+.next-tide-badge .tide-countdown {
+  font-weight: 600;
+  opacity: 0.95;
+  color: var(--sentinel-text-main);
+  letter-spacing: -0.01em;
+}
+
+/* Active flowing wave simulation */
+.next-tide-badge::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 200%;
+  height: 6px;
+  background: repeat-x;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 28'%3E%3Cpath d='M0 15 Q 30 0, 60 15 T 120 15 L 120 28 L 0 28 Z' fill='%230077b6' opacity='0.22'/%3E%3C/svg%3E");
+  background-size: 40px 6px;
+  animation: waveMove 3.5s linear infinite;
+  pointer-events: none;
+  opacity: 0.8;
+  z-index: 0;
+}
+
+@keyframes waveMove {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* Status-aware flowing wave variants */
+.next-tide-badge:has(.tide-type.high)::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 28'%3E%3Cpath d='M0 15 Q 30 0, 60 15 T 120 15 L 120 28 L 0 28 Z' fill='%23eb445a' opacity='0.25'/%3E%3C/svg%3E");
+}
+
+.next-tide-badge:has(.tide-type.low)::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 28'%3E%3Cpath d='M0 15 Q 30 0, 60 15 T 120 15 L 120 28 L 0 28 Z' fill='%2300b4d8' opacity='0.25'/%3E%3C/svg%3E");
+}
+
+/* Soft status-based breathing glow animations */
+.next-tide-badge:has(.tide-type.high) {
+  border-color: rgba(235, 68, 90, 0.15);
+  animation: pulseGlowHigh 4s ease-in-out infinite;
+}
+
+.next-tide-badge:has(.tide-type.low) {
+  border-color: rgba(0, 180, 216, 0.15);
+  animation: pulseGlowLow 4s ease-in-out infinite;
+}
+
+@keyframes pulseGlowHigh {
+  0%, 100% {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    border-color: rgba(235, 68, 90, 0.15);
+  }
+  50% {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), 0 0 8px 1.5px rgba(235, 68, 90, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    border-color: rgba(235, 68, 90, 0.35);
+  }
+}
+
+@keyframes pulseGlowLow {
+  0%, 100% {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    border-color: rgba(0, 180, 216, 0.15);
+  }
+  50% {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), 0 0 8px 1.5px rgba(0, 180, 216, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    border-color: rgba(0, 180, 216, 0.35);
+  }
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 600px) {
+  .next-tide-badge {
+    padding: 2px 8px;
+    font-size: 0.78rem;
+    min-height: 36px;
+    border-radius: 10px;
+  }
+  .next-tide-badge .tide-type {
+    gap: 2px;
+  }
+}
+

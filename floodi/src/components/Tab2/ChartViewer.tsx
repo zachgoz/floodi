@@ -5,6 +5,7 @@ import { isCommentTimeRange, type Comment, type CommentTimeRange } from 'src/typ
 import { findLastSimilarLevel } from 'src/lib/dataService';
 import type { WaterLevelPeak, FloodEvent } from 'src/types/data';
 import { getTimeRangeFromChartSelection } from 'src/utils/timeRangeHelpers';
+import { findTideExtrema } from 'src/utils/tideExtrema';
 import { IonButton, IonIcon, IonText } from '@ionic/react';
 import { addCircleOutline, refreshOutline, syncOutline } from 'ionicons/icons';
 
@@ -1253,25 +1254,13 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
         {/* X-axis ticks and labels at Tide Peaks */}
         {(() => {
-          // Identify peaks (high/low tides) from the full predicted data
-          const peaks: Date[] = [];
-          for (let i = 1; i < predictedPoints.length - 1; i++) {
-            const curr = predictedPoints[i].v;
-            const prev = predictedPoints[i - 1].v;
-            const next = predictedPoints[i + 1].v;
-            
-            const isHigh = (curr >= prev && curr > next) || (curr > prev && curr >= next);
-            const isLow = (curr <= prev && curr < next) || (curr < prev && curr <= next);
-            
-            if (isHigh || isLow) {
-              // Ensure we don't add redundant points or points that aren't actually peaks
-              if (peaks.length > 0) {
-                const lastPeakTime = peaks[peaks.length - 1].getTime();
-                if (Math.abs(predictedPoints[i].t.getTime() - lastPeakTime) < 3600000) continue; // Skip if within 1hr of last peak (noise)
-              }
-              peaks.push(predictedPoints[i].t);
-            }
-          }
+          // Create combined actual + FloodCast prediction curve to ensure we find actual expected peaks (including surge)
+          const combinedPoints = [
+            ...observedPoints,
+            ...adjustedPoints.slice(1)
+          ];
+          const extrema = findTideExtrema(combinedPoints.length > 0 ? combinedPoints : predictedPoints);
+          const peaks = extrema.map(ext => ext.t);
 
           // Track last label X positions separately for high and low peaks to allow both to show even if horizontally close
           let lastHighLabelX = -1000;
@@ -1283,23 +1272,9 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             // Relaxed boundary check to show peaks right on the edge
             if (x < margins.l - 5 || x > margins.l + innerW + 5) return null;
             
-            // Find the peak point to determine if it's High or Low for collision detection
-            const idx = predictedPoints.findIndex(p => p.t.getTime() === tick.getTime());
-            if (idx === -1) return null;
-            const predPoint = predictedPoints[idx];
-
-            let isHigh = true;
-            if (idx > 0 && idx < predictedPoints.length - 1) {
-              const curr = predictedPoints[idx].v;
-              const prev = predictedPoints[idx - 1].v;
-              const next = predictedPoints[idx + 1].v;
-              const isLow = (curr <= prev && curr < next) || (curr < prev && curr <= next);
-              isHigh = !isLow;
-            } else if (idx === 0 && predictedPoints.length > 1) {
-              isHigh = predictedPoints[0].v > predictedPoints[1].v;
-            } else if (idx === predictedPoints.length - 1 && idx > 0) {
-              isHigh = predictedPoints[idx].v > predictedPoints[idx - 1].v;
-            }
+            const extremum = extrema[i];
+            if (!extremum) return null;
+            const isHigh = extremum.type === 'high';
 
             // Clutter control: minimum 70px between labels OF THE SAME TYPE
             const showPeakLabel = isHigh ? (x - lastHighLabelX) > 70 : (x - lastLowLabelX) > 70;
@@ -1319,23 +1294,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                   opacity={0.3}
                 />
                 {showPeakLabel && (() => {
-                  // Find values for this specific peak to determine Y position
-                  const nearestObs = findNearestPoint(observedPoints, tick);
-                  const nearestAdj = findNearestPoint(adjustedPoints, tick);
-                  
-                  if (!predPoint) return null;
-
-                  // Get max/min values at this time across all series to avoid overlap
-                  const valsAtTime = [predPoint.v];
-                  // Look in a wider window (30 mins) to catch the peak of other series even if slightly shifted
-                  if (nearestObs && Math.abs(nearestObs.point.t.getTime() - tick.getTime()) < 1800000) valsAtTime.push(nearestObs.point.v);
-                  if (nearestAdj && Math.abs(nearestAdj.point.t.getTime() - tick.getTime()) < 1800000) valsAtTime.push(nearestAdj.point.v);
-
-                  const maxV = Math.max(...valsAtTime);
-                  const minV = Math.min(...valsAtTime);
-                  
                   // Clearance: -18px for high peaks, +24px for low peaks
-                  let finalY = isHigh ? yOf(maxV) - 18 : yOf(minV) + 24;
+                  let finalY = isHigh ? yOf(extremum.v) - 18 : yOf(extremum.v) + 24;
 
                   // Safety: keep labels within SVG bounds (plus some padding)
                   const minVisibleY = margins.t - 5;
@@ -1354,7 +1314,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                         fontWeight="800"
                         style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}
                       >
-                        {isHigh ? 'High' : 'Low'}
+                        {isHigh ? 'High' : 'Low'} {extremum.v.toFixed(2)} ft
                       </text>
                       <text
                         x={x}

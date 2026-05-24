@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { IonPage, IonContent, IonHeader, IonToolbar, IonTitle, IonSpinner } from '@ionic/react';
 import { APIProvider } from '@vis.gl/react-google-maps';
 
@@ -14,6 +14,7 @@ import './DashboardView.css';
 
 import { useChartData } from '../Tab2/hooks/useChartData';
 import { findNearestPoint } from '../Tab2/hooks/useChartInteraction';
+import { findNextTideExtremum } from '../../utils/tideExtrema';
 import type { AppConfiguration } from '../Tab2/types';
 
 const LIVE_TOLERANCE_MS = 60 * 1000;
@@ -138,6 +139,22 @@ export const DashboardView: React.FC = () => {
                    isAdjusted ? 'floodcast' :
                    isPredicted ? 'noaa' : 'live';
 
+  // Compute next tide info reactively for the dashboard
+  const nextTideInfo = useMemo(() => {
+    if (!processedData || !targetTime || wl === undefined || wl === null) {
+      return undefined;
+    }
+    const combinedPoints = [
+      ...observedPoints,
+      ...adjustedPoints.slice(1)
+    ];
+    return findNextTideExtremum(
+      combinedPoints.length > 0 ? combinedPoints : predictedPoints,
+      targetTime,
+      wl
+    ) ?? undefined;
+  }, [processedData, observedPoints, adjustedPoints, predictedPoints, targetTime, wl]);
+
   return (
     <IonPage>
       <IonHeader className="ion-no-border">
@@ -157,6 +174,7 @@ export const DashboardView: React.FC = () => {
             <div className="dashboard-main-col">
               <div style={{ position: 'relative' }}>
                 <AtmosphericOverlay 
+                  nextTideInfo={nextTideInfo}
                   precipitationAccumulation={currentPrecip}
                   windSpeed={currentWind.speed}
                   windDirection={currentWind.dir}

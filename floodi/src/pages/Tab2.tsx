@@ -24,6 +24,7 @@ import './Tab2.css';
 import 'src/components/dashboard/DashboardView.css';
 import HydrographChart from 'src/components/dashboard/HydrographChart';
 import AtmosphericOverlay from 'src/components/dashboard/AtmosphericOverlay';
+import { findNextTideExtremum } from 'src/utils/tideExtrema';
 import InundationMap, { RoadProperties } from 'src/components/dashboard/InundationMap';
 import InundationSimulator from 'src/components/dashboard/InundationSimulator';
 import WebcamFeedCard from 'src/components/dashboard/WebcamFeedCard';
@@ -59,6 +60,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [showTimeSettings, setShowTimeSettings] = useState(false);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
+  const [showWLInfo, setShowWLInfo] = useState(false);
 
   // User feedback messages
   const [messages, setMessages] = useState<{
@@ -337,6 +339,23 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     };
   }, [processedData, activeAtmo.targetTime, config.thresholds]);
 
+  // Compute next tide info reactively
+  const nextTideInfo = useMemo(() => {
+    if (!processedData || !activeAtmo.targetTime || activeAtmo.wl === undefined || activeAtmo.wl === null) {
+      return null;
+    }
+    // Create combined actual + FloodCast prediction curve to ensure we find actual expected peaks (including surge)
+    const combinedPoints = [
+      ...processedData.observedPoints,
+      ...processedData.adjustedPoints.slice(1)
+    ];
+    return findNextTideExtremum(
+      combinedPoints.length > 0 ? combinedPoints : processedData.predictedPoints,
+      activeAtmo.targetTime,
+      activeAtmo.wl
+    );
+  }, [processedData, activeAtmo.targetTime, activeAtmo.wl]);
+
   return (
     <IonPage
       ref={(node) => {
@@ -452,6 +471,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         sentinel={
                           <div data-tour-id="live-readout">
                             <AtmosphericOverlay
+                              nextTideInfo={nextTideInfo ?? undefined}
                               precipitationAccumulation={activeAtmo.precip ?? 0}
                               windSpeed={activeAtmo.wind?.speed ?? 0}
                               windDirection={activeAtmo.wind?.dir ?? 0}
@@ -472,6 +492,8 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                               floodEndTime={floodWindow?.endTime}
                               floodDuration={floodWindow?.duration}
                               loading={loading}
+                              showWLInfo={showWLInfo}
+                              onShowWLInfoChange={setShowWLInfo}
                             />
                           </div>
                         }
@@ -515,6 +537,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         warnings={processedData?.warnings || []}
                         viewMode={config.display.viewMode}
                         locationId={config.locationId}
+                        onJumpToTime={handleTimeChange}
                       />
                     </div>
 

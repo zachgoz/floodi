@@ -81,3 +81,103 @@
   padding-top: 10px;
   border-top: 1px solid rgba(var(--ion-color-primary-rgb), 0.12);
 }
+
+/* Premium Next-Tide Insight Row Styling */
+.insight-row.next-tide-row {
+  border-top: 1px dashed rgba(var(--sentinel-text-dim-rgb, 146, 148, 156), 0.15);
+  margin-top: 4px;
+  padding-top: 12px;
+}
+
+.insight-next-tide-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  text-align: right;
+  line-height: 1.4;
+}
+
+/* Micro-badge for tide type (High/Low) */
+.tide-type-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  border: 1px solid transparent;
+}
+
+.tide-type-badge.high {
+  background: rgba(235, 68, 90, 0.08); /* Transparent Red tint */
+  color: var(--ion-color-danger, #eb445a);
+  border-color: rgba(235, 68, 90, 0.18);
+  box-shadow: 0 2px 8px rgba(235, 68, 90, 0.05);
+}
+
+.tide-type-badge.low {
+  background: rgba(var(--ion-color-primary-rgb, 0, 119, 182), 0.08); /* Transparent Blue tint */
+  color: var(--ion-color-primary, #0077b6);
+  border-color: rgba(var(--ion-color-primary-rgb, 0, 119, 182), 0.18);
+  box-shadow: 0 2px 8px rgba(var(--ion-color-primary-rgb, 0, 119, 182), 0.05);
+}
+
+/* Emphasized countdown timer */
+.insight-next-tide-value .tide-timer {
+  font-weight: 800;
+  color: var(--sentinel-text-main, var(--ion-text-color, #1a1a2e));
+  font-size: 1rem;
+}
+
+/* Secondary detail info styling */
+.insight-next-tide-value .tide-delta-info {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--sentinel-text-dim, var(--ion-color-medium, rgba(30, 30, 50, 0.65)));
+  letter-spacing: -0.01em;
+}
+
+.insight-next-tide-value .tide-delta-val,
+.insight-next-tide-value .tide-peak-val {
+  font-weight: 700;
+  color: var(--sentinel-text-main, var(--ion-text-color, #1a1a2e));
+}
+
+/* Mobile Responsive Adjustments */
+@media (max-width: 600px) {
+  .insight-row.next-tide-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding-top: 10px;
+    margin-top: 6px;
+  }
+
+  .insight-next-tide-value {
+    justify-content: flex-start;
+    text-align: left;
+    width: 100%;
+    gap: 6px;
+  }
+
+  .tide-type-badge {
+    padding: 3px 8px;
+    font-size: 0.78rem;
+  }
+
+  .insight-next-tide-value .tide-timer {
+    font-size: 0.95rem;
+  }
+
+  .insight-next-tide-value .tide-delta-info {
+    font-size: 0.84rem;
+    width: 100%;
+    margin-top: 2px;
+  }
+}
+
