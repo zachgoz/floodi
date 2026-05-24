@@ -148,6 +148,36 @@
       "collectionGroup": "users",
       "fieldPath": "displayName",
       "indexes": []
+    },
+    {
+      "collectionGroup": "observations",
+      "fieldPath": "noaa",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "observations",
+      "fieldPath": "fiman",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "observations",
+      "fieldPath": "imagery",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "observations",
+      "fieldPath": "weather",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "predictions",
+      "fieldPath": "data",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "predictions",
+      "fieldPath": "weather",
+      "indexes": []
     }
   ]
 }
