@@ -27,6 +27,7 @@ import React from 'react';
 import Tab2 from './pages/Tab2';
 import Tab3 from './pages/Tab3';
 import { Login, Register, ResetPassword, Profile } from 'src/pages/auth';
+import { PrivacyPolicy } from 'src/pages/PrivacyPolicy';
 import { PrivateRoute, AdminRoute } from 'src/components/routing';
 import { UserRoleManager } from 'src/components/admin';
 import { SimpleAdminBootstrap } from 'src/components/admin/SimpleAdminBootstrap';
@@ -179,6 +180,10 @@ const AppTabs: React.FC = () => {
         {/* App information and about page */}
         <Route path="/tab3">
           <Tab3 />
+        </Route>
+        {/* Privacy Policy page */}
+        <Route exact path="/privacy">
+          <PrivacyPolicy />
         </Route>
         {/* Profile route accessible to all; content adapts to auth state */}
         <PrivateRoute exact path="/profile" requireAuth={false}>

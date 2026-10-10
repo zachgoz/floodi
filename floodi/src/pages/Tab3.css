@@ -210,3 +210,14 @@
 :root:not(.ion-palette-dark) .about-logo {
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.08));
 }
+
+.privacy-link {
+  color: var(--ion-color-primary);
+  text-decoration: none;
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.privacy-link:hover {
+  text-decoration: underline;
+}

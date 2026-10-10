@@ -24,7 +24,8 @@ import {
 
 import { AppLogo } from 'src/components/common/AppLogo';
 import React from 'react';
-import { useHistory } from 'react-router-dom';
+import { useHistory, Link } from 'react-router-dom';
+import { AdSenseUnit } from 'src/components/common/AdSenseUnit';
 import { INTRO_STORAGE_KEY } from 'src/components/onboarding/IntroTourOverlay';
 import './Tab3.css';
 
@@ -198,9 +199,15 @@ const Tab3: React.FC = () => {
             </IonCardContent>
           </IonCard>
 
+          {/* About page ad unit. Replace the slot ID with your actual AdSense ad unit slot ID */}
+          <AdSenseUnit slot="about-bottom" />
+
           <footer className="about-footer">
             <p>Built with ❤️ for the Carolina Beach community.</p>
-            <p className="version-tag">FloodCast v1.2.0 • Build 2026.05.02</p>
+            <p className="version-tag">
+              <Link to="/privacy" className="privacy-link">Privacy Policy</Link>
+              • FloodCast v1.2.0 • Build 2026.05.02
+            </p>
           </footer>
         </div>
       </IonContent>

@@ -1,0 +1,59 @@
+.privacy-content {
+  --background: var(--ion-background-color);
+}
+
+.privacy-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px 16px 60px 16px;
+}
+
+.privacy-header-section {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.privacy-title {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--ion-color-step-900);
+  margin-bottom: 8px;
+}
+
+.privacy-subtitle {
+  font-size: 1rem;
+  color: var(--ion-color-step-500);
+}
+
+.privacy-footer {
+  text-align: center;
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(var(--ion-color-primary-rgb), 0.1);
+  color: var(--ion-color-step-400);
+  font-size: 0.85rem;
+}
+
+.privacy-footer p {
+  margin: 0;
+}
+
+/* Glass card styling */
+.glass-card {
+  margin: 0 0 24px 0;
+  border-radius: 20px;
+  background: rgba(var(--ion-color-primary-rgb), 0.03);
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.1);
+  box-shadow: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 576px) {
+  .privacy-container {
+    padding: 16px 8px 40px 8px;
+  }
+  
+  .privacy-title {
+    font-size: 1.8rem;
+  }
+}

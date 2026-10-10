@@ -34,6 +34,7 @@ import { APIProvider } from '@vis.gl/react-google-maps';
 import { markPerf, measurePerf } from 'src/lib/perfLogger';
 import { IntroTourOverlay } from 'src/components/onboarding/IntroTourOverlay';
 import { useHistory } from 'react-router-dom';
+import { AdSenseUnit } from 'src/components/common/AdSenseUnit';
 
 /**
  * Professional FloodCast Tab2 Component
@@ -577,6 +578,9 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         }}
                       />
                     </div>
+                    
+                    {/* Bottom ad unit. Replace the slot ID with your actual AdSense ad unit slot ID */}
+                    <AdSenseUnit slot="dashboard-bottom" />
                   </>
                 ) : null}
               </div>
