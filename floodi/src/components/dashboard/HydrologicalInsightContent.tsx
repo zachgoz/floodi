@@ -37,7 +37,7 @@ interface HydrologicalInsightContentProps {
   maxWaterLevel?: number;
   maxWaterLevelTime?: Date;
   thresholds?: FloodThresholds;
-  statusLabel?: 'Observed' | 'Predicted';
+  statusLabel?: 'Observed' | 'Predicted' | 'Estimated';
   onClose?: () => void;
   children?: React.ReactNode;
 }
@@ -52,7 +52,7 @@ function formatDepth(feet: number): string {
 }
 
 function formatWindowTime(date: Date): string {
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+  return date.toLocaleTimeString([], { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
 function getDataSourceDetails(sourceId?: string, dataSource?: string) {
@@ -109,7 +109,7 @@ export const HydrologicalInsightContent: React.FC<HydrologicalInsightContentProp
   const dataSourceDetails = getDataSourceDetails(sourceId, dataSource);
   const hasFloodWindow = Boolean(floodStartTime && floodEndTime);
   const localTime = targetTime
-    ? targetTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
+    ? targetTime.toLocaleTimeString([], { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', hour12: true })
     : 'Now';
 
   return (
@@ -146,10 +146,10 @@ export const HydrologicalInsightContent: React.FC<HydrologicalInsightContentProp
           </span>
           <span className="flooding-combined-value">
             {maxWaterLevelTime && (
-              <span className="flooding-peak-time">Water Peaks after {formatWindowTime(maxWaterLevelTime)}</span>
+              <span className="flooding-peak-time">Peak at {formatWindowTime(maxWaterLevelTime)}</span>
             )}
             <span className="flooding-depth-value">
-              <span>Max Street Flooding: </span>
+              <span>Max Street Flooding (estimated): </span>
               <strong>{formatDepth(maxRoadFloodDepth)}</strong>
             </span>
             {maxWaterLevel !== undefined && maxWaterLevelTime && (

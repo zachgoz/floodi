@@ -1,0 +1,744 @@
+{
+  "version": 1,
+  "supersededBy": "forecast-validation-2026-10-10.json",
+  "supersededReason": "Historical snapshot used a strict 30-minute gap cutoff. The current evaluation allows 10 seconds of reporting jitter while preserving native timestamps and replays frozen models with recorded-data verification.",
+  "analysisDate": "2026-10-10",
+  "provenance": {
+    "sensor": "30046",
+    "name": "FIMAN Myrtle Grove Sound at Canal Drive / Sandpiper Lane",
+    "retrievalPlatform": "SUNNYD_CB_03",
+    "observationSeries": "FIMAN (observed)",
+    "observationSource": "https://data.sunnydayflooding.com/services/data.php",
+    "observationInfo": "https://fiman.nc.gov/?id=30046",
+    "tideStation": "8658163",
+    "datum": "MLLW",
+    "units": "ft",
+    "originalDatum": "NAVD88",
+    "navd88ToMllwFt": 2.75,
+    "phaseMinutes": 60,
+    "quality": "Bad, suspect and missing quality flags excluded. Provider non-evaluated records may remain.",
+    "retrievedAt": "2026-10-10T19:35:56.995Z"
+  },
+  "coverage": {
+    "requestedStart": "2026-07-05T00:00:00.000Z",
+    "requestedEnd": "2026-10-03T00:00:00.000Z",
+    "observationStart": "2026-07-07T01:31:08+00:00",
+    "observationEnd": "2026-10-02T23:36:04+00:00",
+    "measuredResiduals": 7280,
+    "tidePoints": 21621,
+    "weatherHours": 2184,
+    "maxObservationGapMinutes": 30,
+    "diagnosticWeatherPairs": 1605,
+    "retrievalWeeks": 13,
+    "retrievalFailures": []
+  },
+  "gaugeDiagnostics": {
+    "meanResidualFt": 0.6617897623258706,
+    "residualStandardDeviationFt": 0.4206793429273168,
+    "residualTideCorrelation": -0.2382643021673954,
+    "allHistoryTideHeightSlopeExplainedVariance": 0.05693809621629886,
+    "autocorrelation": [
+      {
+        "lagHours": 0.5,
+        "pairs": 1167,
+        "correlation": 0.9273128485003578
+      },
+      {
+        "lagHours": 1,
+        "pairs": 1165,
+        "correlation": 0.878392403643036
+      },
+      {
+        "lagHours": 3,
+        "pairs": 1061,
+        "correlation": 0.6810623742683771
+      },
+      {
+        "lagHours": 6,
+        "pairs": 1207,
+        "correlation": 0.6205134877930618
+      },
+      {
+        "lagHours": 6.2,
+        "pairs": 1207,
+        "correlation": 0.631736506082453
+      },
+      {
+        "lagHours": 12,
+        "pairs": 1180,
+        "correlation": 0.820170571197818
+      },
+      {
+        "lagHours": 12.4,
+        "pairs": 1184,
+        "correlation": 0.8105928931628985
+      },
+      {
+        "lagHours": 12.5,
+        "pairs": 1195,
+        "correlation": 0.8162828412421065
+      },
+      {
+        "lagHours": 24,
+        "pairs": 1163,
+        "correlation": 0.7443062305924437
+      },
+      {
+        "lagHours": 24.8,
+        "pairs": 1188,
+        "correlation": 0.7825262090359567
+      },
+      {
+        "lagHours": 25,
+        "pairs": 1199,
+        "correlation": 0.7732678309654192
+      },
+      {
+        "lagHours": 48,
+        "pairs": 1113,
+        "correlation": 0.5215028201017428
+      }
+    ],
+    "periodScan": [
+      {
+        "periodHours": 12.9,
+        "amplitudeFt": 0.10094966158167806,
+        "explainedVariance": 0.028790272516561854
+      },
+      {
+        "periodHours": 12.4,
+        "amplitudeFt": 0.10063115063333607,
+        "explainedVariance": 0.02578933449317644
+      }
+    ],
+    "windCorrelations": [
+      {
+        "factor": "northWind",
+        "windowHours": 1,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": 0.418039046080284
+      },
+      {
+        "factor": "northWind",
+        "windowHours": 6,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": 0.45568116651520035
+      },
+      {
+        "factor": "northWind",
+        "windowHours": 12,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": 0.5132542770633945
+      },
+      {
+        "factor": "northWind",
+        "windowHours": 24,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": 0.584755905991511
+      },
+      {
+        "factor": "northWind",
+        "windowHours": 48,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": 0.6261108128079629
+      },
+      {
+        "factor": "eastWind",
+        "windowHours": 1,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": 0.18004860661594393
+      },
+      {
+        "factor": "eastWind",
+        "windowHours": 6,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": 0.19637934617149264
+      },
+      {
+        "factor": "eastWind",
+        "windowHours": 12,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": 0.20880436542159628
+      },
+      {
+        "factor": "eastWind",
+        "windowHours": 24,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": 0.19435046464503217
+      },
+      {
+        "factor": "eastWind",
+        "windowHours": 48,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": 0.1488192036552609
+      },
+      {
+        "factor": "pressure",
+        "windowHours": 1,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": -0.24406838443388731
+      },
+      {
+        "factor": "pressure",
+        "windowHours": 6,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": -0.23073343640154118
+      },
+      {
+        "factor": "pressure",
+        "windowHours": 12,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": -0.2392549664953426
+      },
+      {
+        "factor": "pressure",
+        "windowHours": 24,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": -0.23846191498772876
+      },
+      {
+        "factor": "pressure",
+        "windowHours": 48,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": -0.2338734517799187
+      },
+      {
+        "factor": "rain",
+        "windowHours": 1,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": -0.04698560894682459
+      },
+      {
+        "factor": "rain",
+        "windowHours": 6,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": -0.1325633739995053
+      },
+      {
+        "factor": "rain",
+        "windowHours": 12,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": -0.17094939684311242
+      },
+      {
+        "factor": "rain",
+        "windowHours": 24,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": -0.20276009024527913
+      },
+      {
+        "factor": "rain",
+        "windowHours": 48,
+        "lagHours": 0,
+        "pairs": 1605,
+        "correlation": -0.17195448432617183
+      }
+    ],
+    "windDirectionMeans": [
+      {
+        "direction": "SW",
+        "hours": 430,
+        "rawMeanResidualFt": 0.5295777887310656,
+        "tideCorrectedMeanFt": -0.1301408186837169,
+        "windMeanMph": 8.184186046511629
+      },
+      {
+        "direction": "W",
+        "hours": 255,
+        "rawMeanResidualFt": 0.602242400508289,
+        "tideCorrectedMeanFt": -0.07621211971362882,
+        "windMeanMph": 5.724705882352941
+      },
+      {
+        "direction": "NW",
+        "hours": 99,
+        "rawMeanResidualFt": 0.895728203367576,
+        "tideCorrectedMeanFt": 0.21274322171935128,
+        "windMeanMph": 4.536363636363636
+      },
+      {
+        "direction": "N",
+        "hours": 185,
+        "rawMeanResidualFt": 0.9578041416593327,
+        "tideCorrectedMeanFt": 0.30295100278635934,
+        "windMeanMph": 7.434054054054054
+      },
+      {
+        "direction": "E",
+        "hours": 119,
+        "rawMeanResidualFt": 0.6686537207094984,
+        "tideCorrectedMeanFt": 0.03325052749667144,
+        "windMeanMph": 6.3428571428571425
+      },
+      {
+        "direction": "SE",
+        "hours": 122,
+        "rawMeanResidualFt": 0.6580047570236428,
+        "tideCorrectedMeanFt": -0.010755398233833013,
+        "windMeanMph": 5.480327868852459
+      },
+      {
+        "direction": "S",
+        "hours": 229,
+        "rawMeanResidualFt": 0.5112374068031362,
+        "tideCorrectedMeanFt": -0.15040297401611596,
+        "windMeanMph": 6.488209606986899
+      },
+      {
+        "direction": "NE",
+        "hours": 166,
+        "rawMeanResidualFt": 0.773277053094305,
+        "tideCorrectedMeanFt": 0.12376001978934148,
+        "windMeanMph": 7.859638554216867
+      }
+    ],
+    "timeAndChangeDiagnostics": [
+      {
+        "factor": "northWind",
+        "timeDetrendedCorrelation": 0.3924983222304465,
+        "change24hCorrelation": 0.16465450469234122,
+        "change24hPairs": 1285
+      },
+      {
+        "factor": "eastWind",
+        "timeDetrendedCorrelation": 0.1321648351158323,
+        "change24hCorrelation": 0.3265361165842754,
+        "change24hPairs": 1285
+      },
+      {
+        "factor": "northWindStressProxy",
+        "timeDetrendedCorrelation": 0.36616925029911096,
+        "change24hCorrelation": 0.17836705977628953,
+        "change24hPairs": 1285
+      },
+      {
+        "factor": "eastWindStressProxy",
+        "timeDetrendedCorrelation": 0.13000700400416668,
+        "change24hCorrelation": 0.3097764850126177,
+        "change24hPairs": 1285
+      },
+      {
+        "factor": "pressure",
+        "timeDetrendedCorrelation": -0.28050918421078175,
+        "change24hCorrelation": 0.007623667592304062,
+        "change24hPairs": 1285
+      },
+      {
+        "factor": "rain",
+        "timeDetrendedCorrelation": -0.03347600490170689,
+        "change24hCorrelation": 0.007598153974053493,
+        "change24hPairs": 1285
+      }
+    ],
+    "isolatedSpikeCandidates": {
+      "criterion": "Reversal exceeding 0.5 ft from adjacent interpolation with neighbors within 30 minutes. Diagnostic only; values retained.",
+      "count": 137,
+      "largestExamples": [
+        {
+          "time": "2026-09-30T08:44:09+00:00",
+          "observedFt": 2.18999998208,
+          "leftTime": "2026-09-30T08:36:05+00:00",
+          "leftFt": 1.05999994592,
+          "rightTime": "2026-09-30T08:45:11+00:00",
+          "rightFt": 0.85999993952,
+          "deviationFromNeighborInterpolationFt": 1.3072894191108284
+        },
+        {
+          "time": "2026-10-01T15:08:11+00:00",
+          "observedFt": 6.3400001148800005,
+          "leftTime": "2026-10-01T15:06:07+00:00",
+          "leftFt": 5.01000007232,
+          "rightTime": "2026-10-01T15:09:03+00:00",
+          "rightFt": 5.08000007456,
+          "deviationFromNeighborInterpolationFt": 1.2806818591806843
+        },
+        {
+          "time": "2026-10-01T15:02:10+00:00",
+          "observedFt": 6.27000011264,
+          "leftTime": "2026-10-01T15:01:08+00:00",
+          "leftFt": 4.96000007072,
+          "rightTime": "2026-10-01T15:03:02+00:00",
+          "rightFt": 5.02000007264,
+          "deviationFromNeighborInterpolationFt": 1.2773684619206813
+        }
+      ]
+    },
+    "interpretation": "Descriptive associations only; multiple-window searches, autocorrelation and seasonal confounding prevent causal or significance claims."
+  },
+  "rawLocalComparison": {
+    "sensor": "SUNNYD_CB_03",
+    "samples": 21327,
+    "observedMedianFt": 4.05676290895284,
+    "observedP05Ft": 3.995810220568229,
+    "observedP95Ft": 4.936027032701806,
+    "residualTideCorrelation": -0.9741832633459591,
+    "allHistoryTideHeightSlopeExplainedVariance": 0.9522496872279425,
+    "interpretation": "Separate physical sensor; nearly flat observed series generates a tide-shaped residual. Earlier raw-sensor validation does not validate gauge30046."
+  },
+  "patternCandidate": {
+    "benchmarkStart": "2026-09-07T00:00:00.000Z",
+    "benchmarkEnd": "2026-10-02T23:36:04.000Z",
+    "benchmark": {
+      "origins": 12,
+      "trainOnlyBeforeIssue": true,
+      "byHorizon": [
+        {
+          "hours": 1,
+          "samples": 9,
+          "pattern": {
+            "maeFt": 0.10260663529914527,
+            "rmseFt": 0.12019603484177345
+          },
+          "persistence": {
+            "maeFt": 0.08793934374822235,
+            "rmseFt": 0.12477475089486945
+          },
+          "dampedTrend": {
+            "maeFt": 0.07574965613602397,
+            "rmseFt": 0.1203005453770778
+          }
+        },
+        {
+          "hours": 3,
+          "samples": 10,
+          "pattern": {
+            "maeFt": 0.20517532925172005,
+            "rmseFt": 0.25241397349605293
+          },
+          "persistence": {
+            "maeFt": 0.197903353844275,
+            "rmseFt": 0.23012481713145366
+          },
+          "dampedTrend": {
+            "maeFt": 0.19885573791807176,
+            "rmseFt": 0.2324181034784796
+          }
+        },
+        {
+          "hours": 6,
+          "samples": 11,
+          "pattern": {
+            "maeFt": 0.262274948320004,
+            "rmseFt": 0.3181706750557557
+          },
+          "persistence": {
+            "maeFt": 0.3981526224398381,
+            "rmseFt": 0.44460306430780044
+          },
+          "dampedTrend": {
+            "maeFt": 0.4714003226913315,
+            "rmseFt": 0.5302694878143194
+          }
+        },
+        {
+          "hours": 12,
+          "samples": 8,
+          "pattern": {
+            "maeFt": 0.17199952945369404,
+            "rmseFt": 0.19116153661240576
+          },
+          "persistence": {
+            "maeFt": 0.1610031986932072,
+            "rmseFt": 0.1791200069394247
+          },
+          "dampedTrend": {
+            "maeFt": null,
+            "rmseFt": null
+          }
+        },
+        {
+          "hours": 24,
+          "samples": 11,
+          "pattern": {
+            "maeFt": 0.22107266312560847,
+            "rmseFt": 0.24881214836735036
+          },
+          "persistence": {
+            "maeFt": 0.19630918382373938,
+            "rmseFt": 0.24495460348750997
+          },
+          "dampedTrend": {
+            "maeFt": null,
+            "rmseFt": null
+          }
+        }
+      ],
+      "patternPeakMaeFt": null,
+      "persistencePeakMaeFt": null,
+      "improvementFraction": 0.0877142678466839,
+      "accepted": false,
+      "limitation": "Rolling-origin residual hindcast only; overlapping outcomes are correlated. Leads start at the last actual reading (up to one hour before issue). At 1/3/6 hours, all three candidates use identical available targets and valid trend history; 12/24 hours compare pattern and persistence only. Peak metrics require a complete 24-hour hourly outcome. Interpolated training samples must be fully known at issue. Fixed 12.4206-hour and 24-hour cycles can reflect tide phase or amplitude mismatch as well as local processes. No causal weather inference, calibrated uncertainty, storm validation or operational reliability claim."
+    },
+    "latestFitStatus": "not-better-than-persistence",
+    "latestFitVarianceExplained": 0.8007773925249397,
+    "latestFitAmplitudesFt": [
+      {
+        "periodHours": 12.4206,
+        "amplitudeFt": 0.23944677342585485
+      },
+      {
+        "periodHours": 24,
+        "amplitudeFt": 0.07130458791392534
+      }
+    ],
+    "latestRollingValidation": {
+      "origins": 10,
+      "trainOnlyBeforeIssue": true,
+      "byHorizon": [
+        {
+          "hours": 1,
+          "samples": 8,
+          "pattern": {
+            "maeFt": 0.07348576323895267,
+            "rmseFt": 0.0992900148229063
+          },
+          "persistence": {
+            "maeFt": 0.09915031397695839,
+            "rmseFt": 0.12151644801900746
+          },
+          "dampedTrend": {
+            "maeFt": 0.10058741154831088,
+            "rmseFt": 0.11487467386020137
+          }
+        },
+        {
+          "hours": 3,
+          "samples": 9,
+          "pattern": {
+            "maeFt": 0.4120590653789493,
+            "rmseFt": 0.570317306059702
+          },
+          "persistence": {
+            "maeFt": 0.35754205830879077,
+            "rmseFt": 0.5450840968156876
+          },
+          "dampedTrend": {
+            "maeFt": 0.36871885767847906,
+            "rmseFt": 0.6507253802087318
+          }
+        },
+        {
+          "hours": 6,
+          "samples": 8,
+          "pattern": {
+            "maeFt": 0.3599530946222011,
+            "rmseFt": 0.5543371000294118
+          },
+          "persistence": {
+            "maeFt": 0.359711589732422,
+            "rmseFt": 0.45158003317551687
+          },
+          "dampedTrend": {
+            "maeFt": 0.4398699354759922,
+            "rmseFt": 0.6078143155807741
+          }
+        },
+        {
+          "hours": 12,
+          "samples": 10,
+          "pattern": {
+            "maeFt": 0.2235418947451194,
+            "rmseFt": 0.39939753132397127
+          },
+          "persistence": {
+            "maeFt": 0.20593735307634345,
+            "rmseFt": 0.34725409307433136
+          },
+          "dampedTrend": {
+            "maeFt": null,
+            "rmseFt": null
+          }
+        },
+        {
+          "hours": 24,
+          "samples": 9,
+          "pattern": {
+            "maeFt": 0.2437674311813283,
+            "rmseFt": 0.4005750958645014
+          },
+          "persistence": {
+            "maeFt": 0.23333511223910325,
+            "rmseFt": 0.3696159205149336
+          },
+          "dampedTrend": {
+            "maeFt": null,
+            "rmseFt": null
+          }
+        }
+      ],
+      "patternPeakMaeFt": null,
+      "persistencePeakMaeFt": null,
+      "improvementFraction": -0.05043417345640888,
+      "accepted": false,
+      "limitation": "Rolling-origin residual hindcast only; overlapping outcomes are correlated. Leads start at the last actual reading (up to one hour before issue). At 1/3/6 hours, all three candidates use identical available targets and valid trend history; 12/24 hours compare pattern and persistence only. Peak metrics require a complete 24-hour hourly outcome. Interpolated training samples must be fully known at issue. Fixed 12.4206-hour and 24-hour cycles can reflect tide phase or amplitude mismatch as well as local processes. No causal weather inference, calibrated uncertainty, storm validation or operational reliability claim."
+    },
+    "displayDecision": "Withheld: failed persistence comparison. No operational promotion."
+  },
+  "weatherResponse": {
+    "training": {
+      "method": "Lead-specific standardized ridge residual-change regression; fixed penalty 20",
+      "split": "Chronological first 70% training / last 30% testing; training targets purged at holdout boundary",
+      "testStart": "2026-09-06T14:34:35.200Z",
+      "testEnd": "2026-10-02T23:36:04.000Z",
+      "features": [
+        "issueResidual",
+        "residualChange3h",
+        "northWind6h",
+        "eastWind6h",
+        "northWind12h",
+        "eastWind12h",
+        "northWind24h",
+        "eastWind24h",
+        "northWindChange6h",
+        "eastWindChange6h",
+        "northWindChange12h",
+        "eastWindChange12h",
+        "northWindChange24h",
+        "eastWindChange24h",
+        "pressureChange",
+        "pressureChange6h",
+        "rain6h",
+        "rain12h",
+        "rain24h",
+        "upcomingRain",
+        "astronomicalTideChange"
+      ]
+    },
+    "validation": {
+      "leads": [
+        {
+          "leadHours": 1,
+          "trainingPairs": 807,
+          "testPairs": 351,
+          "modelMaeFt": 0.12530047502050204,
+          "persistenceMaeFt": 0.14706912946032957,
+          "improvement": 0.14801647714722765,
+          "absoluteError90Ft": 0.22824329272440044,
+          "passes": true,
+          "anchorTrendAndTideChangeOnlyMaeFt": 0.1299978962467973,
+          "improvementVsTideTrend": 0.03613459418895015
+        },
+        {
+          "leadHours": 3,
+          "trainingPairs": 912,
+          "testPairs": 393,
+          "modelMaeFt": 0.20290155498713522,
+          "persistenceMaeFt": 0.2842691347447601,
+          "improvement": 0.28623431042094427,
+          "absoluteError90Ft": 0.38731507821377875,
+          "passes": true,
+          "anchorTrendAndTideChangeOnlyMaeFt": 0.21675272529234593,
+          "improvementVsTideTrend": 0.0639030964271794
+        },
+        {
+          "leadHours": 6,
+          "trainingPairs": 779,
+          "testPairs": 339,
+          "modelMaeFt": 0.2014967311629974,
+          "persistenceMaeFt": 0.3376244909427907,
+          "improvement": 0.4031927879392483,
+          "absoluteError90Ft": 0.3923657274247036,
+          "passes": true,
+          "anchorTrendAndTideChangeOnlyMaeFt": 0.2247185928743376,
+          "improvementVsTideTrend": 0.10333751833487959
+        },
+        {
+          "leadHours": 12,
+          "trainingPairs": 779,
+          "testPairs": 334,
+          "modelMaeFt": 0.17015288543398205,
+          "persistenceMaeFt": 0.20461679972126634,
+          "improvement": 0.1684314989494109,
+          "absoluteError90Ft": 0.3139615016696664,
+          "passes": true,
+          "anchorTrendAndTideChangeOnlyMaeFt": 0.1945699924731234,
+          "improvementVsTideTrend": 0.12549266579487672
+        },
+        {
+          "leadHours": 24,
+          "trainingPairs": 791,
+          "testPairs": 329,
+          "modelMaeFt": 0.19544280726866622,
+          "persistenceMaeFt": 0.25379786381265274,
+          "improvement": 0.22992729594864814,
+          "absoluteError90Ft": 0.47226776052336533,
+          "passes": true,
+          "anchorTrendAndTideChangeOnlyMaeFt": 0.23645160517467947,
+          "improvementVsTideTrend": 0.17343421236543455
+        }
+      ],
+      "peakWindows": 0,
+      "peakMaeFt": null,
+      "persistencePeakMaeFt": null,
+      "eligible": false,
+      "pointEligible": true,
+      "weatherInput": "reanalysis hindcast"
+    },
+    "decision": "Point-hindcast improvement supports explicit experimental opt-in only. Peak/flood-event accuracy remains unavailable; primary forecast retained.",
+    "forecastOrigin": "Weather leads start at issue time with an actual measured residual no more than30minutes old. Pattern/trend leads start at the latest actual reading, which can precede issue by up to60minutes."
+  },
+  "limitations": [
+    "All weather relationships are descriptive. Serially dependent samples are not independent significance tests.",
+    "Searching many windows and lags can overfit. Highest correlation is not a causal response delay.",
+    "The archive covers one summer/early-autumn period; seasonal baseline and offshore processes can confound associations.",
+    "Weather is gridded reanalysis, excluding issued weather forecast error and local rain-gauge uncertainty.",
+    "Tide phase and vertical conversion remain the archive's assumptions; this script does not modify them.",
+    "All-history tide correction is diagnostic only. It is not a calibrated station tide prediction.",
+    "Potential isolated spikes are retained and listed; their measurement quality requires provider review.",
+    "Reanalysis future weather omits issued weather forecast error.",
+    "Overlapping hourly issue windows are descriptive, not independent confidence trials.",
+    "Peak errors use complete 24-hour issue windows sampled hourly.",
+    "Regional tide phase and datum assumptions remain uncalibrated.",
+    "This screening gate does not constitute operational validation.",
+    "The tide/trend ablation uses precisely the same valid training and test pairs as the full weather model.",
+    "Weather improvements are associative predictive evidence, not causal or significance claims.",
+    "The 90th percentile absolute error is a hindcast error summary, not a calibrated forecast probability interval.",
+    "Point-only eligibility requires explicit experimental opt-in; unavailable peak or flood-event accuracy is not fabricated."
+  ],
+  "reports": {
+    "diagnostics": "functions/evaluation/regional-surge-pattern-analysis.json",
+    "weatherResponse": "functions/evaluation/weather-response-analysis-2026-10-03.json",
+    "patternBenchmark": "/tmp/floodi-pattern-analysis.json"
+  },
+  "sources": [
+    {
+      "title": "FIMAN gauge30046",
+      "url": "https://fiman.nc.gov/?id=30046"
+    },
+    {
+      "title": "Sunny Day Flooding public data service",
+      "url": "https://data.sunnydayflooding.com/services/data.php"
+    },
+    {
+      "title": "NOAA CO-OPS Wrightsville Beach8658163",
+      "url": "https://tidesandcurrents.noaa.gov/stationhome.html?id=8658163"
+    },
+    {
+      "title": "Open-Meteo historical reanalysis",
+      "url": "https://open-meteo.com/en/docs/historical-weather-api"
+    },
+    {
+      "title": "Tide-surge interaction research",
+      "url": "https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2006JC004033"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { regionalGaugeLevels } from '../../functions/src/forecast/sensor';
 import { WEBCAMS } from '../constants/webcams';
 import { markPerf, measurePerf } from 'src/lib/perfLogger';
 
@@ -350,13 +351,6 @@ export async function fetchObservedWaterLevels(opts: {
         const properties = data.features?.[0]?.properties;
         const parameters = properties?.parameters || [];
 
-        const WL_PRIORITY = ["FIMAN (observed)", "Hohonu (observed)", "water_level_raw"];
-        let fimanParam = null;
-        for (const pid of WL_PRIORITY) {
-          fimanParam = parameters.find((p: any) => p.id === pid && p.observations?.times?.length > 0);
-          if (fimanParam) break;
-        }
-
         const cameraParams = parameters.filter((p: any) => p.id === "Camera");
 
         // Always collect imagery for this platform
@@ -390,23 +384,13 @@ export async function fetchObservedWaterLevels(opts: {
           }
         });
 
-        if (fimanParam?.observations?.times?.length > 0) {
+        const local = regionalGaugeLevels(parameters, CAROLINA_BEACH_NAVD88_TO_MLLW_FT);
+        if (Object.keys(local).length) {
+          // Parser normalizes NAVD88 metres to MLLW feet explicitly.
           const out: TimeSeries = {};
-          const times = fimanParam.observations.times;
-          const values = fimanParam.observations.values;
-
-          for (let i = 0; i < times.length; i++) {
-            const t = new Date(times[i] + 'Z');
-            let v = parseFloat(values[i]);
-            if (!isNaN(v)) {
-              if (datum.toUpperCase() === 'MLLW') {
-                const datumOffset = units === 'english'
-                  ? CAROLINA_BEACH_NAVD88_TO_MLLW_FT
-                  : CAROLINA_BEACH_NAVD88_TO_MLLW_FT * 0.3048;
-                v += datumOffset;
-              }
-              out[t.toISOString()] = v;
-            }
+          for (const [t, value] of Object.entries(local)) {
+            const ft = datum.toUpperCase() === 'MLLW' ? value : value - CAROLINA_BEACH_NAVD88_TO_MLLW_FT;
+            out[t] = units === 'english' ? ft : ft * 0.3048;
           }
           return { series: out, platform };
         }

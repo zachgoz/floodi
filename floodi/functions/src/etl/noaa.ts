@@ -24,10 +24,11 @@ export async function fetchNoaaObserved(station: string, start: Date, end: Date)
     end_date: fmtDate(end),
   });
 
-  const res = await fetch(`${NOAA_BASE}?${params.toString()}`);
+  const res = await fetch(`${NOAA_BASE}?${params.toString()}`, { timeout: 30_000 });
   if (!res.ok) throw new Error(`NOAA API error: ${res.statusText}`);
   
   const data = await res.json() as any;
+  if (data.error) throw new Error(`NOAA: ${String(data.error.message).slice(0, 200)}`);
   const out: Record<string, number> = {};
   
   for (const row of data.data || []) {
@@ -57,10 +58,11 @@ export async function fetchNoaaPredictions(station: string, start: Date, end: Da
   params.delete('interval');
   params.append('interval', '6');
 
-  const res = await fetch(`${NOAA_BASE}?${params.toString()}`);
+  const res = await fetch(`${NOAA_BASE}?${params.toString()}`, { timeout: 30_000 });
   if (!res.ok) throw new Error(`NOAA API error: ${res.statusText}`);
   
   const data = await res.json() as any;
+  if (data.error) throw new Error(`NOAA: ${String(data.error.message).slice(0, 200)}`);
   const out: Record<string, number> = {};
   
   for (const row of data.predictions || []) {

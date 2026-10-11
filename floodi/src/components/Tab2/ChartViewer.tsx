@@ -1,4 +1,5 @@
-import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import { floodWindows, liveViewport } from 'src/utils/waterForecast';
+import React, { useRef, useEffect, useState, useMemo, useCallback, useId } from 'react';
 import type { Point, ChartConfig, WindPoint, PrecipPoint } from './types';
 import { useChartInteraction, formatTooltipTime, findNearestPoint } from './hooks/useChartInteraction';
 import { isCommentTimeRange, type Comment, type CommentTimeRange } from 'src/types/comment';
@@ -25,6 +26,9 @@ interface ChartViewerProps {
   predictedPoints: Point[];
   /** Adjusted prediction data points */
   adjustedPoints: Point[];
+  experimentalPoints?: Point[];
+  experimentalLower?: Point[];
+  experimentalUpper?: Point[];
   /** Delta (observed - predicted) data points */
   deltaPoints: Point[];
   /** Future surge forecast (offset trend) points */
@@ -79,6 +83,8 @@ interface ChartViewerProps {
   selectedTime?: Date | null;
   /** Request to scroll the chart to center on a specific time */
   centerRequest?: { time: Date; id: number };
+  /** A viewport selected on the linked residual chart. */
+  viewportRequest?: { start: Date; end: Date; id: number };
   /** Explicit trigger to reset pan state */
   resetKey?: number;
   /** Complete time range configuration for stable markers */
@@ -194,6 +200,9 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   observedPoints,
   predictedPoints,
   adjustedPoints,
+  experimentalPoints = [],
+  experimentalLower = [],
+  experimentalUpper = [],
   deltaPoints,
   surgeForecastPoints = [],
   windPoints = [],
@@ -221,6 +230,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   onResetToLive,
   selectedTime,
   centerRequest,
+  viewportRequest,
   resetKey,
   timeRange,
   viewMode = 'basic',
@@ -231,6 +241,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const forecastClipId = `water-forecast-${useId().replace(/:/g, '')}`;
   const [size, setSize] = useState({ w: 900, h: 420 });
 
   const { hoverT, setHoverT, calculateTooltipData, calculateCommentTooltipData } = useChartInteraction();
@@ -323,12 +334,16 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     if (centerRequest) {
       const activeStart = viewDomain?.start || domainStart;
       const activeEnd = viewDomain?.end || domainEnd;
-      const durationMs = activeEnd.getTime() - activeStart.getTime();
-      const newStart = new Date(centerRequest.time.getTime() - durationMs * nowRatio);
-      const newEnd = new Date(centerRequest.time.getTime() + durationMs * (1 - nowRatio));
-      setViewDomain({ start: newStart, end: newEnd });
+      setViewDomain(liveViewport(activeStart, activeEnd, centerRequest.time, nowRatio));
     }
   }, [centerRequest]);
+
+  // Apply a viewport selected on the linked chart without resetting the y-axis.
+  useEffect(() => {
+    if (viewportRequest) {
+      setViewDomain({ start: viewportRequest.start, end: viewportRequest.end });
+    }
+  }, [viewportRequest]);
 
   // Handle explicit reset requests
   useEffect(() => {
@@ -349,6 +364,12 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   }, [activeStart.getTime(), activeEnd.getTime(), nowRatio, now.getTime()]);
 
   // Find water level at the center point for the button label
+  useEffect(() => {
+    if (Math.abs(+centerTime - Date.now()) > 5 * 60_000) return;
+    const timer = setInterval(() => setViewDomain(d => liveViewport(d?.start || domainStart, d?.end || domainEnd, new Date(), nowRatio)), 60_000);
+    return () => clearInterval(timer);
+  }, [centerTime, domainStart, domainEnd, nowRatio]);
+
   const centerLevel = useMemo(() => {
     const obsRes = findNearestPoint(observedPoints, centerTime);
     const adjRes = findNearestPoint(adjustedPoints, centerTime);
@@ -372,13 +393,12 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     const e = activeEnd.getTime();
     const c = centerTime.getTime();
 
-    // Safeguard: Only emit if the viewport has shifted by more than a small threshold (1s).
-    // This breaks the infinite feedback loop when parent state updates trigger child re-renders.
+    // Avoid duplicate notifications while preserving even small linked-chart movements.
     const last = lastEmittedViewportRef.current;
     if (last && 
-        Math.abs(last.start - s) < 1000 && 
-        Math.abs(last.end - e) < 1000 && 
-        Math.abs(last.center - c) < 1000) {
+        last.start === s &&
+        last.end === e &&
+        last.center === c) {
       return;
     }
 
@@ -453,6 +473,9 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     const allValues = [
       ...observedPoints.map(p => p.v),
       ...adjustedPoints.map(p => p.v),
+      ...experimentalPoints.map(p => p.v),
+      ...experimentalLower.map(p => p.v),
+      ...experimentalUpper.map(p => p.v),
       ...predictedPoints.map(p => p.v),
       ...(showDelta ? deltaPoints.map(p => p.v) : []),
       ...(showDelta ? surgeForecastPoints.map(p => p.v) : []),
@@ -471,99 +494,28 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
     const padding = (max - min) * 0.1;
     return { min: min - padding, max: max + padding };
-  }, [observedPoints, adjustedPoints, predictedPoints, deltaPoints, thresholds, showDelta]);
+  }, [observedPoints, adjustedPoints, experimentalPoints, experimentalLower, experimentalUpper, predictedPoints, deltaPoints, surgeForecastPoints, thresholds, showDelta]);
 
   // Scaling functions
   const t0 = activeStart.getTime();
   const t1 = activeEnd.getTime();
   const xOf = useCallback((date: Date) => margins.l + ((date.getTime() - t0) / (t1 - t0)) * innerW, [margins.l, t0, t1, innerW]);
   const yOf = useCallback((value: number) => margins.t + (1 - (value - yMinMax.min) / (yMinMax.max - yMinMax.min)) * innerH, [margins.t, yMinMax.min, yMinMax.max, innerH]);
+  // Keep native preceding forecast samples for crossings and interpolation,
+  // while drawing predictions only after the measured/estimated display ends.
+  const displayHandoff = observedPoints.reduce((latest, point) => Number.isFinite(+point.t)
+    ? Math.max(latest, +point.t) : latest, +activeStart);
+  const forecastClipStart = Math.min(margins.l + innerW, Math.max(margins.l, xOf(new Date(displayHandoff))));
 
-  // Flood highlighting rectangles
-  const floodRects = useMemo(() => {
-    const rects: { x: number; w: number }[] = [];
-    if (adjustedPoints.length < 2) return rects;
-
-    let isAbove = false;
-    let segmentStart: Date | null = null;
-
-    for (let i = 1; i < adjustedPoints.length; i++) {
-      const previous = adjustedPoints[i - 1];
-      const current = adjustedPoints[i];
-      const prevAbove = previous.v >= thresholds.minor;
-      const currAbove = current.v >= thresholds.minor;
-
-      if (!isAbove && (prevAbove || (!prevAbove && currAbove))) {
-        // Entering flood zone
-        let startTime = previous.t;
-        if (!prevAbove && currAbove && current.v !== previous.v) {
-          const fraction = (thresholds.minor - previous.v) / (current.v - previous.v);
-          startTime = new Date(previous.t.getTime() + fraction * (current.t.getTime() - previous.t.getTime()));
-        }
-        segmentStart = startTime;
-        isAbove = true;
-      }
-
-      if (isAbove && !currAbove) {
-        // Leaving flood zone
-        let endTime = current.t;
-        if (current.v !== previous.v) {
-          const fraction = (thresholds.minor - previous.v) / (current.v - previous.v);
-          endTime = new Date(previous.t.getTime() + fraction * (current.t.getTime() - previous.t.getTime()));
-        }
-
-        if (segmentStart) {
-          const x = xOf(segmentStart);
-          const width = Math.max(1, xOf(endTime) - x);
-          rects.push({ x, w: width });
-        }
-        isAbove = false;
-        segmentStart = null;
-      }
-    }
-
-    // Handle ongoing flood at end
-    if (isAbove && segmentStart) {
-      const x = xOf(segmentStart);
-      const width = Math.max(1, xOf(domainEnd) - x);
-      rects.push({ x, w: width });
-    }
-
-    return rects;
-  }, [adjustedPoints, thresholds.minor, xOf, domainEnd]);
-
-  // Historical Flood Events highlighting
-  const historicalFloodRects = useMemo(() => {
-    const nowMs = now.getTime();
-
-    return floodEvents
-      .map(event => {
-        const start = new Date(event.startTime);
-        const end = event.endTime ? new Date(event.endTime) : domainEnd;
-
-        // Historical event shading should never bleed into the forecast area.
-        if (start.getTime() >= nowMs) return null;
-        
-        // Skip if entirely outside the visible domain
-        if (end < activeStart || start > activeEnd) return null;
-        
-        const clippedStart = new Date(Math.max(start.getTime(), activeStart.getTime()));
-        const clippedEnd = new Date(Math.min(end.getTime(), activeEnd.getTime(), nowMs));
-        if (clippedEnd <= clippedStart) return null;
-
-        const x = xOf(clippedStart);
-        const width = xOf(clippedEnd) - x;
-        
-        return {
-          x,
-          w: Math.max(2, width),
-          type: event.thresholdType,
-          startTime: event.startTime,
-          peakValue: event.peakValue
-        };
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
-  }, [floodEvents, activeStart, activeEnd, xOf, domainEnd, now]);
+  // Only future threshold exceedance from the same series as event cards.
+  const floodRects = useMemo(() => floodWindows(adjustedPoints.length ? adjustedPoints : predictedPoints, thresholds.minor)
+    .flatMap(event => {
+      const start = new Date(Math.max(+event.startTime, +activeStart, +now));
+      const coverageEnd = (adjustedPoints.length ? adjustedPoints : predictedPoints).at(-1)?.t;
+      if (!coverageEnd) return [];
+      const end = new Date(Math.min(+(event.endTime || event.lastSampleTime), +activeEnd));
+      return end > start ? [{ x: xOf(start), w: xOf(end) - xOf(start) }] : [];
+    }), [adjustedPoints, predictedPoints, thresholds.minor, activeStart, activeEnd, now, xOf]);
 
   // Mouse/pointer interaction
   const computeTimeAtPointer = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -906,7 +858,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
   /** Handle reset of both local zoom and global absolute range */
   const handleReset = () => {
-    setViewDomain(null);
+    setViewDomain(liveViewport(activeStart, activeEnd, new Date(), nowRatio));
     onResetToLive?.();
   };
 
@@ -925,6 +877,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         height={size.h}
         role="img"
         aria-label="Water level chart showing observed, predicted, and adjusted predictions over time"
+        data-domain-start={activeStart.toISOString()}
+        data-domain-end={activeEnd.toISOString()}
         onPointerMove={handlePointerMove}
         onPointerLeave={handlePointerLeave}
         onPointerDown={handlePointerDown}
@@ -1091,7 +1045,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         {/* Flood zones (Active/Future) */}
         {floodRects.map((rect, i) => (
           <rect
-            key={`active-flood-${i}`}
+            key={`active-flood-${i}`} data-testid="forecast-flood-shading"
             x={rect.x}
             y={margins.t}
             width={rect.w}
@@ -1099,28 +1053,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             fill="rgba(255,0,0,0.08)"
           />
         ))}
-
-        {/* Historical Flood Events */}
-        {historicalFloodRects.map((rect, i) => {
-          const colors: Record<string, string> = {
-            minor: 'rgba(255, 220, 30, 0.12)',
-            moderate: 'rgba(255, 165, 0, 0.12)',
-            major: 'rgba(210, 35, 35, 0.12)',
-            extreme: 'rgba(160, 32, 240, 0.12)'
-          };
-          return (
-            <rect
-              key={`hist-flood-${i}`}
-              x={rect.x}
-              y={margins.t}
-              width={rect.w}
-              height={innerH}
-              fill={colors[rect.type] || 'rgba(100, 100, 100, 0.1)'}
-              stroke={colors[rect.type]?.replace('0.12', '0.3')}
-              strokeWidth={1}
-            />
-          );
-        })}
 
         {/* Flood Visual Indicators */}
         {thresholds && [
@@ -1142,9 +1074,9 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             <text
               x={margins.l + 4}
               y={yOf(ft) - 4}
-              fill={color}
+              fill={`color-mix(in srgb, ${color} 40%, var(--chart-axis-text))`}
               fontSize="12"
-              fontWeight="900"
+              fontWeight="600"
               style={{ 
                 paintOrder: 'stroke',
                 stroke: 'var(--chart-bg, #ffffff)',
@@ -1153,49 +1085,42 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 strokeLinejoin: 'round'
               }}
             >
-              {label.replace(' Flooding', '').toUpperCase()} {ft.toFixed(1)}'
+              {label.replace(' Flooding', '')} {ft.toFixed(1)} ft
             </text>
           </g>
         ))}
 
 
         {/* Data series */}
+        <defs><clipPath id={forecastClipId}>
+          <rect data-testid="water-forecast-clip" x={forecastClipStart} y={margins.t}
+            width={Math.max(0, margins.l + innerW - forecastClipStart)} height={innerH} />
+        </clipPath></defs>
 
-        {/* Surge Fill (Area between observed and phase-aligned predicted) */}
-        {viewMode === 'advanced' && observedPoints.length > 1 && predictedPoints.length > 1 && (() => {
-          const maxObsT = observedPoints[observedPoints.length - 1].t.getTime();
-          const matchingPredicted = predictedPoints.filter(p => p.t.getTime() <= maxObsT);
-
-          if (matchingPredicted.length < 2) return null;
-
-          const obsPath = observedPoints.map(p => `${xOf(p.t)},${yOf(p.v)}`).join(' ');
-          const predPath = [...matchingPredicted].reverse().map(p => `${xOf(p.t)},${yOf(p.v)}`).join(' ');
-
-          return (
-            <polygon
-              points={`${obsPath} ${predPath}`}
-              fill="rgba(25, 118, 210, 0.15)"
-            />
-          );
-        })()}
-
-        {/* Observed data (using threshold gradient) */}
-        {observedPoints.length > 1 && (
+        {observedPoints.filter(p => !p.estimated).length > 1 && (
           <polyline
             key="obs-line"
+            aria-label="Observed water level"
             fill="none"
             stroke={thresholds ? "url(#obs-flood-gradient)" : "var(--line-observed, #2ecc71)"}
             strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
-            points={observedPoints.map(p => `${xOf(p.t)},${yOf(p.v)}`).join(' ')}
+            points={observedPoints.filter(p => !p.estimated).map(p => `${xOf(p.t)},${yOf(p.v)}`).join(' ')}
           />
         )}
+        {observedPoints.some(p => p.estimated) && <polyline
+          aria-label="Estimated localized water level"
+          fill="none" stroke={thresholds ? 'url(#obs-flood-gradient)' : 'var(--line-observed, #2ecc71)'}
+          strokeWidth="3" strokeDasharray="3 3" strokeLinecap="round" strokeLinejoin="round"
+          points={observedPoints.slice(Math.max(0, observedPoints.findIndex(p => p.estimated) - 1)).map(p => `${xOf(p.t)},${yOf(p.v)}`).join(' ')}
+        />}
 
-        {/* Predicted data */}
-        {viewMode === 'advanced' && predictedPoints.length > 1 && (
+        {/* Astronomical tide remains visible in every view. */}
+        {predictedPoints.length > 1 && (
           <polyline
             fill="none"
+            aria-label="Astronomical tide prediction"
             stroke="#95a5a6"
             strokeWidth="2"
             opacity={0.9}
@@ -1211,6 +1136,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         {adjustedPoints.length > 1 && (
           <polyline
             key="adj-line"
+            aria-label="Forecast total water level"
+            clipPath={`url(#${forecastClipId})`}
             fill="none"
             stroke={thresholds ? "url(#adj-flood-gradient)" : "var(--line-observed, #2ecc71)"}
             strokeWidth="2.5"
@@ -1221,6 +1148,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           />
         )}
 
+        {experimentalPoints.length > 1 && <polyline aria-label="Comparison total water level" fill="none" stroke="#8462bf" strokeWidth={3} strokeDasharray="7 5" points={buildPolyline(experimentalPoints, xOf, yOf)} />}
+        {[experimentalLower, experimentalUpper].map((series,i) => series.length > 1 && <polyline key={`bound-${i}`} aria-label={i === 0 ? 'Forecast lower error bound' : 'Forecast upper error bound'} fill="none" stroke={experimentalPoints.length ? '#8462bf' : '#637b86'} opacity={0.6} strokeWidth={1} strokeDasharray="3 5" points={buildPolyline(series, xOf, yOf)} />)}
         {/* Surge offset trend */}
         {showDelta && deltaPoints.length > 1 && (
           <g>
@@ -1277,7 +1206,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             const isHigh = extremum.type === 'high';
 
             // Clutter control: minimum 70px between labels OF THE SAME TYPE
-            const showPeakLabel = isHigh ? (x - lastHighLabelX) > 70 : (x - lastLowLabelX) > 70;
+            const showPeakLabel = isHigh ? (x - lastHighLabelX) > 100 : (x - lastLowLabelX) > 100;
             if (showPeakLabel) {
               if (isHigh) lastHighLabelX = x;
               else lastLowLabelX = x;
@@ -1295,7 +1224,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 />
                 {showPeakLabel && (() => {
                   // Clearance: -18px for high peaks, +24px for low peaks
-                  let finalY = isHigh ? yOf(extremum.v) - 18 : yOf(extremum.v) + 24;
+                  const compactLabel = size.w < 600;
+                  let finalY = isHigh ? yOf(extremum.v) - (compactLabel ? 0 : 18) : yOf(extremum.v) + 24;
 
                   // Safety: keep labels within SVG bounds (plus some padding)
                   const minVisibleY = margins.t - 5;
@@ -1310,28 +1240,28 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                         y={finalY - 12}
                         textAnchor="middle"
                         fill={isHigh ? "var(--ion-color-danger)" : "var(--ion-color-primary)"}
-                        fontSize="10"
-                        fontWeight="800"
-                        style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}
+                        fontSize="12"
+                        fontWeight="600"
+                        style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3px' }}
                       >
                         {isHigh ? 'High' : 'Low'} {extremum.v.toFixed(2)} ft
                       </text>
-                      <text
+                      {!compactLabel && <text
                         x={x}
                         y={finalY}
                         textAnchor="middle"
                         fill="var(--chart-axis-text)"
-                        fontSize="11"
-                        fontWeight="700"
+                        fontSize="12"
+                        fontWeight="500"
                         style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3.1px' }}
                       >
                         {new Intl.DateTimeFormat(undefined, { 
                           hour: 'numeric', 
                           minute: '2-digit',
                           hour12: true,
-                          timeZone: timezone === 'gmt' ? 'UTC' : undefined 
+                          timeZone: timezone === 'gmt' ? 'UTC' : 'America/New_York'
                         }).format(tick).replace(/\s?[AP]M$/, (m) => m.trim().toLowerCase())}
-                      </text>
+                      </text>}
                     </g>
                   );
                 })()}
@@ -1355,7 +1285,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                       return new Intl.DateTimeFormat(undefined, {
                         month: 'short',
                         day: 'numeric',
-                        timeZone: timezone === 'gmt' ? 'UTC' : undefined
+                        timeZone: timezone === 'gmt' ? 'UTC' : 'America/New_York'
                       }).format(tick);
                     }
                     return '';
@@ -1383,8 +1313,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 x={4}
                 y={y + 4}
                 fill="var(--chart-axis-text)"
-                fontSize="14"
-                fontWeight="600"
+                fontSize="12"
+                fontWeight="500"
               >
                 {value.toFixed(1)} ft
               </text>
@@ -1651,8 +1581,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 x={x + 6}
                 y={margins.t + 18}
                 fill="var(--ion-color-primary, #3880ff)"
-                fontSize="11"
-                fontWeight="900"
+                fontSize="12"
+                fontWeight="600"
                 style={{ 
                   paintOrder: 'stroke', 
                   stroke: 'var(--chart-bg, #ffffff)', 
@@ -1691,8 +1621,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 x={x + 6}
                 y={margins.t + innerH - 15}
                 fill="#95a5a6"
-                fontSize="11"
-                fontWeight="900"
+                fontSize="12"
+                fontWeight="600"
                 style={{ 
                   paintOrder: 'stroke', 
                   stroke: 'var(--chart-bg, #ffffff)', 

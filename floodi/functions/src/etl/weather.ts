@@ -51,8 +51,8 @@ export async function fetchNwsObservations(lat: number, lon: number, start?: Dat
       temp: p.temperature?.value != null ? (p.temperature.value * 9/5) + 32 : undefined,
       windSpeed: p.windSpeed?.value != null ? p.windSpeed.value * 0.621371 : undefined,
       windDirection: p.windDirection?.value,
-      pressure: p.barometricPressure?.value,
-      precip: p.precipitationLastHour?.value,
+      pressure: p.barometricPressure?.value != null ? p.barometricPressure.value / 100 : undefined,
+      precip: p.precipitationLastHour?.value != null ? p.precipitationLastHour.value * 0.0393701 : undefined,
       description: p.textDescription,
       icon: p.icon
     };
@@ -78,7 +78,8 @@ export async function fetchNwsObservations(lat: number, lon: number, start?: Dat
       const hourly = omData.hourly;
       if (hourly && hourly.time) {
         for (let i = 0; i < hourly.time.length; i++) {
-          const t = hourly.time[i] + ':00+00:00'; // Open-Meteo returns '2026-05-12T00:00', append seconds and timezone
+          const t = hourly.time[i] + ':00+00:00';
+          if (Date.parse(t) > +(end || new Date()) || (start && Date.parse(t) < +start)) continue; // Open-Meteo returns '2026-05-12T00:00', append seconds and timezone
           
           const tempC = hourly.temperature_2m[i];
           const tempF = tempC != null ? (tempC * 9/5) + 32 : undefined;

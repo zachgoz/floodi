@@ -169,6 +169,10 @@ service cloud.firestore {
         allow read: if true;
       }
 
+      match /outlook/{documentId} {
+        allow read: if true;
+      }
+
       match /peaks/{peakId} {
         allow read: if true;
       }

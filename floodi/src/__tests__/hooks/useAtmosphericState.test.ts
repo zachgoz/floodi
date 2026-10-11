@@ -44,6 +44,53 @@ describe('useAtmosphericState', () => {
     expect(result.current.activeAtmo.source).toBe('Predicted Water Level');
   });
 
+  it('uses astronomical tide after the learned forecast horizon instead of extending the final predicted level', () => {
+    const focusTime = new Date(+now + 90 * 60_000);
+    const data = {
+      ...mockProcessedData,
+      predictedPoints: [{ t: focusTime, v: 2.1 }],
+    };
+    const { result } = renderHook(() => useAtmosphericState(data, focusTime, null));
+
+    expect(result.current.activeAtmo.wl).toBe(2.1);
+    expect(result.current.activeAtmo.source).toBe('NOAA Prediction');
+    expect(result.current.activeAtmo.fullSource).toBe('NOAA Predicted Water Level');
+    expect(result.current.simulationLevel).toBe(2.1);
+  });
+
+  it('does not borrow a future learned level before the first supported forecast timestamp', () => {
+    const focusTime = new Date(+now + 30 * 60_000);
+    const data = {
+      ...mockProcessedData,
+      predictedPoints: [{ t: focusTime, v: 1.9 }],
+    };
+    const { result } = renderHook(() => useAtmosphericState(data, focusTime, null));
+
+    expect(result.current.activeAtmo.wl).toBe(1.9);
+    expect(result.current.activeAtmo.source).toBe('NOAA Prediction');
+  });
+
+  it('returns no water level beyond the forecast horizon when astronomical tide is also unavailable', () => {
+    const focusTime = new Date(+now + 90 * 60_000);
+    const data = { ...mockProcessedData, predictedPoints: [] };
+    const { result } = renderHook(() => useAtmosphericState(data, focusTime, null));
+
+    expect(result.current.activeAtmo.wl).toBeNull();
+    expect(result.current.activeAtmo.surge).toBeNull();
+    expect(result.current.activeAtmo.source).toBe('No Data');
+  });
+
+  it('labels a localized alternate-station proxy as estimated while preserving its source', () => {
+    const estimate = {
+      ...mockProcessedData,
+      observedPoints: [{ t: now, v: 6.1, source: 'noaa', estimated: true, observedTime: new Date(+now - 3600_000) }],
+    };
+    const { result } = renderHook(() => useAtmosphericState(estimate, null, null));
+    expect(result.current.activeAtmo.wl).toBe(6.1);
+    expect(result.current.activeAtmo.statusLabel).toBe('Estimated');
+    expect(result.current.activeAtmo.fullSource).toBe('Estimated Water Level (phase-aligned NOAA proxy)');
+  });
+
   it('handles simulation mode', () => {
     const { result } = renderHook(() => useAtmosphericState(mockProcessedData, null, null, 3.0));
     
@@ -83,4 +130,11 @@ describe('useAtmosphericState', () => {
     
     expect(result.current.simulationLevel).toBe(3.5);
   });
+  it('does not substitute zero water level or anomaly when all series are missing', () => {
+    const empty = { ...mockProcessedData, observedPoints: [], adjustedPoints: [], predictedPoints: [] };
+    const { result } = renderHook(() => useAtmosphericState(empty, null, null));
+    expect(result.current.activeAtmo.wl).toBeNull();
+    expect(result.current.activeAtmo.surge).toBeNull();
+  });
+
 });

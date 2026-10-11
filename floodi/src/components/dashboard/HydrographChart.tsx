@@ -3,6 +3,7 @@ import { IonSpinner, IonSkeletonText } from '@ionic/react';
 import './HydrographChart.css';
 import ChartViewer from '../Tab2/ChartViewer';
 import { ViewingTimePill } from './ViewingTimePill';
+import { ChartInfo } from './ChartInfo';
 
 /**
  * HydrographChart wraps ChartViewer with a styled card shell that adds a
@@ -30,6 +31,13 @@ interface HydrographChartProps extends ChartViewerProps {
   floodEvents?: any[];
   /** Open time-window settings from the date pill */
   onTimeSettingsClick?: () => void;
+  onResetView?: () => void;
+  experimentalLabel?: string;
+  experimentalDescription?: string;
+  forecastLabel?: string;
+  forecastDescription?: string;
+  controls?: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 export const HydrographChart: React.FC<HydrographChartProps> = ({
@@ -43,10 +51,17 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
   warnings,
   floodEvents,
   onTimeSettingsClick,
+  onResetView,
+  experimentalLabel = 'Weather model',
+  experimentalDescription,
+  forecastLabel = 'Forecast',
+  forecastDescription,
+  controls,
+  children,
   ...chartProps
 }) => {
   return (
-    <div className="hydrograph-container">
+    <section className="hydrograph-container" aria-label="Water level and surge forecast">
       <div className="hydrograph-header">
         <div className="title-group">
           {loading ? (
@@ -66,7 +81,7 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
               {isLive && <span className="subtitle-dot" />}
               {isLive && <span className="subtitle-text">Live</span>}
               <ViewingTimePill time={time} onClick={onTimeSettingsClick} />
-              {!isLive && onResetToLive && (
+              {!controls && !isLive && onResetToLive && (
                 <button
                   className="reset-to-live-btn"
                   onClick={onResetToLive}
@@ -81,17 +96,25 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
         {sentinel}
       </div>
 
-      {warnings && warnings.length > 0 && (
-        <div className="hydrograph-warnings">
-          {warnings.map((w, i) => (
-            <div key={i} className="warning-item">
-              <span className="warning-icon">⚠️</span>
-              <span className="warning-text">{w}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {controls}
 
+      <div className="chart-legend-row">
+        <div className="chart-legend" aria-label="Water level chart legend">
+          <span><i className="legend-line observed-line" />Observed</span>
+          {chartProps.observedPoints?.some(p => p.estimated) && <span><i className="legend-line estimated-line" />Estimated</span>}
+          <span><i className="legend-line tide-line" />Tide</span>
+          <span><i className="legend-line forecast-line" />{forecastLabel}</span>
+          {chartProps.experimentalPoints?.length ? <span><i className="legend-line experimental-line" />{experimentalLabel}</span> : null}
+        </div>
+        <ChartInfo label="About water level forecasts">
+          <p>Water levels in feet MLLW. Shading marks forecast flooding above the configured threshold. Both charts share their time window.</p>
+          {forecastDescription && <p>{forecastDescription}</p>}
+          {(chartProps.experimentalLower?.length || 0) > 1 && <p>Thin dashed lines show historical error bounds; weather forecast uncertainty can add further error.</p>}
+          {warnings?.map((warning, i) => <p key={i}>{warning}</p>)}
+          {chartProps.experimentalPoints?.length ? <p>{experimentalDescription || 'Purple: optional comparison. Flood cards and shading use the primary forecast.'}</p> : null}
+          {onResetView && <button className="chart-info-action" onClick={onResetView}>Reset to default view</button>}
+        </ChartInfo>
+      </div>
       <div className="hydrograph-chart-wrapper">
         {loading && (
           <div className="chart-loading-overlay">
@@ -104,7 +127,8 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
           floodEvents={floodEvents} 
         />
       </div>
-    </div>
+      {children}
+    </section>
   );
 };
 

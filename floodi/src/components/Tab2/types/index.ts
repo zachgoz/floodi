@@ -7,6 +7,10 @@ export interface Point {
   t: Date;
   v: number;
   source?: 'fiman' | 'noaa';
+  /** A localized alternate-station estimate, not a measurement at the plotted time. */
+  estimated?: boolean;
+  /** Original UTC measurement time retained when a localized proxy is plotted. */
+  observedTime?: Date;
 }
 
 /** Wind vector data point (hourly) */
@@ -33,6 +37,7 @@ export interface Station {
 
 /** Configuration for a specific town/location */
 export interface LocationConfig {
+  streetCalibration?: import('src/utils/waterForecast').StreetCalibration;
   id: string;
   name: string;
   state: string;

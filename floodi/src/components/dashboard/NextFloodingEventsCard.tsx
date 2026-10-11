@@ -30,12 +30,15 @@ import {
 import { ViewingTimePill } from './ViewingTimePill';
 import { HydrologicalInsightContent } from './HydrologicalInsightContent';
 import { useSimilarFloodEvents } from './useSimilarFloodEvents';
+import { ChartInfo } from './ChartInfo';
 import './NextFloodingEventsCard.css';
+import { floodWindows, inundation, eventDate, eventWindow, LOCAL_ZONE, type StreetCalibration } from 'src/utils/waterForecast';
 
 interface UpcomingFloodEvent {
   id: string;
   startTime: Date;
-  endTime: Date;
+  endTime: Date | null;
+  startClipped: boolean;
   peakTime: Date;
   peakValue: number;
   thresholdType: FloodSeverity;
@@ -52,14 +55,17 @@ interface NextFloodingEventsCardProps {
   now: Date;
   onTimeChange: (time: Date) => void;
   loading?: boolean;
+  streetCalibration?: StreetCalibration;
+  forecastHorizon?: Date | null;
+  upperForecastPoints?: Point[];
 }
 
-const EVENT_WINDOW_DAYS = 14;
 const MAX_EVENTS = 5;
 const INITIAL_VISIBLE_EVENTS = 2;
 
 function formatDateTime(date: Date): string {
-  return date.toLocaleString([], {
+  return date.toLocaleString('en-US', {
+    timeZone: LOCAL_ZONE,
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
@@ -75,6 +81,18 @@ function formatDuration(start: Date, end: Date): string {
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
 
+function floodWindowLabel(event: UpcomingFloodEvent, now: Date): string {
+  if (!event.startClipped) return eventWindow(event.startTime, event.endTime);
+  const status = event.startTime <= now ? 'Flooding now' : 'Start unavailable';
+  if (!event.endTime) return `${status} · End unavailable`;
+  const sameDate = eventDate(event.startTime) === eventDate(event.endTime);
+  const end = new Intl.DateTimeFormat('en-US', {
+    timeZone: LOCAL_ZONE, hour:'numeric', minute:'2-digit',
+    ...(!sameDate ? { weekday:'short', month:'short', day:'numeric' } as const : {}),
+  }).format(event.endTime);
+  return `${status} · Until ${end}`;
+}
+
 function nearestPoint<T extends { t: Date }>(points: T[], time: Date): T | null {
   if (points.length === 0) return null;
   return points.reduce((best, point) => (
@@ -87,63 +105,14 @@ function buildUpcomingFloodEvents(
   thresholds: AppConfiguration['thresholds'],
   now: Date
 ): UpcomingFloodEvent[] {
-  const windowEnd = new Date(now.getTime() + EVENT_WINDOW_DAYS * 24 * 3600_000);
-  const sorted = points
-    .filter(point => point.t >= now && point.t <= windowEnd)
-    .sort((a, b) => a.t.getTime() - b.t.getTime());
-
-  const events: UpcomingFloodEvent[] = [];
-  let active: { startTime: Date; peakTime: Date; peakValue: number } | null = null;
-
-  for (const point of sorted) {
-    const isFlooding = point.v >= thresholds.minor;
-    if (isFlooding && !active) {
-      active = { startTime: point.t, peakTime: point.t, peakValue: point.v };
-      continue;
-    }
-
-    if (isFlooding && active) {
-      if (point.v > active.peakValue) {
-        active.peakTime = point.t;
-        active.peakValue = point.v;
-      }
-      continue;
-    }
-
-    if (!isFlooding && active) {
-      const severity = getFloodSeverityForLevel(active.peakValue, thresholds);
-      if (severity) {
-        events.push({
-          id: `${active.startTime.toISOString()}-${active.peakTime.toISOString()}`,
-          startTime: active.startTime,
-          endTime: point.t,
-          peakTime: active.peakTime,
-          peakValue: active.peakValue,
-          thresholdType: severity,
-          duration: formatDuration(active.startTime, point.t),
-        });
-      }
-      active = null;
-    }
-  }
-
-  if (active) {
-    const severity = getFloodSeverityForLevel(active.peakValue, thresholds);
-    if (severity) {
-      events.push({
-        id: `${active.startTime.toISOString()}-${active.peakTime.toISOString()}`,
-        startTime: active.startTime,
-        endTime: windowEnd,
-        peakTime: active.peakTime,
-        peakValue: active.peakValue,
-        thresholdType: severity,
-        duration: formatDuration(active.startTime, windowEnd),
-      });
-    }
-  }
-
-  return events
-    .sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
+  return floodWindows(points, thresholds.minor)
+    .filter(event => (event.endTime || event.lastSampleTime) > now)
+    .map(event => ({
+      ...event,
+      id: event.startTime.toISOString(),
+      thresholdType: getFloodSeverityForLevel(event.peakValue, thresholds) || 'minor' as FloodSeverity,
+      duration: event.endTime ? formatDuration(event.startTime, event.endTime) : 'End unavailable',
+    }))
     .slice(0, MAX_EVENTS);
 }
 
@@ -157,19 +126,30 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
   now,
   onTimeChange,
   loading = false,
+  streetCalibration,
+  forecastHorizon,
+  upperForecastPoints = [],
 }) => {
   const [selectedEvent, setSelectedEvent] = useState<UpcomingFloodEvent | null>(null);
   const [showAllEvents, setShowAllEvents] = useState(false);
   const forecastPoints = adjustedPoints.length > 0 ? adjustedPoints : predictedPoints;
+  const forecastAvailable = useMemo(() => {
+    const times = [...new Set(forecastPoints
+      .filter(point => Number.isFinite(+point.t) && Number.isFinite(point.v))
+      .map(point => +point.t))];
+    return times.length >= 2 && times.some(time => time > +now);
+  }, [forecastPoints, now]);
   const upcomingEvents = useMemo(
     () => buildUpcomingFloodEvents(forecastPoints, thresholds, now),
     [forecastPoints, thresholds, now]
   );
   const visibleEvents = showAllEvents ? upcomingEvents : upcomingEvents.slice(0, INITIAL_VISIBLE_EVENTS);
+  const floodPossible = useMemo(() => buildUpcomingFloodEvents(upperForecastPoints, thresholds, now).length > 0, [upperForecastPoints, thresholds, now]);
   const hiddenEventCount = Math.max(0, upcomingEvents.length - visibleEvents.length);
   const similarEvents = useSimilarFloodEvents(floodEvents, selectedEvent?.peakValue ?? null, now);
   const selectedWind = selectedEvent ? nearestPoint(windPoints, selectedEvent.peakTime) : null;
   const selectedPrecip = selectedEvent ? nearestPoint(precipPoints, selectedEvent.peakTime) : null;
+  const hasStreetCalibration = inundation(0, thresholds.minor, 'MLLW', streetCalibration).label === 'Max Street Inundation';
   const selectedColor = getFloodSeverityColor(selectedEvent?.thresholdType ?? null);
 
   const handleSimilarSelect = (event: FloodEvent) => {
@@ -182,8 +162,13 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
     <IonCard className="next-flood-card">
       <IonCardHeader>
         <IonCardTitle>Next Flooding Events</IonCardTitle>
+        <ChartInfo label="About street flooding estimates">
+          <p>{hasStreetCalibration ? 'Maximum estimated depth above the calibrated street elevation, using the forecast peak.' : 'Max Street Flooding is an estimate using water above the flood threshold. Street elevations have not been calibrated; actual depth varies by street.'}</p>
+          {upperForecastPoints.length > 1 && <p>Flooding is possible when the historical error bound crosses flood stage, even if the central forecast remains lower. These bounds are not a calibrated probability; recorded backtests include missed events.</p>}
+        </ChartInfo>
       </IonCardHeader>
       <IonCardContent className="next-flood-content">
+        {forecastHorizon && !loading && <p className="forecast-caption">Forecast through {formatDateTime(forecastHorizon)} ET</p>}
         {loading ? (
           <IonList className="next-flood-list" lines="none">
             {[1, 2].map((i) => (
@@ -220,10 +205,13 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
                       <span className="flood-timeline-line" aria-hidden="true" />
                       <IonBadge className="flood-timeline-badge">{index + 1}</IonBadge>
                     </div>
-                    <IonLabel>
-                      <h3>{formatDateTime(event.startTime)}</h3>
-                      <p>Peak {event.peakValue.toFixed(2)} ft at {formatDateTime(event.peakTime)}</p>
-                      <p>{event.duration} above flood stage</p>
+                    <IonLabel className="ion-text-wrap">
+                      <h3>{eventDate(event.startTime)}</h3>
+                      <p className="event-flood-window">{floodWindowLabel(event, now)}</p>
+                      <div className="event-level-metrics">
+                        <div><span>Peak Water Level</span><strong>{event.peakValue.toFixed(2)} <small>ft</small></strong></div>
+                        <div><span>Max Street Flooding{!hasStreetCalibration && <sup aria-label="Estimated">*</sup>}</span><strong>{inundation(event.peakValue, thresholds.minor, 'MLLW', streetCalibration).inches.toFixed(1)} <small>in</small></strong></div>
+                      </div>
                     </IonLabel>
                     <IonBadge className="severity-badge" slot="end">
                       {getFloodSeverityLabel(event.thresholdType)}
@@ -250,8 +238,8 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
             <div className="next-flood-empty-icon">
               <IonIcon icon={water} />
             </div>
-            <h3>No flooding predicted</h3>
-            <p>No flood-stage water levels are forecast in the next 14 days.</p>
+            <h3>{floodPossible ? 'Flooding possible' : forecastAvailable ? 'No flooding predicted' : 'Forecast unavailable'}</h3>
+            <p>{floodPossible ? 'Within the forecast error range.' : forecastAvailable ? 'No threshold exceedance in the available forecast.' : 'Waiting for water level predictions.'}</p>
           </div>
         )}
       </IonCardContent>
@@ -295,7 +283,7 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
               viewMode="advanced"
               thresholds={thresholds}
               floodStartTime={selectedEvent.startTime}
-              floodEndTime={selectedEvent.endTime}
+              floodEndTime={selectedEvent.endTime ?? undefined}
               floodDuration={selectedEvent.duration}
               maxRoadFloodDepth={Math.max(0, selectedEvent.peakValue - thresholds.minor)}
               maxWaterLevel={selectedEvent.peakValue}

@@ -67,6 +67,7 @@ export function formatTooltipTime(date: Date, timezone: 'local' | 'gmt'): string
     hour12: true 
   };
   
+  options.timeZone = 'America/New_York';
   if (timezone === 'gmt') {
     options.timeZone = 'UTC';
   }
@@ -155,10 +156,11 @@ export function useChartInteraction(): ChartInteraction & {
       const color = nearestObs.point.v >= threshold ? '#e74c3c' : '#2ecc71';
       const sourceLabel = nearestObs.point.source ? ` (${nearestObs.point.source.toUpperCase()})` : '';
       rows.push({
-        label: `Observed${sourceLabel}`,
+        label: nearestObs.point.estimated ? 'Estimated (localized NOAA)' : `Observed${sourceLabel}`,
         value: `${nearestObs.point.v.toFixed(2)} ft`,
         color,
         point: nearestObs.point,
+        dashed: nearestObs.point.estimated,
       });
     }
 

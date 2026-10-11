@@ -25,6 +25,10 @@ export type RoadFeature = GeoJSON.Feature<GeoJSON.LineString, RoadProperties>;
 interface InundationMapProps {
   /** Current simulated or observed water level (ft MLLW) */
   waterLevelFt: number;
+  /** Explicit observed, estimated, forecast or simulated source label. */
+  waterLevelLabel?: string;
+  /** Suppress retained simulation values when the selected time has no data. */
+  waterLevelUnavailable?: boolean;
   /** Road GeoJSON with minElevation / maxElevation properties */
   roadData?: GeoJSON.FeatureCollection<GeoJSON.LineString, RoadProperties>;
   /** Current NOAA observed level for the status badge */
@@ -77,6 +81,8 @@ const INITIAL_VIEW_STATE = {
 // ── Component ────────────────────────────────────────────────────────────────
 export const InundationMap: React.FC<InundationMapProps> = ({
   waterLevelFt,
+  waterLevelLabel,
+  waterLevelUnavailable = false,
   roadData,
   observedLevelFt,
   targetTime,
@@ -90,7 +96,7 @@ export const InundationMap: React.FC<InundationMapProps> = ({
 
   // Build deck.gl PathLayer from road GeoJSON
   const layers = useMemo(() => {
-    if (!roadData?.features?.length) return [];
+    if (waterLevelUnavailable || !roadData?.features?.length) return [];
 
     // The Virtual Bulkhead Heuristic (maxElevation)
     // We check if waterLevelFt > maxElevation instead of minElevation.
@@ -172,7 +178,7 @@ export const InundationMap: React.FC<InundationMapProps> = ({
         }
       })
     ];
-  }, [roadData, waterLevelFt]);
+  }, [roadData, waterLevelFt, waterLevelUnavailable]);
 
   // Hover tooltip
   const getTooltip = (info: PickingInfo) => {
@@ -298,7 +304,7 @@ export const InundationMap: React.FC<InundationMapProps> = ({
         </div>
       )}
 
-      {pinnedRoad && (
+      {pinnedRoad && !waterLevelUnavailable && (
         <div className="pinned-road-modal" style={{ left: pinnedRoad.x, top: pinnedRoad.y }}>
           <button className="pinned-road-close" onClick={() => setPinnedRoad(null)}>×</button>
           <strong>{pinnedRoad.feature.properties.name || pinnedRoad.feature.properties.highway}</strong>
@@ -325,15 +331,15 @@ export const InundationMap: React.FC<InundationMapProps> = ({
       {/* Water level badge */}
       <div className="inundation-level-badge">
         <span className="inundation-level-sim">
-          {timeLabel}: <strong style={{ color: '#fff' }}>
+          {waterLevelLabel || timeLabel}: <strong style={{ color: '#fff' }}>
             {loading ? (
               <IonSkeletonText animated style={{ width: '40px', height: '16px', display: 'inline-block', verticalAlign: 'middle', margin: '0 4px' }} />
             ) : (
-              `${waterLevelFt.toFixed(2)} ft`
+              waterLevelUnavailable ? 'Unavailable' : `${waterLevelFt.toFixed(2)} ft`
             )}
           </strong>
         </span>
-        {floodedCount > 0 && !loading && (
+        {floodedCount > 0 && !loading && !waterLevelUnavailable && (
           <span className="inundation-level-flooded">
             {floodedCount} roads flooded
           </span>

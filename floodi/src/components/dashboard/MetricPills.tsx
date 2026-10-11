@@ -20,7 +20,7 @@ function windColor(speed: number): string {
 interface WaterLevelMetricProps {
   observedWaterLevel: number;
   wlColor: string;
-  statusLabel: 'Observed' | 'Predicted';
+  statusLabel: 'Observed' | 'Predicted' | 'Estimated';
   interactive?: boolean;
   onClick?: () => void;
   loading?: boolean;
@@ -43,6 +43,8 @@ export const WaterLevelMetric: React.FC<WaterLevelMetricProps> = ({
     <div className="metric-icon-box">
       {loading ? (
         <IonSkeletonText animated style={{ width: '20px', height: '4px', borderRadius: '2px' }} />
+      ) : statusLabel === 'Estimated' ? (
+        <span style={{ borderTop: `3px dotted ${wlColor}`, width: '20px' }} />
       ) : statusLabel === 'Predicted' ? (
         <span className="legend-dashed-line" style={{ backgroundColor: wlColor, width: '20px' }} />
       ) : (
@@ -54,7 +56,7 @@ export const WaterLevelMetric: React.FC<WaterLevelMetricProps> = ({
         {loading ? (
           <IonSkeletonText animated style={{ width: '45px', height: '24px', borderRadius: '4px' }} />
         ) : (
-          <span className="metric-value" style={{ color: wlColor }}>{observedWaterLevel.toFixed(2)}</span>
+          <span className="metric-value">{observedWaterLevel.toFixed(2)}</span>
         )}
         <span className="metric-unit">ft</span>
         {!loading && <span className="metric-status-label">{statusLabel}</span>}

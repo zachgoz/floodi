@@ -1,0 +1,722 @@
+{
+  "evaluatedAt": "2026-10-11T12:51:18.740Z",
+  "reference": {
+    "gauge": "30046",
+    "tideStation": "8658163",
+    "datum": "MLLW",
+    "units": "ft",
+    "existingNavd88OffsetFt": 2.75,
+    "existingTidePhaseMinutes": 60
+  },
+  "inputArchive": "evaluation/regional-gauge-history-2026-10-03-90d.json",
+  "laterArchive": "evaluation/regional-gauge-history-2026-10-10-90d.json",
+  "frozenWeights": true,
+  "trainedUntil": "2026-09-06T14:34:35.199Z",
+  "testStart": "2026-09-06T14:34:35.200Z",
+  "testEnd": "2026-10-02T23:36:04.000Z",
+  "method": "Fixed penalty20 standardized lead-specific ridge; unsupported12/24h candidate replaced by explicit steady baseline; supported48/72h learned tide/mean-reversion response.",
+  "features": [
+    "issueResidual",
+    "residualChange3h",
+    "meanResidual12h",
+    "meanResidual24h",
+    "residualChange24h",
+    "issueAstronomicalTide",
+    "targetAstronomicalTide",
+    "targetAstronomicalTideChange1h"
+  ],
+  "historicalScreen": {
+    "leads": [
+      {
+        "leadHours": 12,
+        "method": "steady-residual",
+        "trainingPairs": 1364,
+        "testPairs": 574,
+        "modelMaeFt": 0.18384439778878,
+        "persistenceMaeFt": 0.18384439778878,
+        "improvement": 0,
+        "absoluteError90Ft": 0.3862731910924153,
+        "passes": false,
+        "candidateModelMaeFt": 0.18128379699701677
+      },
+      {
+        "leadHours": 24,
+        "method": "steady-residual",
+        "trainingPairs": 1352,
+        "testPairs": 562,
+        "modelMaeFt": 0.2322571142785928,
+        "persistenceMaeFt": 0.2322571142785928,
+        "improvement": 0,
+        "absoluteError90Ft": 0.47515178695590876,
+        "passes": false,
+        "candidateModelMaeFt": 0.22453680230312315
+      },
+      {
+        "leadHours": 48,
+        "method": "residual-reversion",
+        "trainingPairs": 1328,
+        "testPairs": 538,
+        "modelMaeFt": 0.3247163492380276,
+        "persistenceMaeFt": 0.3606908541901579,
+        "improvement": 0.09973777969198061,
+        "absoluteError90Ft": 0.7168615680740802,
+        "passes": true,
+        "candidateModelMaeFt": 0.3247163492380276
+      },
+      {
+        "leadHours": 72,
+        "method": "residual-reversion",
+        "trainingPairs": 1304,
+        "testPairs": 514,
+        "modelMaeFt": 0.3939760534228463,
+        "persistenceMaeFt": 0.46654508339462186,
+        "improvement": 0.1555455893860398,
+        "absoluteError90Ft": 0.9929193121267879,
+        "passes": true,
+        "candidateModelMaeFt": 0.3939760534228463
+      }
+    ],
+    "peakWindows": 63,
+    "peakMaeFt": 0.3271484612553102,
+    "persistencePeakMaeFt": 0.34609821061953533,
+    "eligible": true,
+    "peakByDay": [
+      {
+        "day": 1,
+        "windows": 21,
+        "modelMaeFt": 0.2588275610704056,
+        "persistenceMaeFt": 0.2598316064852933
+      },
+      {
+        "day": 2,
+        "windows": 21,
+        "modelMaeFt": 0.3138795416178139,
+        "persistenceMaeFt": 0.356378835003598
+      },
+      {
+        "day": 3,
+        "windows": 21,
+        "modelMaeFt": 0.40873828107771165,
+        "persistenceMaeFt": 0.42208419036971484
+      }
+    ],
+    "prefixValidation": {
+      "residual-response": {
+        "peakWindows": 63,
+        "peakMaeFt": 0.3271484612553102,
+        "persistencePeakMaeFt": 0.34609821061953533,
+        "eligible": true
+      },
+      "weather-response": {
+        "peakWindows": 63,
+        "peakMaeFt": 0.3134735947524864,
+        "persistencePeakMaeFt": 0.34609821061953533,
+        "eligible": true
+      }
+    }
+  },
+  "laterReplay": {
+    "classification": "Out-of-training replay with development-period overlap; not pristine independent validation",
+    "start": "2026-10-03T00:00:00.000Z",
+    "results": [
+      {
+        "method": "residual-response",
+        "leads": [
+          {
+            "leadHours": 12,
+            "pairs": 156,
+            "modelMaeFt": 0.1956664800220415,
+            "persistenceMaeFt": 0.1956664800220415,
+            "withheld": 0,
+            "missingActual": 0
+          },
+          {
+            "leadHours": 24,
+            "pairs": 144,
+            "modelMaeFt": 0.2949467209793419,
+            "persistenceMaeFt": 0.2949467209793419,
+            "withheld": 0,
+            "missingActual": 0
+          },
+          {
+            "leadHours": 48,
+            "pairs": 119,
+            "modelMaeFt": 0.40969520187542474,
+            "persistenceMaeFt": 0.5079161917025702,
+            "withheld": 0,
+            "missingActual": 0
+          },
+          {
+            "leadHours": 72,
+            "pairs": 96,
+            "modelMaeFt": 0.45698165865323426,
+            "persistenceMaeFt": 0.5902823972990576,
+            "withheld": 0,
+            "missingActual": 0
+          }
+        ],
+        "nativeDailyWindows": 13,
+        "evaluatedDailyWindows": 13,
+        "withheldDailyWindows": 0,
+        "peakMaeFt": 0.5442752429183535,
+        "persistencePeakMaeFt": 0.5261734028673837,
+        "dailyEventReplay": {
+          "model": {
+            "windows": 13,
+            "peakMaeFt": 0.5442752429183535,
+            "pointMaeFt": 0.39950434302986076,
+            "floodWindowDetection": {
+              "hits": 3,
+              "misses": 7,
+              "falseAlarms": 1,
+              "correctNegatives": 2,
+              "recall": 0.3,
+              "precision": 0.75
+            }
+          },
+          "persistence": {
+            "windows": 13,
+            "peakMaeFt": 0.5261734028673837,
+            "pointMaeFt": 0.4349642345077988,
+            "floodWindowDetection": {
+              "hits": 5,
+              "misses": 5,
+              "falseAlarms": 1,
+              "correctNegatives": 2,
+              "recall": 0.5,
+              "precision": 0.8333333333333334
+            }
+          },
+          "sameEventTiming": {
+            "matchedObservedEvents": 0,
+            "weather": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            },
+            "persistence": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            }
+          }
+        },
+        "nonoverlapping72hEventReplay": {
+          "model": {
+            "windows": 1,
+            "peakMaeFt": 0.8725139775288895,
+            "pointMaeFt": 0.35784097362067935,
+            "floodWindowDetection": {
+              "hits": 0,
+              "misses": 1,
+              "falseAlarms": 0,
+              "correctNegatives": 0,
+              "recall": 0,
+              "precision": null
+            }
+          },
+          "persistence": {
+            "windows": 1,
+            "peakMaeFt": 0.7075139775288903,
+            "pointMaeFt": 0.35147421277333163,
+            "floodWindowDetection": {
+              "hits": 1,
+              "misses": 0,
+              "falseAlarms": 0,
+              "correctNegatives": 0,
+              "recall": 1,
+              "precision": 1
+            }
+          },
+          "sameEventTiming": {
+            "matchedObservedEvents": 0,
+            "weather": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            },
+            "persistence": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            }
+          }
+        }
+      },
+      {
+        "method": "weather-response",
+        "leads": [
+          {
+            "leadHours": 12,
+            "pairs": 145,
+            "modelMaeFt": 0.15183916242483556,
+            "persistenceMaeFt": 0.200413857855177,
+            "withheld": 11,
+            "missingActual": 0
+          },
+          {
+            "leadHours": 24,
+            "pairs": 144,
+            "modelMaeFt": 0.18176894520086298,
+            "persistenceMaeFt": 0.2949467209793419,
+            "withheld": 0,
+            "missingActual": 0
+          },
+          {
+            "leadHours": 48,
+            "pairs": 119,
+            "modelMaeFt": 0.40969520187542474,
+            "persistenceMaeFt": 0.5079161917025702,
+            "withheld": 0,
+            "missingActual": 0
+          },
+          {
+            "leadHours": 72,
+            "pairs": 96,
+            "modelMaeFt": 0.45698165865323426,
+            "persistenceMaeFt": 0.5902823972990576,
+            "withheld": 0,
+            "missingActual": 0
+          }
+        ],
+        "nativeDailyWindows": 13,
+        "evaluatedDailyWindows": 13,
+        "withheldDailyWindows": 0,
+        "peakMaeFt": 0.5099806502994837,
+        "persistencePeakMaeFt": 0.5261734028673837,
+        "dailyEventReplay": {
+          "model": {
+            "windows": 13,
+            "peakMaeFt": 0.5099806502994837,
+            "pointMaeFt": 0.35743391482823683,
+            "floodWindowDetection": {
+              "hits": 4,
+              "misses": 6,
+              "falseAlarms": 1,
+              "correctNegatives": 2,
+              "recall": 0.4,
+              "precision": 0.8
+            }
+          },
+          "persistence": {
+            "windows": 13,
+            "peakMaeFt": 0.5261734028673837,
+            "pointMaeFt": 0.4349642345077988,
+            "floodWindowDetection": {
+              "hits": 5,
+              "misses": 5,
+              "falseAlarms": 1,
+              "correctNegatives": 2,
+              "recall": 0.5,
+              "precision": 0.8333333333333334
+            }
+          },
+          "sameEventTiming": {
+            "matchedObservedEvents": 0,
+            "weather": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            },
+            "persistence": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            }
+          }
+        },
+        "nonoverlapping72hEventReplay": {
+          "model": {
+            "windows": 1,
+            "peakMaeFt": 0.6618632387403061,
+            "pointMaeFt": 0.28648290534239435,
+            "floodWindowDetection": {
+              "hits": 1,
+              "misses": 0,
+              "falseAlarms": 0,
+              "correctNegatives": 0,
+              "recall": 1,
+              "precision": 1
+            }
+          },
+          "persistence": {
+            "windows": 1,
+            "peakMaeFt": 0.7075139775288903,
+            "pointMaeFt": 0.35147421277333163,
+            "floodWindowDetection": {
+              "hits": 1,
+              "misses": 0,
+              "falseAlarms": 0,
+              "correctNegatives": 0,
+              "recall": 1,
+              "precision": 1
+            }
+          },
+          "sameEventTiming": {
+            "matchedObservedEvents": 0,
+            "weather": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            },
+            "persistence": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            }
+          }
+        }
+      }
+    ]
+  },
+  "limitations": [
+    "12/24h learned candidates did not satisfy the unchanged5% gate and are not used in the tail.",
+    "48/72h models do not use future weather; upcoming storm departures may be missed.",
+    "Weather-prefix future weather is reanalysis and excludes issued-weather forecast error.",
+    "Daily windows across leads overlap; errors are descriptive and confidence intervals are not calibrated.",
+    "Candidate development inspected a later90d archive including the replay week; later replay is not an untouched model-selection holdout.",
+    "Existing NOAA phase and NAVD88 to MLLW conversion remain independently uncalibrated.",
+    "Later short-prefix peak error and flood-window misses worsened despite better point MAE. Three-day event detection has not been established.",
+    "The only complete nonoverlapping 72h later window is insufficient to infer reliable event performance."
+  ],
+  "localPreview": {
+    "generatedAt": "2026-10-11T12:59:04.399Z",
+    "observationAt": "2026-10-11T12:36:08.000Z",
+    "forecastOriginAt": "2026-10-11T12:36:08.000Z",
+    "status": "available",
+    "method": "residual-response",
+    "points": 718,
+    "firstAt": "2026-10-11T12:59:04.399Z",
+    "lastAt": "2026-10-14T12:36:00.000Z",
+    "extension": {
+      "method": "residual-reversion",
+      "startsAt": "2026-10-11T18:36:00.000Z",
+      "endsAt": "2026-10-14T12:36:00.000Z",
+      "leadValidation": [
+        {
+          "leadHours": 12,
+          "testPairs": 574,
+          "modelMaeFt": 0.18384439778878,
+          "persistenceMaeFt": 0.18384439778878,
+          "absoluteError90Ft": 0.3862731910924153,
+          "method": "steady-residual"
+        },
+        {
+          "leadHours": 24,
+          "testPairs": 562,
+          "modelMaeFt": 0.2322571142785928,
+          "persistenceMaeFt": 0.2322571142785928,
+          "absoluteError90Ft": 0.47515178695590876,
+          "method": "steady-residual"
+        },
+        {
+          "leadHours": 48,
+          "testPairs": 538,
+          "modelMaeFt": 0.3247163492380276,
+          "persistenceMaeFt": 0.3606908541901579,
+          "absoluteError90Ft": 0.7168615680740802,
+          "method": "residual-reversion"
+        },
+        {
+          "leadHours": 72,
+          "testPairs": 514,
+          "modelMaeFt": 0.3939760534228463,
+          "persistenceMaeFt": 0.46654508339462186,
+          "absoluteError90Ft": 0.9929193121267879,
+          "method": "residual-reversion"
+        }
+      ],
+      "peakMaeFt": 0.3271484612553102,
+      "persistencePeakMaeFt": 0.34609821061953533,
+      "peakWindows": 63
+    },
+    "productionDeployed": false
+  },
+  "operationalRefitReplay": {
+    "trainedUntil": "2026-10-02T23:36:04.000Z",
+    "classification": "Approved models refitted through Oct2, frozen before Oct3; development-period overlap remains",
+    "results": [
+      {
+        "method": "residual-response",
+        "leads": [
+          {
+            "leadHours": 12,
+            "pairs": 156,
+            "modelMaeFt": 0.1956664800220415,
+            "persistenceMaeFt": 0.1956664800220415,
+            "withheld": 0,
+            "missingActual": 0
+          },
+          {
+            "leadHours": 24,
+            "pairs": 144,
+            "modelMaeFt": 0.2949467209793419,
+            "persistenceMaeFt": 0.2949467209793419,
+            "withheld": 0,
+            "missingActual": 0
+          },
+          {
+            "leadHours": 48,
+            "pairs": 119,
+            "modelMaeFt": 0.4001036199117985,
+            "persistenceMaeFt": 0.5079161917025702,
+            "withheld": 0,
+            "missingActual": 0
+          },
+          {
+            "leadHours": 72,
+            "pairs": 96,
+            "modelMaeFt": 0.43120272921952313,
+            "persistenceMaeFt": 0.5902823972990576,
+            "withheld": 0,
+            "missingActual": 0
+          }
+        ],
+        "nativeDailyWindows": 13,
+        "evaluatedDailyWindows": 13,
+        "withheldDailyWindows": 0,
+        "peakMaeFt": 0.5545377533598997,
+        "persistencePeakMaeFt": 0.5261734028673837,
+        "dailyEventReplay": {
+          "model": {
+            "windows": 13,
+            "peakMaeFt": 0.5545377533598997,
+            "pointMaeFt": 0.40935820693303343,
+            "floodWindowDetection": {
+              "hits": 3,
+              "misses": 7,
+              "falseAlarms": 1,
+              "correctNegatives": 2,
+              "recall": 0.3,
+              "precision": 0.75
+            }
+          },
+          "persistence": {
+            "windows": 13,
+            "peakMaeFt": 0.5261734028673837,
+            "pointMaeFt": 0.4349642345077988,
+            "floodWindowDetection": {
+              "hits": 5,
+              "misses": 5,
+              "falseAlarms": 1,
+              "correctNegatives": 2,
+              "recall": 0.5,
+              "precision": 0.8333333333333334
+            }
+          },
+          "sameEventTiming": {
+            "matchedObservedEvents": 0,
+            "weather": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            },
+            "persistence": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            }
+          }
+        },
+        "nonoverlapping72hEventReplay": {
+          "model": {
+            "windows": 1,
+            "peakMaeFt": 0.8709402708740193,
+            "pointMaeFt": 0.3205084126112914,
+            "floodWindowDetection": {
+              "hits": 0,
+              "misses": 1,
+              "falseAlarms": 0,
+              "correctNegatives": 0,
+              "recall": 0,
+              "precision": null
+            }
+          },
+          "persistence": {
+            "windows": 1,
+            "peakMaeFt": 0.7075139775288903,
+            "pointMaeFt": 0.35147421277333163,
+            "floodWindowDetection": {
+              "hits": 1,
+              "misses": 0,
+              "falseAlarms": 0,
+              "correctNegatives": 0,
+              "recall": 1,
+              "precision": 1
+            }
+          },
+          "sameEventTiming": {
+            "matchedObservedEvents": 0,
+            "weather": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            },
+            "persistence": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            }
+          }
+        }
+      },
+      {
+        "method": "weather-response",
+        "leads": [
+          {
+            "leadHours": 12,
+            "pairs": 145,
+            "modelMaeFt": 0.15017503568987253,
+            "persistenceMaeFt": 0.200413857855177,
+            "withheld": 11,
+            "missingActual": 0
+          },
+          {
+            "leadHours": 24,
+            "pairs": 144,
+            "modelMaeFt": 0.1736238002768352,
+            "persistenceMaeFt": 0.2949467209793419,
+            "withheld": 0,
+            "missingActual": 0
+          },
+          {
+            "leadHours": 48,
+            "pairs": 119,
+            "modelMaeFt": 0.4001036199117985,
+            "persistenceMaeFt": 0.5079161917025702,
+            "withheld": 0,
+            "missingActual": 0
+          },
+          {
+            "leadHours": 72,
+            "pairs": 96,
+            "modelMaeFt": 0.43120272921952313,
+            "persistenceMaeFt": 0.5902823972990576,
+            "withheld": 0,
+            "missingActual": 0
+          }
+        ],
+        "nativeDailyWindows": 13,
+        "evaluatedDailyWindows": 13,
+        "withheldDailyWindows": 0,
+        "peakMaeFt": 0.5054877965307765,
+        "persistencePeakMaeFt": 0.5261734028673837,
+        "dailyEventReplay": {
+          "model": {
+            "windows": 13,
+            "peakMaeFt": 0.5054877965307765,
+            "pointMaeFt": 0.3523141616669786,
+            "floodWindowDetection": {
+              "hits": 4,
+              "misses": 6,
+              "falseAlarms": 1,
+              "correctNegatives": 2,
+              "recall": 0.4,
+              "precision": 0.8
+            }
+          },
+          "persistence": {
+            "windows": 13,
+            "peakMaeFt": 0.5261734028673837,
+            "pointMaeFt": 0.4349642345077988,
+            "floodWindowDetection": {
+              "hits": 5,
+              "misses": 5,
+              "falseAlarms": 1,
+              "correctNegatives": 2,
+              "recall": 0.5,
+              "precision": 0.8333333333333334
+            }
+          },
+          "sameEventTiming": {
+            "matchedObservedEvents": 0,
+            "weather": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            },
+            "persistence": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            }
+          }
+        },
+        "nonoverlapping72hEventReplay": {
+          "model": {
+            "windows": 1,
+            "peakMaeFt": 0.5760678283611735,
+            "pointMaeFt": 0.2145340337399908,
+            "floodWindowDetection": {
+              "hits": 1,
+              "misses": 0,
+              "falseAlarms": 0,
+              "correctNegatives": 0,
+              "recall": 1,
+              "precision": 1
+            }
+          },
+          "persistence": {
+            "windows": 1,
+            "peakMaeFt": 0.7075139775288903,
+            "pointMaeFt": 0.35147421277333163,
+            "floodWindowDetection": {
+              "hits": 1,
+              "misses": 0,
+              "falseAlarms": 0,
+              "correctNegatives": 0,
+              "recall": 1,
+              "precision": 1
+            }
+          },
+          "sameEventTiming": {
+            "matchedObservedEvents": 0,
+            "weather": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            },
+            "persistence": {
+              "onsetMaeMinutes": null,
+              "durationMaeMinutes": null
+            }
+          }
+        }
+      }
+    ]
+  },
+  "dashboardSelectionVerification": {
+    "verifiedAt": "2026-10-11T13:00:23.152Z",
+    "validSchema": true,
+    "compatibleReference": true,
+    "selectedMethod": "learned",
+    "selectedExtension": "residual-reversion",
+    "selectedPoints": 717,
+    "horizonHours": 71.99777777777778,
+    "endAt": "2026-10-14T12:36:00.000Z",
+    "maxGapMinutes": 6,
+    "maxTotalDifferenceFt": 0,
+    "learnedTailResidualRangeFt": 0.5693669601476192,
+    "events": [
+      {
+        "startTime": "2026-10-11T13:00:00.000Z",
+        "endTime": "2026-10-11T14:28:03.537Z",
+        "peakTime": "2026-10-11T13:18:00.000Z",
+        "peakValue": 5.95965697985814,
+        "startClipped": true,
+        "lastSampleTime": "2026-10-11T14:24:00.000Z"
+      },
+      {
+        "startTime": "2026-10-12T13:07:57.001Z",
+        "endTime": "2026-10-12T14:57:01.442Z",
+        "peakTime": "2026-10-12T14:00:00.000Z",
+        "peakValue": 5.858233486338956,
+        "startClipped": false,
+        "lastSampleTime": "2026-10-12T14:54:00.000Z"
+      },
+      {
+        "startTime": "2026-10-13T13:56:44.658Z",
+        "endTime": "2026-10-13T15:53:24.932Z",
+        "peakTime": "2026-10-13T14:54:00.000Z",
+        "peakValue": 5.8492766423589595,
+        "startClipped": false,
+        "lastSampleTime": "2026-10-13T15:48:00.000Z"
+      }
+    ]
+  },
+  "verification": {
+    "appTestsPassed": 381,
+    "backendTestsPassed": 4,
+    "frontendBuildPassed": true,
+    "functionsBuildPassed": true,
+    "eslintErrors": 0,
+    "eslintWarnings": 216,
+    "credentialPatternFiles": [],
+    "browserVisualRecheck": "Blocked by browser URL policy; automated linked-chart controls and gesture tests passed."
+  }
+}

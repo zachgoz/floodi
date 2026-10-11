@@ -33,7 +33,7 @@ interface AtmosphericOverlayProps {
   maxWaterLevel?: number;
   maxWaterLevelTime?: Date;
   thresholds?: { minor: number; moderate: number; major: number; extreme: number };
-  statusLabel?: 'Observed' | 'Predicted';
+  statusLabel?: 'Observed' | 'Predicted' | 'Estimated';
   loading?: boolean;
   showWLInfo?: boolean;
   onShowWLInfoChange?: (show: boolean) => void;
@@ -68,6 +68,11 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
   const [localShowWLInfo, setLocalShowWLInfo] = useState(false);
   const showWLInfo = customShowWLInfo !== undefined ? customShowWLInfo : localShowWLInfo;
   const setShowWLInfo = onShowWLInfoChange !== undefined ? onShowWLInfoChange : setLocalShowWLInfo;
+  const handleInsightKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (loading || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    setShowWLInfo(true);
+  };
   const floodSeverity = thresholds ? getFloodSeverityForLevel(observedWaterLevel, thresholds) : observedWaterLevel >= 5.6 ? 'minor' : null;
   const wlColor = getFloodSeverityColor(floodSeverity);
 
@@ -84,7 +89,10 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
         className="sentinel-metrics tidal-metrics interactive"
         style={!loading ? { '--wl-color': wlColor } as React.CSSProperties : undefined}
         onClick={!loading ? () => setShowWLInfo(true) : undefined}
+        onKeyDown={handleInsightKeyDown}
         role="button"
+        tabIndex={loading ? -1 : 0}
+        aria-disabled={loading}
         aria-label="View detailed water level insights"
       >
         {/* Tidal Group: Predicted + Surge = Final */}
@@ -164,7 +172,9 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
           data-tour-id="next-tide-badge"
           style={{ cursor: 'pointer' }}
           onClick={() => setShowWLInfo(true)}
+          onKeyDown={handleInsightKeyDown}
           role="button"
+          tabIndex={0}
           aria-label="View detailed tide insights"
         >
           <div className="metric-details" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

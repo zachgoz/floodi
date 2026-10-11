@@ -1,7 +1,14 @@
 .dashboard-scroll-container {
+  --dash-type-title: 1.125rem;
+  --dash-type-body: .875rem;
+  --dash-type-label: .75rem;
+  --dash-type-value: 1.5rem;
   padding: 16px;
   background: var(--dash-page-bg, var(--ion-background-color, #f4f5f8));
   min-height: 100vh;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: var(--dash-type-body);
+  font-variant-numeric: tabular-nums;
 }
 
 .dashboard-header {
@@ -47,65 +54,33 @@
   gap: 24px;
 }
 
-@media (max-width: 991px) {
-  .dashboard-main-col,
-  .dashboard-sidebar {
-    display: contents;
-  }
-
-  .dashboard-next-events {
-    order: 1;
-  }
-
-  .dashboard-next-events .next-flood-card {
-    margin-bottom: 0;
-  }
-
-  .dashboard-hydrograph-card {
-    order: 2;
-  }
-
-  .dashboard-hydrograph-card .hydrograph-container,
-  .dashboard-webcam-card .webcam-card-container {
-    margin-bottom: 0;
-  }
-
-  .dashboard-webcam-card {
-    order: 3;
-  }
-
-  .dashboard-map-card {
-    order: 4;
-  }
-
-  .dashboard-simulator-card {
-    order: 5;
-  }
-}
+.dashboard-main-col,
+.dashboard-sidebar { display: contents; }
+.dashboard-next-events { order: 0; }
+.dashboard-hydrograph-card { order: 1; }
+.dashboard-surge-card { order: 2; }
+.dashboard-outlook-card { order: 3; }
+.dashboard-webcam-card { order: 4; }
+.dashboard-map-card { order: 5; }
+.dashboard-simulator-card { order: 6; }
+.dashboard-grid .next-flood-card,
+.dashboard-grid .hydrograph-container,
+.dashboard-grid .forecast-panel,
+.dashboard-grid .webcam-card-container { margin-bottom: 0; }
 
 @media (min-width: 992px) {
-  .dashboard-grid {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    column-gap: 24px;
-    row-gap: 0;
-    align-items: start;
-  }
+  .dashboard-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; align-items: start; }
+  .dashboard-next-events { grid-column: 1 / -1; grid-row: 1; }
+  .dashboard-hydrograph-card { grid-column: 1; grid-row: 2; }
+  .dashboard-outlook-card { grid-column: 1; grid-row: 3; }
+  .dashboard-webcam-card { grid-column: 2; grid-row: 2; }
+  .dashboard-map-card { grid-column: 2; grid-row: 3; }
+  .dashboard-simulator-card { grid-column: 2; grid-row: 4; }
+  .chart-error-state { grid-column: 1 / -1; }
+  .dashboard-next-events .next-flood-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+}
 
-  .dashboard-main-col {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  
-  .dashboard-sidebar {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .dashboard-sidebar .next-flood-card {
-    margin-bottom: 0;
-  }
+@media (max-width: 600px) {
+  .dashboard-scroll-container { padding: 12px; }
+  .dashboard-grid { gap: 16px; }
 }

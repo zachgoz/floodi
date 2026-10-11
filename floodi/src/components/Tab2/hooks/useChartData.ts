@@ -1,12 +1,15 @@
+import { floodWindows } from 'src/utils/waterForecast';
+import { processWaterSeries } from './processWaterSeries';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { buildAdjustedFuture, fetchPredictions as fetchNoaaPredictions } from 'src/lib/noaa';
 import {
   fetchUnifiedObservations,
+  clearDataServiceCache,
   fetchUnifiedPredictions,
   fetchFloodEvents,
   extractWeatherData
 } from 'src/lib/dataService';
-import type { ChartData, DataState, Point, ThresholdCrossing, AppConfiguration, WindPoint, PrecipPoint } from '../types';
+import type { ChartData, DataState, ThresholdCrossing, AppConfiguration, WindPoint, PrecipPoint } from '../types';
 import { LOCATIONS } from 'src/constants/locations';
 import { markPerf, measurePerf, measurePerfSync } from 'src/lib/perfLogger';
 
@@ -28,15 +31,6 @@ const dataCacheKey = (
   offsetValue: string,
   dataSource: AppConfiguration['display']['dataSource']
 ) => `${stationId}-${Math.floor(start.getTime() / CACHE_BUCKET_MS) * CACHE_BUCKET_MS}-${Math.floor(end.getTime() / CACHE_BUCKET_MS) * CACHE_BUCKET_MS}-${offsetMode}-${offsetValue}-${dataSource}`;
-
-/**
- * Convert NOAA series data to Point array format
- */
-function seriesToPoints(series: Record<string, number>, source?: 'fiman' | 'noaa'): Point[] {
-  return Object.entries(series)
-    .map(([k, v]) => ({ t: new Date(k), v, source }))
-    .sort((a, b) => a.t.getTime() - b.t.getTime());
-}
 
 /**
  * Custom hook for fetching and processing NOAA chart data
@@ -63,6 +57,11 @@ export function useChartData(config: AppConfiguration) {
 
   const { mode, lookbackH, lookaheadH, absStart, absEnd } = timeRange;
 
+  const [liveTick, setLiveTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setLiveTick(t => t + 1), 5 * 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const timeDomain = useMemo(() => {
     // Round to the minute to prevent URL jitter and redundant fetches
     const now = new Date();
@@ -81,17 +80,21 @@ export function useChartData(config: AppConfiguration) {
     }
 
     return { start, end, now };
-  }, [mode, lookbackH, lookaheadH, absStart, absEnd]);
+  }, [mode, lookbackH, lookaheadH, absStart, absEnd, liveTick]);
 
   const fetchRangeRef = useRef<{
     start: Date;
     end: Date;
     stationId: string;
     dataSource: AppConfiguration['display']['dataSource'];
+    timestamp: number;
   } | null>(null);
+  const fetchRevisionRef = useRef(0);
 
   // Main data fetching logic
   const performFetch = useCallback(async (force = false) => {
+    const requestRevision = ++fetchRevisionRef.current;
+    if (force) clearDataServiceCache();
     const { start, end, now } = timeDomain;
     const { timeRange, offset: configOffset } = config;
     const requestedDataSource = config.display.dataSource;
@@ -118,7 +121,8 @@ export function useChartData(config: AppConfiguration) {
       !force &&
       fetchRangeRef.current &&
       fetchRangeRef.current.stationId === stationId &&
-      fetchRangeRef.current.dataSource === requestedDataSource
+      fetchRangeRef.current.dataSource === requestedDataSource &&
+      Date.now() - fetchRangeRef.current.timestamp < CACHE_TTL
     ) {
       const buffered = fetchRangeRef.current;
       const startEdgeDiff = (start.getTime() - buffered.start.getTime()) / (24 * 3600 * 1000);
@@ -219,7 +223,9 @@ export function useChartData(config: AppConfiguration) {
       }), fetchMetadata);
 
       // 4. Success - Update range ref and cache
-      fetchRangeRef.current = { start: fStart, end: fEnd, stationId, dataSource: requestedDataSource };
+      if (requestRevision === fetchRevisionRef.current) {
+        fetchRangeRef.current = { start: fStart, end: fEnd, stationId, dataSource: requestedDataSource, timestamp: Date.now() };
+      }
 
       const result: ChartData = {
         observed: observedData.data as any,
@@ -237,10 +243,9 @@ export function useChartData(config: AppConfiguration) {
         imagery: observedData.imagery as any,
       };
 
-      dataCache[cacheKey] = {
-        timestamp: Date.now(),
-        data: result
-      };
+      if (requestRevision === fetchRevisionRef.current) {
+        dataCache[cacheKey] = { timestamp: Date.now(), data: result };
+      }
 
       markPerf('chartData.fetchComplete', {
         ...fetchMetadata,
@@ -293,9 +298,11 @@ export function useChartData(config: AppConfiguration) {
       setDataState(prev => ({ ...prev, loading: true, error: null }));
     }
 
-    performFetch()
+    const pending = performFetch();
+    const requestRevision = fetchRevisionRef.current;
+    pending
       .then(result => {
-        if (!active || !result) return;
+        if (!active || !result || requestRevision !== fetchRevisionRef.current) return;
         setDataState({
           loading: false,
           error: null,
@@ -303,7 +310,7 @@ export function useChartData(config: AppConfiguration) {
         });
       })
       .catch(error => {
-        if (!active) return;
+        if (!active || requestRevision !== fetchRevisionRef.current) return;
         setDataState(prev => ({
           ...prev,
           loading: false,
@@ -311,7 +318,10 @@ export function useChartData(config: AppConfiguration) {
         }));
       });
 
-    return () => { active = false; };
+    // This stable request tracker is shared with pull-to-refresh, so cleanup
+    // also invalidates manual reads when settings change or the hook unmounts.
+    const requestTracker = fetchRevisionRef;
+    return () => { active = false; ++requestTracker.current; };
   }, [performFetch, timeDomain, stationId, locationId, config.offset.mode, config.offset.value]);
 
   const processedData = useMemo(() => {
@@ -321,109 +331,10 @@ export function useChartData(config: AppConfiguration) {
     return measurePerfSync('chartData.processData', () => {
       // Note: We deliberately DO NOT filter points to start/end here anymore,
       // so that the ChartViewer can scroll into the buffered data (+/- 5 days).
-      const shiftMs = data.timeOffsetMins ? data.timeOffsetMins * 60000 : 0;
-
-      // Observed points are our ground truth at local/FiMAN time. NOAA station
-      // observations use the same phase alignment as NOAA predictions so the
-      // station curve lines up with the local sensor curve.
-      const alignObservedPoint = (point: Point): Point => (
-        point.source === 'noaa'
-          ? { ...point, t: new Date(point.t.getTime() + shiftMs) }
-          : point
-      );
-
-      const primaryPoints = seriesToPoints(data.observed, data.source).map(alignObservedPoint);
-    const lastPrimary = primaryPoints.length > 0 ? primaryPoints[primaryPoints.length - 1] : null;
-    const lastPrimaryT = lastPrimary?.t.getTime() || 0;
-
-    // To prevent "non-linear" jumps at the handover point, we calculate the
-    // vertical difference between sources at the last common or nearest timestamp.
-    let fallbackOffset = 0;
-    const alternateSource: 'fiman' | 'noaa' = data.source === 'fiman' ? 'noaa' : 'fiman';
-    const allAltPoints = seriesToPoints(data.alternate || {}, alternateSource).map(alignObservedPoint);
-
-    if (lastPrimary && allAltPoints.length > 0) {
-      // Find nearest alternate point to the last primary point to compute offset
-      let minDt = Infinity;
-      let nearestV = 0;
-      for (const p of allAltPoints) {
-        const dt = Math.abs(p.t.getTime() - lastPrimaryT);
-        if (dt < minDt) {
-          minDt = dt;
-          nearestV = p.v;
-        }
-      }
-      // Only apply offset if the nearest point is within 15 minutes
-      if (minDt <= 15 * 60000) {
-        fallbackOffset = lastPrimary.v - nearestV;
-      }
-    }
-
-    const alternatePoints = allAltPoints
-      .filter(p => p.t.getTime() > lastPrimaryT)
-      .map(p => ({ ...p, v: p.v + fallbackOffset }));
-
-    // Combine, filter to prevent future 'observations' from NOAA, and explicitly sort
-    // to ensure lastObs is truly the latest point.
-    const observedPoints = [...primaryPoints, ...alternatePoints]
-      .filter(p => p.t.getTime() <= now.getTime() + 600000) // Max 10 mins into future
-      .sort((a, b) => a.t.getTime() - b.t.getTime());
-
-    // Apply time offset to localized predicted points (Phase Alignment)
-    // This shifts the raw NOAA tide to match the local station's timing
-    const predictedPoints: Point[] = Object.entries(data.predicted)
-      .map(([k, v]) => ({
-        t: new Date(new Date(k).getTime() + shiftMs),
-        v: v as number,
-        source: 'noaa' as const
-      }))
-      .sort((a, b) => a.t.getTime() - b.t.getTime());
-
-    // Calculate current 'Live Surge' for the forecast
-    // We use the most recent observation vs the localized prediction for a seamless lineup
-    const lastObs = observedPoints.length > 0 ? observedPoints[observedPoints.length - 1] : null;
-    const liveSurge = lastObs
-      ? lastObs.v - (predictedPoints.find(p => Math.abs(p.t.getTime() - lastObs.t.getTime()) < 360000)?.v ?? lastObs.v)
-      : (data.offset ?? 0);
-
-    const effectiveOffset = config.offset.mode === 'manual'
-      ? (parseFloat(config.offset.value) || 0)
-      : liveSurge;
-
-    // Calculate Adjusted Points (FloodCast) - Forecast Only
-    // To prevent any overlap or "double lines", we filter for points strictly AFTER the last observation
-    const lastObsT = lastObs?.t.getTime() || now.getTime();
-    const adjustedPoints: Point[] = Object.entries(data.predicted)
-      .map(([k, v]) => ({
-        t: new Date(new Date(k).getTime() + shiftMs),
-        v: (v as number) + effectiveOffset
-      }))
-      .filter(p => p.t.getTime() > lastObsT) // Strictly after
-      .sort((a, b) => a.t.getTime() - b.t.getTime());
-
-    // Prepend the last observation point to the adjusted series to ensure
-    // the lines meet perfectly at the handover point with no gap or overlap.
-    if (lastObs) {
-      adjustedPoints.unshift({ ...lastObs });
-    }
-
-    const deltaPoints: Point[] = [];
-    for (const obsPoint of observedPoints) {
-      // Find nearest localized prediction
-      const nearest = predictedPoints.reduce((best, predPoint) => {
-        const dtMin = Math.abs(predPoint.t.getTime() - obsPoint.t.getTime()) / 60000;
-        const bestDt = best ? Math.abs(best.t.getTime() - obsPoint.t.getTime()) / 60000 : Infinity;
-        return dtMin < bestDt && dtMin <= 10 ? predPoint : best;
-      }, null as Point | null);
-
-      if (nearest) {
-        deltaPoints.push({ t: obsPoint.t, v: obsPoint.v - nearest.v });
-      }
-    }
-
-    const surgeForecastPoints: Point[] = predictedPoints
-      .filter(p => p.t.getTime() >= now.getTime())
-      .map(p => ({ t: p.t, v: effectiveOffset }));
+      const {
+        observedPoints, predictedPoints, adjustedPoints, deltaPoints,
+        effectiveOffset, surgeForecastPoints,
+      } = processWaterSeries(data, now, stationId, { mode: config.offset.mode, value: config.offset.value });
 
     // Compass direction lookup for legacy Firestore records where direction was stored as a string
     // (NWS forecast API returns "E", "SE", etc. — the ETL fix now converts these, but old data may remain).
@@ -458,23 +369,18 @@ export function useChartData(config: AppConfiguration) {
       timeOffsetMins: data.timeOffsetMins,
       surgeForecastPoints, // For Tab2.tsx compatibility
       timeDomain,
-      warnings: data.warnings,
+      warnings: [...(data.warnings || []), ...(adjustedPoints.length ? ['Dashed total water level uses the existing residual persistence projection; its long-range accuracy is unvalidated.'] : ['Residual projection unavailable: observations or matching tide predictions are missing or stale.'])],
       imagery: data.imagery,
       floodEvents: data.floodEvents,
       source: data.source,
+      observationStation: data.source === 'fiman' ? '30046' : stationId,
       thresholdCrossing: ((): ThresholdCrossing | null => {
         // Use the phase-aligned adjusted points if available, otherwise fallback to phase-aligned predicted
         const seriesForCrossing = adjustedPoints.length > 0 ? adjustedPoints : predictedPoints;
 
-        // We need to find the next point in the series that exceeds the threshold
-        const nextCrossing = seriesForCrossing.find(p => p.t.getTime() > now.getTime() && p.v >= config.thresholds.minor);
-        if (!nextCrossing) return null;
-
-        return {
-          time: nextCrossing.t,
-          level: nextCrossing.v,
-          threshold: config.thresholds.minor
-        };
+        const event = floodWindows(seriesForCrossing, config.thresholds.minor)
+          .find(e => (e.endTime || e.lastSampleTime) > now);
+        return event ? { time: event.startTime, level: config.thresholds.minor, threshold: config.thresholds.minor } : null;
       })()
       };
     }, {
@@ -483,12 +389,29 @@ export function useChartData(config: AppConfiguration) {
       windKeys: Object.keys(data.wind ?? {}).length,
       precipKeys: Object.keys(data.precip ?? {}).length,
     });
-  }, [dataState.data, timeDomain, config.offset.mode, config.offset.value, config.thresholds.minor]);
+  }, [dataState.data, timeDomain, config.offset.mode, config.offset.value, config.thresholds.minor, stationId]);
 
   return {
     ...dataState,
     processedData,
     thresholdCrossing: processedData?.thresholdCrossing ?? null,
-    refresh: () => performFetch(true),
+    refresh: async () => {
+      const pending = performFetch(true);
+      const requestRevision = fetchRevisionRef.current;
+      try {
+        const result = await pending;
+        if (result && requestRevision === fetchRevisionRef.current) {
+          setDataState({ loading: false, error: null, data: result.data });
+        }
+      } catch (error) {
+        if (requestRevision === fetchRevisionRef.current) {
+          setDataState(previous => ({
+            ...previous, loading: false,
+            error: error instanceof Error ? error.message : String(error),
+          }));
+        }
+        throw error;
+      }
+    },
   };
 }

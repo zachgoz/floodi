@@ -7,7 +7,7 @@
     "sourceMap": true,
     "rootDir": "src",
     "strict": true,
-    "target": "es2020",
+    "target": "es2022",
     "esModuleInterop": true
   },
   "compileOnSave": true,

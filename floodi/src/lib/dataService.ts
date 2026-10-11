@@ -30,7 +30,10 @@ export async function getImageUrl(pathOrUrl: string): Promise<string> {
   return pathOrUrl;
 }
 
-const bucketCache: Record<string, any> = {};
+const bucketCache: Record<string, { timestamp: number; value: Promise<unknown> }> = {};
+export function clearDataServiceCache() {
+  Object.keys(bucketCache).forEach(key => delete bucketCache[key]);
+}
 
 /**
  * Service for accessing water level data stored in Firestore buckets.
@@ -40,10 +43,10 @@ export async function prefetchMonths(locationId: string, months: string[], type:
   return Promise.all(
     months.map(async (month) => {
       const cacheKey = `${type}:${locationId}:${month}`;
-      if (bucketCache[cacheKey]) return bucketCache[cacheKey];
+      if (bucketCache[cacheKey] && Date.now() - bucketCache[cacheKey].timestamp < 5 * 60_000) return bucketCache[cacheKey].value;
 
       const collection = type === 'obs' ? 'observations' : 'predictions';
-      bucketCache[cacheKey] = (async () => {
+      const value = (async () => {
         try {
           const snap = await measurePerf('firestore.bucket.getDoc', () => getDoc(doc(db, `locations/${locationId}/${collection}/${month}`)), {
             locationId,
@@ -57,7 +60,8 @@ export async function prefetchMonths(locationId: string, months: string[], type:
           return null;
         }
       })();
-      return bucketCache[cacheKey];
+      bucketCache[cacheKey] = { timestamp: Date.now(), value };
+      return value;
     })
   );
 }

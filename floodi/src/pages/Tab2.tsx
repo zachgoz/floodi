@@ -1,3 +1,12 @@
+import { LOCATIONS } from 'src/constants/locations';
+import { interpolate } from 'src/utils/waterForecast';
+import { projectResidualPattern } from '../../functions/src/forecast/pattern';
+import { alignForecastComparison } from 'src/utils/forecastComparison';
+import { selectWaterForecast } from 'src/utils/selectWaterForecast';
+import { SurgeChart } from 'src/components/dashboard/SurgeChart';
+import { ForecastTimeControls } from 'src/components/dashboard/ForecastTimeControls';
+import { FloodOutlook } from 'src/components/dashboard/FloodOutlook';
+import { useFloodOutlook } from 'src/components/dashboard/useFloodOutlook';
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   IonContent,
@@ -34,6 +43,7 @@ import { APIProvider } from '@vis.gl/react-google-maps';
 import { markPerf, measurePerf } from 'src/lib/perfLogger';
 import { IntroTourOverlay } from 'src/components/onboarding/IntroTourOverlay';
 import { useHistory } from 'react-router-dom';
+import { floodWindows, hasUpcomingFlooding } from 'src/utils/waterForecast';
 import { AdSenseUnit } from 'src/components/common/AdSenseUnit';
 
 /**
@@ -78,7 +88,6 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     updateOffset,
     updateTimeRange,
     updateDisplay,
-    resetToLive: baseResetToLive,
     resetToDefaults,
   } = useSettingsStorage();
 
@@ -87,6 +96,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   const [currentViewport, setCurrentViewport] = useState<{ start: Date; end: Date; focusTime: Date } | null>(null);
   const [manualFocusTime, setManualFocusTime] = useState<Date | null>(null);
   const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
+  const [viewportRequest, setViewportRequest] = useState<{ start: Date; end: Date; id: number } | undefined>();
   const [selectedCameraId, setSelectedCameraId] = useState<string>(WEBCAMS[0].id);
   const lastPersistedDomainRef = useRef<string | null>(null);
 
@@ -98,6 +108,53 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     processedData,
     refresh,
   } = useChartData(config);
+
+  const { outlook, refresh: refreshOutlook } = useFloodOutlook(config.locationId);
+  const [showSteadyComparison, setShowSteadyComparison] = useState(false);
+  const patternProjection = useMemo(() => {
+    if (!processedData) return null;
+    const reference = { station: processedData.observationStation, datum: 'MLLW', units: 'ft' };
+    return projectResidualPattern(processedData.deltaPoints, processedData.predictedPoints.map(p => p.t), processedData.timeDomain.now, reference, reference);
+  }, [processedData]);
+  const surgeEstimatePoints = useMemo(() => {
+    if (!processedData) return [];
+    const estimates = processedData.observedPoints.filter(p => p.estimated).flatMap(p => {
+      const tide = interpolate(processedData.predictedPoints, p.t);
+      return tide === null ? [] : [{ ...p, v: p.v - tide }];
+    });
+    const anchor = processedData.deltaPoints.at(-1);
+    return estimates.length ? [...(anchor ? [anchor] : []), ...estimates] : [];
+  }, [processedData]);
+  const outlookComparison = useMemo(() => alignForecastComparison(outlook, processedData?.predictedPoints || [], { station: processedData?.observationStation || '', tideStation: LOCATIONS[config.locationId]?.noaaStationId || '', datum: 'MLLW', units: 'ft', thresholdFt: config.thresholds.minor }), [outlook, processedData, config.locationId, config.thresholds.minor]);
+  const forecastCompatible = outlookComparison.compatible;
+  const selectedForecast = useMemo(() => selectWaterForecast({
+    outlook,
+    weatherCompatible: forecastCompatible,
+    weatherTotalPoints: outlookComparison.points,
+    weatherResidualPoints: outlookComparison.residual,
+    steadyTotalPoints: processedData?.adjustedPoints || [],
+    tidePoints: processedData?.predictedPoints || [],
+    now: processedData?.timeDomain.now || new Date(),
+    validationNow: new Date(),
+    manualOverride: config.offset.mode === 'manual',
+  }), [outlook, forecastCompatible, outlookComparison, processedData, config.offset.mode]);
+  // One selected physical forecast drives both charts and every hazard calculation.
+  // Actual measurements and the near-live display estimate remain untouched.
+  const forecastData = useMemo(() => processedData ? {
+    ...processedData,
+    adjustedPoints: selectedForecast.totalPoints,
+    surgeForecastPoints: selectedForecast.residualPoints,
+  } : null, [processedData, selectedForecast]);
+  const weatherSelected = selectedForecast.method === 'weather' || selectedForecast.method === 'learned';
+  const selectedBounds = useMemo(() => {
+    const timestamps = new Set(selectedForecast.totalPoints.map(point => +point.t));
+    const supported = weatherSelected ? (outlook?.points || []).filter(point => timestamps.has(Date.parse(point.t))) : [];
+    return {
+      lower: selectedForecast.lowerPoints ?? supported.map(point => ({ t: new Date(point.t), v: point.lowerFt })),
+      upper: selectedForecast.upperPoints ?? supported.map(point => ({ t: new Date(point.t), v: point.upperFt })),
+    };
+  }, [weatherSelected, selectedForecast.totalPoints, selectedForecast.lowerPoints, selectedForecast.upperPoints, outlook]);
+  const forecastLabel = selectedForecast.tailMethod || selectedForecast.extensionMethod ? 'Extended outlook' : selectedForecast.method === 'weather' ? 'Weather forecast' : selectedForecast.method === 'learned' ? 'Short-range forecast' : selectedForecast.method === 'steady' ? 'Steady forecast' : 'Tide only';
 
   useEffect(() => {
     markPerf('tab2.dataState', {
@@ -115,17 +172,14 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     simulationLevel,
     setSimulationLevel,
     setIsUserSimulating,
-  } = useAtmosphericState(processedData, manualFocusTime, currentViewport);
+  } = useAtmosphericState(forecastData, manualFocusTime, currentViewport);
 
   const resetToLive = useCallback(() => {
-    baseResetToLive();
     lastPersistedDomainRef.current = null;
-    setCurrentViewport(null);
     setManualFocusTime(null);
     setIsUserSimulating(false);
-    setResetCount(c => c + 1);
     setCenterRequest({ time: new Date(), id: Date.now() });
-  }, [baseResetToLive, setIsUserSimulating]);
+  }, [setIsUserSimulating]);
 
   const handleTimeChange = useCallback((time: Date) => {
     setManualFocusTime(time);
@@ -177,7 +231,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   type RefresherDetail = { complete: () => void };
   const handleRefresh = async (event: CustomEvent<RefresherDetail>) => {
     try {
-      await refresh();
+      await Promise.all([refresh(), refreshOutlook()]);
     } catch (error: unknown) {
       setMessages({
         error: (error as { message?: string } | null)?.message || 'Failed to refresh data',
@@ -193,7 +247,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
    */
   const chartConfig = useMemo(() => ({
     thresholds: config.thresholds,
-    showDelta: config.display.showDelta,
+    showDelta: false,
     timezone: config.display.timezone,
   }), [config.thresholds, config.display.showDelta, config.display.timezone]);
 
@@ -240,8 +294,14 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   // Stable event handlers to prevent infinite loops in ChartViewer
   const handleViewportChange = useCallback((start: Date, end: Date, focusTime: Date) => {
     setManualFocusTime(null);
-    setCurrentViewport({ start, end, focusTime });
+    setCurrentViewport(previous => previous && +previous.start === +start && +previous.end === +end && +previous.focusTime === +focusTime ? previous : { start, end, focusTime });
   }, []);
+
+  const chartFocusRatio = config.timeRange.lookbackH / Math.max(1, config.timeRange.lookbackH + config.timeRange.lookaheadH);
+  const handleSurgeViewportChange = useCallback((start: Date, end: Date) => {
+    handleViewportChange(start, end, new Date(+start + (+end - +start) * chartFocusRatio));
+    setViewportRequest(previous => ({ start, end, id: (previous?.id || 0) + 1 }));
+  }, [chartFocusRatio, handleViewportChange]);
 
   const handleCommentHover = useCallback((c: any) => {
     onCommentHoverAction(c);
@@ -276,69 +336,20 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
       .catch(() => { /* file not yet generated — map shows notice */ }));
   }, []);
 
-  // Approximate flooding time calculation
+  // Reuse the same crossings as the event cards and forecast shading.
   const floodWindow = useMemo(() => {
-    if (!processedData || !config.thresholds) return null;
-    
-    const minor = config.thresholds.minor;
-    const points = [...processedData.observedPoints, ...processedData.adjustedPoints];
+    if (!processedData) return null;
     const target = activeAtmo.targetTime || new Date();
-    const targetTime = target.getTime();
-
-    // 1. Find the point in the series nearest to targetTime
-    let nearestIdx = -1;
-    let minDiff = Infinity;
-    for (let i = 0; i < points.length; i++) {
-      const diff = Math.abs(points[i].t.getTime() - targetTime);
-      if (diff < minDiff) {
-        minDiff = diff;
-        nearestIdx = i;
-      }
-    }
-
-    if (nearestIdx === -1) return null;
-
-    // 2. Search backward and forward to find the continuous period above threshold
-    let startIdx = nearestIdx;
-    while (startIdx > 0 && points[startIdx].v >= minor) {
-      startIdx--;
-    }
-    // If we're below threshold at startIdx, the actual start is startIdx + 1
-    const actualStartIdx = points[startIdx].v >= minor ? startIdx : startIdx + 1;
-
-    let endIdx = nearestIdx;
-    while (endIdx < points.length - 1 && points[endIdx].v >= minor) {
-      endIdx++;
-    }
-    // If we're below threshold at endIdx, the actual end is endIdx - 1
-    const actualEndIdx = points[endIdx].v >= minor ? endIdx : endIdx - 1;
-
-    // 3. Validate if target is actually in/near a flood event
-    if (points[actualStartIdx].v < minor) return null;
-
-    const startTime = points[actualStartIdx].t;
-    const endTimeRaw = points[actualEndIdx].t;
-    const peakPoint = points
-      .slice(actualStartIdx, actualEndIdx + 1)
-      .reduce((peak, point) => point.v > peak.v ? point : peak, points[actualStartIdx]);
-    
-    // User requirement: "end about an hour after it falls back below the 5.6' threshold"
-    const endTime = new Date(endTimeRaw.getTime() + 3600_000);
-    
-    const durationMs = endTime.getTime() - startTime.getTime();
-    const hours = Math.floor(durationMs / 3600_000);
-    const mins = Math.round((durationMs % 3600_000) / 60_000);
-    const duration = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-
+    const event = floodWindows([...processedData.observedPoints, ...selectedForecast.totalPoints], config.thresholds.minor)
+      .find(e => e.startTime <= target && ((e.endTime || e.lastSampleTime) >= target));
+    if (!event) return null;
     return {
-      startTime,
-      endTime,
-      duration,
-      maxRoadFloodDepth: Math.max(0, peakPoint.v - minor),
-      maxWaterLevel: peakPoint.v,
-      maxWaterLevelTime: peakPoint.t,
+      startTime: event.startTime, endTime: event.endTime ?? undefined,
+      duration: event.endTime ? `${Math.round((+event.endTime - +event.startTime) / 60_000)} min` : 'End unavailable',
+      maxRoadFloodDepth: Math.max(0, event.peakValue - config.thresholds.minor),
+      maxWaterLevel: event.peakValue, maxWaterLevelTime: event.peakTime,
     };
-  }, [processedData, activeAtmo.targetTime, config.thresholds]);
+  }, [processedData, selectedForecast.totalPoints, activeAtmo.targetTime, config.thresholds.minor]);
 
   // Compute next tide info reactively
   const nextTideInfo = useMemo(() => {
@@ -348,14 +359,14 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     // Create combined actual + FloodCast prediction curve to ensure we find actual expected peaks (including surge)
     const combinedPoints = [
       ...processedData.observedPoints,
-      ...processedData.adjustedPoints.slice(1)
+      ...selectedForecast.totalPoints
     ];
     return findNextTideExtremum(
       combinedPoints.length > 0 ? combinedPoints : processedData.predictedPoints,
       activeAtmo.targetTime,
       activeAtmo.wl
     );
-  }, [processedData, activeAtmo.targetTime, activeAtmo.wl]);
+  }, [processedData, selectedForecast.totalPoints, activeAtmo.targetTime, activeAtmo.wl]);
 
   return (
     <IonPage
@@ -396,7 +407,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                 <div className="dashboard-sidebar">
                   <div className="dashboard-next-events" data-tour-id="events">
                     <NextFloodingEventsCard
-                      adjustedPoints={processedData?.adjustedPoints || []}
+                      adjustedPoints={selectedForecast.totalPoints}
                       predictedPoints={processedData?.predictedPoints || []}
                       windPoints={processedData?.windPoints || []}
                       precipPoints={processedData?.precipPoints || []}
@@ -405,19 +416,9 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                       now={processedData?.timeDomain.now || new Date()}
                       onTimeChange={handleTimeChange}
                       loading={loading}
-                    />
-                  </div>
-                  <div className="dashboard-webcam-card" data-tour-id="webcam">
-                    <WebcamFeedCard
-                      cameraId={selectedCameraId}
-                      locationName={WEBCAMS.find(c => c.id === selectedCameraId)?.name || ''}
-                      targetTime={activeAtmo.targetTime || new Date()}
-                      isLive={activeAtmo.isLive}
-                      onResetToLive={resetToLive}
-                      onTimeChange={handleTimeChange}
-                      onCameraChange={setSelectedCameraId}
-                      imagery={processedData?.imagery?.[selectedCameraId]}
-                      loading={loading}
+                      streetCalibration={LOCATIONS[config.locationId]?.streetCalibration}
+                      forecastHorizon={weatherSelected ? selectedForecast.horizonEnd : null}
+                      upperForecastPoints={selectedBounds.upper}
                     />
                   </div>
                 </div>
@@ -468,10 +469,27 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                   <>
                     <div className="dashboard-hydrograph-card" data-tour-id="hydrograph">
                       <HydrographChart
-                        locationName="Carolina Beach Tidal Flooding"
+                        onResetView={() => {
+                          updateTimeRange({ mode: 'relative', lookbackH: 36, lookaheadH: 48 });
+                          setCurrentViewport(null);
+                          setManualFocusTime(null);
+                          setCenterRequest(undefined);
+                          setViewportRequest(undefined);
+                          setResetCount(c => c + 1);
+                        }}
+                        locationName="Water Level Forecast"
+                        controls={<ForecastTimeControls
+                          viewport={currentViewport || processedData?.timeDomain || { start: new Date(Date.now() - 36 * 3600_000), end: new Date(Date.now() + 48 * 3600_000) }}
+                          now={processedData?.timeDomain.now || new Date()}
+                          forecastEndAt={processedData?.predictedPoints.at(-1)?.t}
+                          focusRatio={chartFocusRatio}
+                          isLive={activeAtmo.isLive}
+                          onViewportChange={handleSurgeViewportChange}
+                          onReturnToLive={resetToLive}
+                        />}
                         sentinel={
                           <div data-tour-id="live-readout">
-                            <AtmosphericOverlay
+                            {activeAtmo.wl === null && !loading ? <p>Water level unavailable for this time.</p> : <AtmosphericOverlay
                               nextTideInfo={nextTideInfo ?? undefined}
                               precipitationAccumulation={activeAtmo.precip ?? 0}
                               windSpeed={activeAtmo.wind?.speed ?? 0}
@@ -495,7 +513,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                               loading={loading}
                               showWLInfo={showWLInfo}
                               onShowWLInfoChange={setShowWLInfo}
-                            />
+                            />}
                           </div>
                         }
                         isLive={activeAtmo.isLive}
@@ -503,17 +521,19 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         source={activeAtmo.source}
                         observedPoints={processedData?.observedPoints || []}
                         predictedPoints={processedData?.predictedPoints || []}
-                        adjustedPoints={processedData?.adjustedPoints || []}
+                        adjustedPoints={selectedForecast.totalPoints}
+                        forecastLabel={forecastLabel}
+                        forecastDescription={selectedForecast.reason}
                         deltaPoints={processedData?.deltaPoints || []}
                         timeOffsetMins={processedData?.timeOffsetMins || 0}
-                        surgeForecastPoints={processedData?.surgeForecastPoints || []}
+                        surgeForecastPoints={selectedForecast.residualPoints}
                         windPoints={processedData?.windPoints || []}
                         precipPoints={processedData?.precipPoints || []}
                         domainStart={processedData?.timeDomain.start || new Date(Date.now() - 24 * 3600 * 1000)}
                         domainEnd={processedData?.timeDomain.end || new Date(Date.now() + 48 * 3600 * 1000)}
                         now={processedData?.timeDomain.now || new Date()}
                         thresholds={config?.thresholds}
-                        showDelta={config?.display.showDelta}
+                        showDelta={false}
                         timezone={config?.display.timezone || 'local'}
                         config={chartConfig}
                         floodEvents={processedData?.floodEvents || []}
@@ -534,21 +554,58 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         onResetToLive={resetToLive}
                         onTimeSettingsClick={() => setShowTimeSettings(true)}
                         centerRequest={centerRequest}
+                        viewportRequest={viewportRequest}
                         resetKey={resetCount}
-                        warnings={processedData?.warnings || []}
+                        warnings={weatherSelected ? (processedData?.warnings || []).filter(w => !w.startsWith('Dashed total water level') && !w.startsWith('Residual projection unavailable')) : processedData?.warnings || []}
                         viewMode={config.display.viewMode}
                         locationId={config.locationId}
                         onJumpToTime={handleTimeChange}
-                      />
+                      >
+                    <SurgeChart
+                      embedded
+                      showControls={false}
+                      points={processedData?.deltaPoints || []}
+                      estimatedPoints={surgeEstimatePoints}
+                      source={processedData?.source}
+                      timezone={config.display.timezone}
+                      now={processedData?.timeDomain.now}
+                      forecastEndAt={processedData?.predictedPoints.at(-1)?.t}
+                      viewport={currentViewport || processedData?.timeDomain}
+                      focusTime={currentViewport?.focusTime}
+                      focusRatio={chartFocusRatio}
+                      onViewportChange={handleSurgeViewportChange}
+                      onResetToLive={resetToLive}
+                      forecast={selectedForecast.residualPoints}
+                      forecastLabel={forecastLabel}
+                      forecastDescription={selectedForecast.reason}
+                      experimentalForecast={weatherSelected && showSteadyComparison ? processedData?.surgeForecastPoints || [] : []}
+                      comparisonLabel="Steady comparison"
+                      patternAnalysis={patternProjection?.analysis}
+                    />
+                      </HydrographChart>
                     </div>
-
-                    {/* Google Maps inundation map — FIMAN-style road coloring */}
+                    <FloodOutlook outlook={outlook} selection={selectedForecast} showComparison={showSteadyComparison} floodExpected={hasUpcomingFlooding(selectedForecast.totalPoints, config.thresholds.minor, processedData?.timeDomain.now || new Date())} floodPossible={hasUpcomingFlooding(selectedBounds.upper, config.thresholds.minor, processedData?.timeDomain.now || new Date())} onToggle={() => setShowSteadyComparison(v => !v)} />
+                  <div className="dashboard-webcam-card" data-tour-id="webcam">
+                    <WebcamFeedCard
+                      cameraId={selectedCameraId}
+                      locationName={WEBCAMS.find(c => c.id === selectedCameraId)?.name || ''}
+                      targetTime={activeAtmo.targetTime || new Date()}
+                      isLive={activeAtmo.isLive}
+                      onResetToLive={resetToLive}
+                      onTimeChange={handleTimeChange}
+                      onCameraChange={setSelectedCameraId}
+                      imagery={processedData?.imagery?.[selectedCameraId]}
+                      loading={loading}
+                    />
+                  </div>
                     <div className="dashboard-map-card" data-tour-id="map">
                       <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}>
                         <InundationMap
                           waterLevelFt={simulationLevel}
+                          waterLevelUnavailable={!activeAtmo.isSimulated && activeAtmo.wl === null}
+                          waterLevelLabel={activeAtmo.isSimulated ? 'Simulated Water Level' : activeAtmo.wl === null ? 'Water Level' : `${activeAtmo.isLive ? 'Live ' : ''}${activeAtmo.statusLabel} Water Level`}
                           roadData={roadData}
-                          observedLevelFt={processedData?.observedPoints?.slice(-1)[0]?.v}
+                          observedLevelFt={processedData?.observedPoints?.filter(point => !point.estimated).at(-1)?.v}
                           targetTime={activeAtmo.targetTime || new Date()}
                           onResetToLive={resetToLive}
                           onTimeChange={handleTimeChange}

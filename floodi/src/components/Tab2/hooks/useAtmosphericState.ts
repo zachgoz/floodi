@@ -3,7 +3,7 @@ import { findNearestPoint } from './useChartInteraction';
 import type { Point, WindPoint, PrecipPoint } from '../types';
 
 export interface AtmosphericState {
-  wl: number;
+  wl: number | null;
   targetTime: Date | null;
   isLive: boolean;
   source: string;
@@ -14,7 +14,7 @@ export interface AtmosphericState {
   prediction: number | null;
   wind: { speed: number; dir: number } | null;
   precip: number | null;
-  statusLabel: 'Observed' | 'Predicted';
+  statusLabel: 'Observed' | 'Predicted' | 'Estimated';
 }
 
 /**
@@ -34,7 +34,7 @@ export function useAtmosphericState(
   const activeAtmo = useMemo((): AtmosphericState => {
     if (!processedData) {
       return { 
-        wl: 0, 
+        wl: null,
         targetTime: null, 
         isLive: true, 
         source: 'Live Conditions', 
@@ -51,7 +51,7 @@ export function useAtmosphericState(
 
     const now = processedData.timeDomain.now;
     const targetT = manualFocusTime || currentViewport?.focusTime || now;
-    const isLive = !manualFocusTime && (!currentViewport || Math.abs(targetT.getTime() - now.getTime()) < 60000);
+    const isLive = !manualFocusTime && (!currentViewport || (Math.abs(targetT.getTime() - now.getTime()) < 60000 || Math.abs(targetT.getTime() - Date.now()) < 2 * 60000));
 
     // Find the latest measurement time to determine the handover point
     const lastObsT = processedData.observedPoints.length > 0 
@@ -66,20 +66,28 @@ export function useAtmosphericState(
     const precipRes = findNearestPoint<PrecipPoint>(processedData.precipPoints, targetT);
 
     const isObserved = !!(obsRes && obsRes.dtMin < 60 && !isPastHandover);
-    const isAdjusted = !!(adjRes && adjRes.dtMin < 60 && isPastHandover);
+    const isEstimated = isObserved && obsRes?.point.estimated === true;
+    // A learned forecast has a finite supported horizon. Nearest-point lookup
+    // must not extend its final level into a time where only tide is available.
+    const forecastStart = processedData.adjustedPoints[0]?.t;
+    const forecastEnd = processedData.adjustedPoints.at(-1)?.t;
+    const withinForecast = !!(forecastStart && forecastEnd && targetT >= forecastStart && targetT <= forecastEnd);
+    const isAdjusted = !!(adjRes && adjRes.dtMin < 60 && isPastHandover && withinForecast);
     const isPredicted = !isObserved && !isAdjusted && !!(predRes && predRes.dtMin < 60);
 
     const wl = isObserved ? obsRes!.point.v :
                isAdjusted ? adjRes!.point.v :
-               isPredicted ? predRes!.point.v : 0;
+               isPredicted ? predRes!.point.v : null;
 
     const sourceName = (obsRes?.point.source || processedData.source || 'NOAA').toUpperCase() === 'FIMAN' ? 'Fiman' : 'NOAA';
 
-    const sourceShort = isObserved ? `Water Level (${sourceName})` :
+    const sourceShort = isEstimated ? 'Localized NOAA Estimate' :
+                        isObserved ? `Water Level (${sourceName})` :
                         isAdjusted ? 'Predicted Water Level' :
                         isPredicted ? 'NOAA Prediction' : (isLive ? 'Live Conditions' : 'No Data');
 
-    const sourceFull = isObserved ? `Observed Water Level (${sourceName})` :
+    const sourceFull = isEstimated ? 'Estimated Water Level (phase-aligned NOAA proxy)' :
+                        isObserved ? `Observed Water Level (${sourceName})` :
                         isAdjusted ? 'FloodCast Water Level' :
                         isPredicted ? 'NOAA Predicted Water Level' : (isLive ? 'Live Conditions' : 'No Data');
 
@@ -88,7 +96,7 @@ export function useAtmosphericState(
                      isPredicted ? 'noaa' : (isLive ? 'live' : 'none');
 
     const surge = (() => {
-      if (!predRes || predRes.dtMin > 60) return null;
+      if (wl === null || !predRes || predRes.dtMin > 60) return null;
       return wl - predRes.point.v;
     })();
 
@@ -106,7 +114,7 @@ export function useAtmosphericState(
       prediction: predRes && predRes.dtMin < 60 ? predRes.point.v : null,
       wind: windRes && windRes.dtMin < 60 ? { speed: windRes.point.speed, dir: windRes.point.dir } : null,
       precip: precipRes && precipRes.dtMin < 60 ? precipRes.point.value : null,
-      statusLabel: isPredicted || isAdjusted ? 'Predicted' : 'Observed',
+      statusLabel: isEstimated ? 'Estimated' : isPredicted || isAdjusted ? 'Predicted' : 'Observed',
     };
   }, [processedData, currentViewport, manualFocusTime, simulationLevel, isUserSimulating]);
 
