@@ -11,7 +11,12 @@
 
 .next-flood-card ion-card-header {
   background: transparent;
-  padding: 14px 16px 8px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 14px 4px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
@@ -23,20 +28,17 @@
 }
 
 .next-flood-card ion-card-content {
-  padding: 8px 8px 12px;
+  padding: 4px 8px 8px;
 }
 
 .next-flood-content {
   position: relative;
-  min-height: 120px;
 }
 
-.next-flood-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px;
-  min-height: 120px;
+.next-flood-card .forecast-caption {
+  margin: 0 4px 4px;
+  font-size: var(--dash-type-label, .75rem);
+  line-height: 1.35;
 }
 
 .next-flood-list {
@@ -47,66 +49,43 @@
 .next-flood-item {
   --background: color-mix(in srgb, var(--event-color) 16%, #ffffff);
   --border-radius: 8px;
-  --padding-start: 8px;
-  --inner-padding-end: 8px;
+  --padding-start: 10px;
+  --inner-padding-end: 10px;
   --border-color: transparent;
-  --min-height: 70px;
-  margin: 6px 0;
-  border-left: 4px solid var(--event-color);
+  --min-height: 44px;
+  margin: 4px 0;
+  border-left: 3px solid var(--event-color);
   border-top: 1px solid color-mix(in srgb, var(--event-color) 18%, transparent);
   border-right: 1px solid color-mix(in srgb, var(--event-color) 18%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--event-color) 18%, transparent);
   border-radius: 8px;
 }
 
-.next-flood-item h3 {
-  margin: 0 0 4px;
+.next-flood-card .next-flood-item h3 {
+  margin: 0;
   font-size: var(--dash-type-body, .875rem);
   font-weight: 600;
   line-height: 1.35;
   color: var(--dash-title-color, var(--ion-color-dark));
 }
 
-.next-flood-item p {
+.next-flood-card .next-flood-item p {
   margin: 2px 0;
   color: var(--dash-subtitle-color, var(--ion-color-medium));
   font-size: var(--dash-type-body, .875rem);
   line-height: 1.35;
 }
 
-.flood-timeline-slot {
-  position: relative;
-  width: 32px;
-  min-height: 54px;
+.next-flood-item ion-label.next-flood-event-label {
+  margin: 8px 0;
+  min-width: 0;
+}
+
+.event-date-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin-right: 8px;
-}
-
-.flood-timeline-line {
-  position: absolute;
-  top: -16px;
-  bottom: -16px;
-  left: 50%;
-  width: 2px;
-  transform: translateX(-50%);
-  background: color-mix(in srgb, var(--event-color) 45%, transparent);
-}
-
-.flood-timeline-badge {
-  position: relative;
-  z-index: 1;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--event-color);
-  color: #111;
-  font-size: var(--dash-type-label, .75rem);
-  font-weight: 600;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .severity-badge {
@@ -115,12 +94,8 @@
   font-weight: 600;
   font-size: var(--dash-type-label, .75rem);
   text-transform: capitalize;
-  margin-left: 6px;
-}
-
-.next-flood-chevron {
-  color: var(--ion-color-medium);
-  margin-left: 4px;
+  flex-shrink: 0;
+  margin: 0;
 }
 
 .next-flood-view-more {
@@ -135,31 +110,30 @@
 
 .next-flood-empty {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  text-align: center;
-  padding: 22px 16px 26px;
+  gap: 12px;
+  padding: 12px 8px;
   color: var(--dash-subtitle-color, var(--ion-color-medium));
 }
 
 .next-flood-empty-icon {
-  width: 52px;
-  height: 52px;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   background: rgba(var(--ion-color-success-rgb), 0.12);
   color: var(--ion-color-success);
-  margin-bottom: 12px;
 }
 
 .next-flood-empty-icon ion-icon {
-  font-size: 1.8rem;
+  font-size: var(--dash-type-value, 1.5rem);
 }
 
 .next-flood-empty h3 {
-  margin: 0 0 6px;
+  margin: 0 0 2px;
   color: var(--dash-title-color, var(--ion-color-dark));
   font-size: var(--dash-type-body, .875rem);
   font-weight: 600;
@@ -258,20 +232,33 @@
   border-bottom-color: rgba(var(--ion-color-primary-rgb), 0.18);
 }
 
-/* Event hierarchy: date and window, then two equal numerical metrics. */
+/* Compact event rows keep the flood window separate from the two key metrics. */
 .event-flood-window {
   white-space: normal;
   font-weight: 500;
   color: var(--ion-text-color) !important;
-  margin: 0 0 12px !important;
+  margin: 2px 0 6px !important;
   font-variant-numeric: tabular-nums;
 }
 
 .event-level-metrics {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
+  gap: 10px;
   white-space: normal;
+}
+
+.event-level-metrics > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.event-level-metrics > div + div {
+  border-left: 1px solid color-mix(in srgb, var(--event-color) 35%, transparent);
+  padding-left: 10px;
 }
 
 .event-level-metrics span {
@@ -284,8 +271,8 @@
 
 .event-level-metrics strong {
   display: block;
-  margin-top: 2px;
-  font-size: var(--dash-type-value, 1.5rem);
+  flex-shrink: 0;
+  font-size: var(--dash-type-title, 1.125rem);
   font-weight: 700;
   line-height: 1.2;
   color: var(--dash-title-color, var(--ion-text-color));
@@ -304,28 +291,13 @@
   margin-left: 2px;
 }
 
-.next-flood-card ion-card-header {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-top: 8px;
-}
-
-@media (max-width: 480px) {
-  .next-flood-item .flood-timeline-slot,
-  .next-flood-chevron {
-    display: none;
+@media (max-width: 360px) {
+  .event-level-metrics,
+  .event-level-metrics > div {
+    gap: 4px;
   }
 
-  .next-flood-item {
-    --padding-start: 12px;
-    --inner-padding-end: 12px;
-  }
-
-  .next-flood-item .severity-badge {
-    align-self: flex-start;
-    margin-top: 14px;
+  .event-level-metrics > div + div {
+    padding-left: 6px;
   }
 }

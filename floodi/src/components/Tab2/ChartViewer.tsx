@@ -1,6 +1,8 @@
 import { floodWindows, liveViewport } from 'src/utils/waterForecast';
 import React, { useRef, useEffect, useState, useMemo, useCallback, useId } from 'react';
 import type { Point, ChartConfig, WindPoint, PrecipPoint } from './types';
+import { WeatherTimeline, WEATHER_TIMELINE_HEIGHT } from './WeatherTimeline';
+import { compassDirection } from 'src/utils/weatherTimeline';
 import { useChartInteraction, formatTooltipTime, findNearestPoint } from './hooks/useChartInteraction';
 import { isCommentTimeRange, type Comment, type CommentTimeRange } from 'src/types/comment';
 import { findLastSimilarLevel } from 'src/lib/dataService';
@@ -9,12 +11,6 @@ import { getTimeRangeFromChartSelection } from 'src/utils/timeRangeHelpers';
 import { findTideExtrema } from 'src/utils/tideExtrema';
 import { IonButton, IonIcon, IonText } from '@ionic/react';
 import { addCircleOutline, refreshOutline, syncOutline } from 'ionicons/icons';
-
-/** Convert a meteorological bearing (0° = N, clockwise) to a compass label */
-const COMPASS_DIRS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-function degToCompass(deg: number): string {
-  return COMPASS_DIRS[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
-}
 
 /**
  * Props for the ChartViewer component
@@ -448,21 +444,21 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Height of the atmospheric strip (precip + wind) at the very bottom of the chart
-  const ATMO_STRIP_H = 44;
+  const hasWeather = windPoints.length > 0 || precipPoints.length > 0;
+  const weatherHeight = hasWeather ? WEATHER_TIMELINE_HEIGHT + 6 : 0;
 
   // Chart dimensions and scaling
   const chartConfig = useMemo((): ChartConfig => {
-    const baseBottom = size.w <= 480 ? 48 : 30;
+    const baseBottom = 42;
     return {
       size,
-      margins: { l: 50, r: 20, t: 25, b: baseBottom + ATMO_STRIP_H + 6 },
+      margins: { l: 50, r: 20, t: 25, b: baseBottom + weatherHeight },
       thresholds,
       showDelta,
       timezone,
       ...config,
     };
-  }, [size, thresholds, showDelta, timezone, config, ATMO_STRIP_H]);
+  }, [size, thresholds, showDelta, timezone, config, weatherHeight]);
 
   const { margins } = chartConfig;
   const innerW = size.w - margins.l - margins.r;
@@ -537,13 +533,15 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
     // On touch devices, suppress hover crosshair/tooltip – it doesn't make sense without a cursor
     if (!isTouchDeviceRef.current || event.pointerType === 'mouse') {
-      const hoverTime = computeTimeAtPointer(event);
+      const overWeather = (event.target as Element).closest?.('[data-testid="weather-timeline"]');
+      const hoverTime = overWeather ? null : computeTimeAtPointer(event);
       if (hoverTime) {
         setHoverT(hoverTime);
         onHoverTimeChange?.(hoverTime);
       } else {
         setHoverT(null);
         onHoverTimeChange?.(null);
+        onChartInteraction?.(null);
       }
 
       if (onChartInteraction && hoverTime) {
@@ -893,96 +891,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         {/* Background */}
         <rect x={0} y={0} width={size.w} height={size.h} fill="var(--chart-bg)" />
 
-        {/* ─── Atmospheric strip: precipitation bars + wind arrows (below plot area) ─── */}
-        {(() => {
-          if (precipPoints.length === 0 && windPoints.length === 0) return null;
-
-          // Strip sits just below the plot area
-          const stripTop = margins.t + innerH + 4;
-          const stripH = ATMO_STRIP_H;
-          const precipH = stripH * 0.60;
-          const windY = stripTop + 13; // wind arrows in upper portion
-
-          const maxPrecip = Math.max(0.01, ...precipPoints.map(p => p.value));
-
-          return (
-            <g aria-label="Atmospheric data strip">
-              {/* Removed Strip background */}
-
-              {/* Label */}
-              <text x={margins.l + 4} y={stripTop + 10} fontSize={9}
-                fill="rgba(140,180,220,0.8)" fontFamily="monospace">PRECIP / WIND</text>
-
-              {/* ── Precipitation bars (grow upward from strip bottom) ── */}
-              {precipPoints.map((pp, i) => {
-                if (pp.value <= 0) return null;
-                const cx = xOf(pp.t);
-                if (cx < margins.l || cx > margins.l + innerW) return null;
-                const scaledValue = Math.sqrt(pp.value / maxPrecip);
-                const barH = Math.max(2, scaledValue * precipH * 0.85);
-                const nextT = precipPoints[i + 1]?.t;
-                const barW = nextT
-                  ? Math.max(2, Math.min(32, xOf(nextT) - cx - 2))
-                  : 8;
-                const opacity = 0.5 + scaledValue * 0.45;
-                return (
-                  <rect
-                    key={`precip-${i}`}
-                    x={cx - barW / 2}
-                    y={stripTop + stripH - barH}
-                    width={barW}
-                    height={barH}
-                    fill={`rgba(80,160,240,${opacity.toFixed(2)})`}
-                    rx={1}
-                  />
-                );
-              })}
-
-              {/* ── Wind arrows ── */}
-              {(() => {
-                // Render arrows based on a fixed time interval (e.g. 3 hours)
-                // rather than index, to handle varying data densities (6m vs 1h).
-                const ARROW_INTERVAL_MS = 3 * 3600000;
-                const arrows: React.ReactElement[] = [];
-                
-                // Track last time an arrow was placed
-                let lastPlacedMs = 0;
-
-                windPoints.forEach((wp, i) => {
-                  const cx = xOf(wp.t);
-                  if (cx < margins.l + 6 || cx > margins.l + innerW - 6) return;
-
-                  const tMs = wp.t.getTime();
-                  if (tMs - lastPlacedMs < ARROW_INTERVAL_MS * 0.9) return; // 0.9 for slight tolerance
-
-                  lastPlacedMs = tMs;
-
-                  const maxSpeed = 50;
-                  const arrowLen = 8 + Math.min(14, (wp.speed / maxSpeed) * 14);
-                  const rot = wp.dir + 180;
-                  const t = Math.min(1, wp.speed / 35);
-                  const r = Math.round(t * 220);
-                  const g = Math.round((1 - t) * 180 + t * 80);
-                  const b = Math.round((1 - t) * 220);
-                  const arrowColor = `rgb(${r},${g},${b})`;
-
-                  arrows.push(
-                    <g key={`wind-${i}`} transform={`translate(${cx},${windY}) rotate(${rot})`}>
-                      <line x1={0} y1={arrowLen / 2} x2={0} y2={-arrowLen / 2}
-                        stroke={arrowColor} strokeWidth={1.5} />
-                      <polygon
-                        points={`0,${-arrowLen / 2 - 4} -3,${-arrowLen / 2 + 2} 3,${-arrowLen / 2 + 2}`}
-                        fill={arrowColor}
-                      />
-                    </g>
-                  );
-                });
-                return arrows;
-              })()}
-            </g>
-          );
-        })()}
-
         {/* Threshold gradients for dynamic line coloring */}
         {thresholds && (
           <defs>
@@ -1322,6 +1230,18 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           );
         })}
 
+        {hasWeather && <WeatherTimeline
+          windPoints={windPoints}
+          precipPoints={precipPoints}
+          start={activeStart}
+          end={activeEnd}
+          now={now}
+          x={margins.l}
+          y={margins.t + innerH + 42}
+          width={innerW}
+          timezone={timezone}
+        />}
+
         {/* Legend - REMOVED per user request */}
 
 
@@ -1375,8 +1295,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 )
                 : null;
               const atmoItems = [
-                ...(nearestWind ? [{ type: 'wind', data: nearestWind }] : []),
-                ...(nearestPrecip && nearestPrecip.value > 0 ? [{ type: 'precip', data: nearestPrecip }] : []),
+                ...(nearestWind && Math.abs(+nearestWind.t - hoverMs) < 3600000 && Number.isFinite(nearestWind.speed) ? [{ type: 'wind', data: nearestWind }] : []),
+                ...(nearestPrecip && Math.abs(+nearestPrecip.t - hoverMs) < 3600000 && Number.isFinite(nearestPrecip.value) && nearestPrecip.value >= 0 ? [{ type: 'precip', data: nearestPrecip }] : []),
               ];
               const extraRows = atmoItems.length;
 
@@ -1471,21 +1391,21 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                     const y = baseY + 30 + (rowsCount + i) * lineHeight;
                     if (item.type === 'wind') {
                       const wind = item.data as WindPoint;
-                      const color = 'rgba(120, 190, 255, 0.9)';
+                      const color = 'var(--chart-label-text)';
                       return (
                         <g key="atmo-wind" className="sentinel-metrics">
-                          <g transform={`translate(${adjustedX + 14}, ${y - 4}) rotate(${wind.dir + 180})`}>
+                          {Number.isFinite(wind.dir) && <g transform={`translate(${adjustedX + 14}, ${y - 4}) rotate(${wind.dir + 180})`}>
                             <line x1={0} y1={4} x2={0} y2={-4} stroke={color} strokeWidth={1.5} strokeLinecap="round" />
                             <path d="M -2 -2 L 0 -5 L 2 -2" fill={color} />
-                          </g>
+                          </g>}
                           <text x={adjustedX + 26} y={y} fill={color} fontSize="11" className="metric-label">
-                            Wind: {wind.speed.toFixed(0)} mph {degToCompass(wind.dir)}
+                            Wind: {wind.speed.toFixed(0)} mph {compassDirection(wind.dir)}
                           </text>
                         </g>
                       );
                     } else {
                       const precip = item.data as PrecipPoint;
-                      const color = 'rgba(0, 210, 255, 0.9)';
+                      const color = 'var(--ion-color-primary, #0077b6)';
                       return (
                         <g key="atmo-precip" className="sentinel-metrics">
                           <path 

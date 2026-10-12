@@ -18,7 +18,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react';
-import { chevronForwardOutline, closeOutline, timeOutline, water } from 'ionicons/icons';
+import { closeOutline, timeOutline, water } from 'ionicons/icons';
 import type { FloodEvent } from 'src/types/data';
 import type { Point, WindPoint, PrecipPoint, AppConfiguration } from 'src/components/Tab2/types';
 import {
@@ -173,16 +173,11 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
           <IonList className="next-flood-list" lines="none">
             {[1, 2].map((i) => (
               <IonItem key={i} className="next-flood-item skeleton">
-                <div className="flood-timeline-slot" slot="start">
-                  <span className="flood-timeline-line" aria-hidden="true" />
-                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(var(--ion-text-color-rgb, 0,0,0), 0.1)' }} />
-                </div>
-                <IonLabel>
+                <IonLabel className="next-flood-event-label">
                   <h3><IonSkeletonText animated style={{ width: '60%' }} /></h3>
                   <p><IonSkeletonText animated style={{ width: '80%' }} /></p>
                   <p><IonSkeletonText animated style={{ width: '40%' }} /></p>
                 </IonLabel>
-                <div slot="end" style={{ width: '60px', height: '20px', borderRadius: '4px', background: 'rgba(var(--ion-text-color-rgb, 0,0,0), 0.1)' }} />
               </IonItem>
             ))}
           </IonList>
@@ -190,7 +185,7 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
 
           <>
             <IonList className="next-flood-list" lines="none">
-              {visibleEvents.map((event, index) => {
+              {visibleEvents.map((event) => {
                 const severityColor = getFloodSeverityColor(event.thresholdType);
                 return (
                   <IonItem
@@ -201,22 +196,19 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
                     style={{ '--event-color': severityColor } as React.CSSProperties}
                     onClick={() => setSelectedEvent(event)}
                   >
-                    <div className="flood-timeline-slot" slot="start">
-                      <span className="flood-timeline-line" aria-hidden="true" />
-                      <IonBadge className="flood-timeline-badge">{index + 1}</IonBadge>
-                    </div>
-                    <IonLabel className="ion-text-wrap">
-                      <h3>{eventDate(event.startTime)}</h3>
+                    <IonLabel className="ion-text-wrap next-flood-event-label">
+                      <div className="event-date-row">
+                        <h3>{eventDate(event.startTime)}</h3>
+                        <IonBadge className="severity-badge">
+                          {getFloodSeverityLabel(event.thresholdType)}
+                        </IonBadge>
+                      </div>
                       <p className="event-flood-window">{floodWindowLabel(event, now)}</p>
                       <div className="event-level-metrics">
                         <div><span>Peak Water Level</span><strong>{event.peakValue.toFixed(2)} <small>ft</small></strong></div>
                         <div><span>Max Street Flooding{!hasStreetCalibration && <sup aria-label="Estimated">*</sup>}</span><strong>{inundation(event.peakValue, thresholds.minor, 'MLLW', streetCalibration).inches.toFixed(1)} <small>in</small></strong></div>
                       </div>
                     </IonLabel>
-                    <IonBadge className="severity-badge" slot="end">
-                      {getFloodSeverityLabel(event.thresholdType)}
-                    </IonBadge>
-                    <IonIcon icon={chevronForwardOutline} slot="end" className="next-flood-chevron" />
                   </IonItem>
                 );
               })}
@@ -238,8 +230,10 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
             <div className="next-flood-empty-icon">
               <IonIcon icon={water} />
             </div>
-            <h3>{floodPossible ? 'Flooding possible' : forecastAvailable ? 'No flooding predicted' : 'Forecast unavailable'}</h3>
-            <p>{floodPossible ? 'Within the forecast error range.' : forecastAvailable ? 'No threshold exceedance in the available forecast.' : 'Waiting for water level predictions.'}</p>
+            <div>
+              <h3>{floodPossible ? 'Flooding possible' : forecastAvailable ? 'No flooding predicted' : 'Forecast unavailable'}</h3>
+              <p>{floodPossible ? 'Within the forecast error range.' : forecastAvailable ? 'No threshold exceedance in the available forecast.' : 'Waiting for water level predictions.'}</p>
+            </div>
           </div>
         )}
       </IonCardContent>

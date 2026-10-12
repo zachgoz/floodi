@@ -85,6 +85,7 @@ export const AtmosphereMetrics: React.FC<AtmosphereMetricsProps> = ({
   loading = false,
 }) => {
   const hasWind = windSpeed > 0 || loading;
+  const hasDirection = Number.isFinite(windDirection);
   const hasPrecip = (precipitationAccumulation !== undefined && precipitationAccumulation > 0.005) || loading;
   const arrowColor = windColor(windSpeed);
 
@@ -97,14 +98,14 @@ export const AtmosphereMetrics: React.FC<AtmosphereMetricsProps> = ({
           <div className="metric-icon-box">
             {loading ? (
               <IonSkeletonText animated style={{ width: '18px', height: '18px', borderRadius: '50%' }} />
-            ) : (
+            ) : hasDirection ? (
               <svg
                 width={18}
                 height={18}
                 viewBox="-9 -9 18 18"
                 className="wind-arrow-svg"
               >
-                <g transform={`rotate(${(typeof windDirection === 'number' ? windDirection : 0) + 180})`}>
+                <g transform={`rotate(${windDirection + 180})`}>
                   <line
                     x1={0} y1={arrowLen / 2}
                     x2={0} y2={-arrowLen / 2}
@@ -118,7 +119,7 @@ export const AtmosphereMetrics: React.FC<AtmosphereMetricsProps> = ({
                   />
                 </g>
               </svg>
-            )}
+            ) : <IonIcon icon={helpCircleOutline} aria-label="Wind direction unavailable" />}
           </div>
           <div className="metric-details">
             <div className="metric-value-row">
@@ -126,9 +127,9 @@ export const AtmosphereMetrics: React.FC<AtmosphereMetricsProps> = ({
                 <IonSkeletonText animated style={{ width: '30px', height: '18px', borderRadius: '4px' }} />
               ) : (
                 <>
-                  <span className="metric-value" style={{ color: arrowColor }}>{windSpeed.toFixed(0)}</span>
+                  <span className="metric-value">{windSpeed.toFixed(0)}</span>
                   <span className="metric-unit">mph</span>
-                  <span className="metric-dir">{degToCompass(windDirection)}</span>
+                  <span className="metric-dir">{hasDirection ? degToCompass(windDirection) : '—'}</span>
                 </>
               )}
             </div>

@@ -2,7 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChartData } from 'src/components/Tab2/hooks/useChartData';
 import type { AppConfiguration } from 'src/components/Tab2/types';
-import { fetchUnifiedObservations, clearDataServiceCache } from 'src/lib/dataService';
+import { fetchUnifiedObservations, clearDataServiceCache, extractWeatherData } from 'src/lib/dataService';
 
 vi.mock('src/lib/dataService', () => ({
   fetchUnifiedObservations: vi.fn(),
@@ -82,5 +82,13 @@ describe('useChartData refresh ordering', () => {
     await act(async () => { earlier.resolve(readings(4)); });
     expect(result.current.error).toBe('Refresh failed');
     warn.mockRestore();
+  });
+  it('keeps a missing legacy weather direction unknown while retaining its measured speed', async () => {
+    vi.mocked(fetchUnifiedObservations).mockResolvedValueOnce(readings(4));
+    vi.mocked(extractWeatherData).mockReturnValueOnce({ wind: { [new Date().toISOString()]: { speed: 12, dir: 'variable' as unknown as number } }, precip: {} });
+    const { result } = renderHook(() => useChartData(config));
+    await act(async () => {});
+    expect(result.current.processedData.windPoints[0].speed).toBe(12);
+    expect(result.current.processedData.windPoints[0].dir).toBeNaN();
   });
 });

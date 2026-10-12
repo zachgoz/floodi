@@ -493,7 +493,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                               nextTideInfo={nextTideInfo ?? undefined}
                               precipitationAccumulation={activeAtmo.precip ?? 0}
                               windSpeed={activeAtmo.wind?.speed ?? 0}
-                              windDirection={activeAtmo.wind?.dir ?? 0}
+                              windDirection={activeAtmo.wind?.dir ?? Number.NaN}
                               observedWaterLevel={activeAtmo.wl ?? 0}
                               isLive={activeAtmo.isLive}
                               source={activeAtmo.source}

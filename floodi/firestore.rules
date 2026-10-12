@@ -45,12 +45,21 @@ service cloud.firestore {
                (!("lastLoginAt" in request.resource.data) || request.resource.data.lastLoginAt == null || request.resource.data.lastLoginAt is timestamp);
       }
 
-      // Create requires owner AND valid data
-      allow create: if isOwner(uid) && validUserData();
+      // Clients can bootstrap only unprivileged profiles. Initial administrators
+      // must be provisioned through a trusted server/Admin SDK.
+      allow create: if isOwner(uid) && validUserData() &&
+        request.resource.data.role in ['anonymous', 'user'];
 
-      // Update requires valid data AND either owner-without-role-change or admin
+      function validSelfRoleUpdate() {
+        return !('role' in request.resource.data.diff(resource.data).affectedKeys()) ||
+          (resource.data.role == 'anonymous' && request.resource.data.role == 'user' &&
+           request.auth.token.firebase.sign_in_provider != 'anonymous');
+      }
+
+      // Owners may complete anonymous registration; only trusted admins can
+      // assign privileged roles or otherwise change an account's role.
       allow update: if validUserData() && (
-        (isOwner(uid) && !('role' in request.resource.data.diff(resource.data).changedKeys())) ||
+        (isOwner(uid) && validSelfRoleUpdate()) ||
         isAdmin()
       );
 

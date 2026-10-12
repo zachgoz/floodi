@@ -1,0 +1,11 @@
+# Compact events and weather readability
+
+Event rows now place severity beside the weekday/date and show peak water level and Max Street Flooding as compact inline metrics. Timeline ornaments and excess spacing are removed. Two events appear initially; expand/collapse and tap-to-open details retain their exact threshold crossings. Cross-midnight windows wrap, and the street calibration disclosure remains behind the info control.
+
+The water chart's overlapping weather marks are replaced by two aligned rows: numeric average wind speed with compass-from direction, and rain totals in inches with subtle bars. Interval size adapts to the exact visible time range and plot width. Tap or keyboard activation reveals the interval dates, values and coverage. Edge intervals exclude weather outside the viewport. Unknown direction stays unknown; opposing winds do not produce an invented average bearing. Rain includes only fully covered, nonoverlapping preceding-hour reports, and partial coverage is explicitly identified. Cached NWS forecast records often omit future rain; missing rainfall remains unavailable.
+
+Verification: **533 app tests**, **11 backend Node tests** and **11 actual Firestore emulator tests** passed; both builds passed; ESLint had zero errors and 216 existing warnings. Browser JavaScript contained no private credential payloads. Final device visual verification of this pass remains pending deployment; the earlier localhost policy restriction was not bypassed.
+
+The accompanying [deployment security preparation](DEPLOYMENT-SECURITY-2026-10-11.md) closes self-created privileged roles and applies compatible Functions dependency patches. A private, ignored production environment selects the existing Vertex project and uses runtime ADC rather than a local key file.
+
+Deployment preparation is complete, but production has not been changed: the signed-in Firebase account, existing service account and local ADC all returned permission errors for the established `floodcastwebapp` project. A Firebase owner login was requested. After login, deploy the intended project explicitly, verify the workload identity's Vertex access, run the daily model job before numerical inference, and verify the live Hosting rewrite, cached forecast schema/freshness and mobile/desktop interface before reporting success.

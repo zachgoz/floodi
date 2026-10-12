@@ -1,3 +1,4 @@
+import { parseWindDirection } from 'src/utils/weatherTimeline';
 import { floodWindows } from 'src/utils/waterForecast';
 import { processWaterSeries } from './processWaterSeries';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -338,20 +339,8 @@ export function useChartData(config: AppConfiguration) {
 
     // Compass direction lookup for legacy Firestore records where direction was stored as a string
     // (NWS forecast API returns "E", "SE", etc. — the ETL fix now converts these, but old data may remain).
-    const COMPASS_TO_DEG_FE: Record<string, number> = {
-      N: 0, NNE: 22.5, NE: 45, ENE: 67.5,
-      E: 90, ESE: 112.5, SE: 135, SSE: 157.5,
-      S: 180, SSW: 202.5, SW: 225, WSW: 247.5,
-      W: 270, WNW: 292.5, NW: 315, NNW: 337.5,
-    };
-    const toWindDeg = (dir: unknown): number => {
-      if (typeof dir === 'number' && isFinite(dir)) return dir;
-      if (typeof dir === 'string') return COMPASS_TO_DEG_FE[dir.trim().toUpperCase()] ?? 0;
-      return 0;
-    };
-
     const windPoints: WindPoint[] = Object.entries(data.wind || {})
-      .map(([k, v]) => ({ t: new Date(k), speed: (v as any).speed, dir: toWindDeg((v as any).dir) }))
+      .map(([k, v]) => ({ t: new Date(k), speed: (v as any).speed, dir: parseWindDirection((v as any).dir) }))
       .sort((a, b) => a.t.getTime() - b.t.getTime());
 
     const precipPoints: PrecipPoint[] = Object.entries(data.precip || {})
