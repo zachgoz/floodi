@@ -107,11 +107,11 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
           {chartProps.experimentalPoints?.length ? <span><i className="legend-line experimental-line" />{experimentalLabel}</span> : null}
         </div>
         <ChartInfo label="About water level forecasts">
-          <p>Water levels in feet MLLW. Shading marks forecast flooding above the configured threshold. Both charts share their time window.</p>
+          <p>Water levels in feet MLLW. Line colors indicate flood thresholds. Both charts share their time window.</p>
           {forecastDescription && <p>{forecastDescription}</p>}
           {(chartProps.experimentalLower?.length || 0) > 1 && <p>Thin dashed lines show historical error bounds; weather forecast uncertainty can add further error.</p>}
           {warnings?.map((warning, i) => <p key={i}>{warning}</p>)}
-          {chartProps.experimentalPoints?.length ? <p>{experimentalDescription || 'Purple: optional comparison. Flood cards and shading use the primary forecast.'}</p> : null}
+          {chartProps.experimentalPoints?.length ? <p>{experimentalDescription || 'Purple: optional comparison. Flood cards use the primary forecast.'}</p> : null}
           {onResetView && <button className="chart-info-action" onClick={onResetView}>Reset to default view</button>}
         </ChartInfo>
       </div>

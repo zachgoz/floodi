@@ -11,7 +11,7 @@ const now = new Date("2026-10-10T10:00:00Z");
 const p = (m: number, v: number) => ({ t: new Date(+now + m * 60_000), v });
 const thresholds = { minor: 5, moderate: 7, major: 8, extreme: 9 };
 describe("forecast chart behavior", () => {
-  it('clips a native forecast at the live display handoff without changing its physical samples or flood shading', () => {
+  it('clips a native forecast at the live display handoff without changing its physical samples or adding flood shading', () => {
     const observed = [p(-30, 4.4), p(-15, 4.6), { ...p(0, 4.8), estimated: true }];
     const forecast = [p(-6, 6), p(6, 6), p(12, 4)];
     const snapshot = JSON.stringify(forecast);
@@ -27,9 +27,9 @@ describe("forecast chart behavior", () => {
     expect(nativeXs[0]).toBeLessThan(estimateEndX);
     expect(nativeXs).toHaveLength(forecast.length);
     expect(line).toHaveAttribute('clip-path', `url(#${clip.parentElement!.id})`);
-    const shading = container.querySelectorAll('[data-testid="forecast-flood-shading"]');
-    expect(shading).toHaveLength(1);
-    expect(Number(shading[0].getAttribute('x'))).toBe(estimateEndX);
+    expect(container.querySelectorAll('[data-testid="forecast-flood-shading"]')).toHaveLength(0);
+    expect(line).toHaveAttribute('fill', 'none');
+    expect(line).toHaveAttribute('stroke', 'url(#adj-flood-gradient)');
     expect(JSON.stringify(forecast)).toBe(snapshot);
   });
   it('clips the residual forecast after the estimated bridge while retaining native residuals', () => {
@@ -150,11 +150,11 @@ describe("forecast chart behavior", () => {
         +onViewportChange.mock.calls.at(-1)![0],
     ).toBe(span);
   });
-  it("does not shade below-stage historical events and uses exact future crossings", () => {
+  it("keeps flood thresholds and changing line colors without shading observed or forecast flooding", () => {
     const { container } = render(
       <ChartViewer
         locationId="carolina-beach"
-        observedPoints={[]}
+        observedPoints={[p(-12, 4), p(-6, 6)]}
         predictedPoints={[]}
         adjustedPoints={[p(0, 4), p(6, 6), p(12, 4)]}
         deltaPoints={[]}
@@ -175,12 +175,21 @@ describe("forecast chart behavior", () => {
     );
     expect(
       container.querySelectorAll('[data-testid="forecast-flood-shading"]'),
-    ).toHaveLength(1);
-    expect(
-      container
-        .querySelector('[data-testid="forecast-flood-shading"]')
-        ?.getAttribute("width"),
-    ).toBeTruthy();
+    ).toHaveLength(0);
+    expect(screen.getByLabelText('Observed water level')).toHaveAttribute('stroke', 'url(#obs-flood-gradient)');
+    expect(screen.getByLabelText('Forecast total water level')).toHaveAttribute('stroke', 'url(#adj-flood-gradient)');
+    const gradients = container.querySelectorAll('linearGradient');
+    expect(gradients).toHaveLength(2);
+    for (const gradient of gradients) {
+      const colors = [...gradient.querySelectorAll('stop')].map(stop => stop.getAttribute('stop-color'));
+      expect(colors).toContain('var(--line-observed, #2ecc71)');
+      expect(colors).toContain('#fbc02d');
+      expect(colors).toContain('#d32f2f');
+    }
+    expect(screen.getByText('Minor 5.0 ft')).toBeInTheDocument();
+    expect(screen.getByText('Moderate 7.0 ft')).toBeInTheDocument();
+    expect(screen.getByText('Major 8.0 ft')).toBeInTheDocument();
+    expect(screen.getByText('Extreme 9.0 ft')).toBeInTheDocument();
   });
   it('distinguishes the localized estimate from actual observations and connects its handoff', () => {
     const observed = [p(-30,5),p(-24,5.1),{...p(-18,5.2),estimated:true,observedTime:p(-78,0).t}];
@@ -244,10 +253,15 @@ describe("forecast chart behavior", () => {
     expect(screen.getByText('Peak Water Level')).toBeInTheDocument();
     expect(screen.getByText('6.00')).toBeInTheDocument();
   });
-  it('does not shade across a missing-data interval', () => {
-    const { container } = render(<ChartViewer locationId="carolina-beach" observedPoints={[]} predictedPoints={[]} adjustedPoints={[p(0,6),p(6,6),p(120,4)]} deltaPoints={[]} domainStart={now} domainEnd={p(120,0).t} now={now} thresholds={thresholds} showDelta={false} timezone="local" />);
-    const rect = container.querySelector('[data-testid="forecast-flood-shading"]')!;
-    expect(Number(rect.getAttribute('width'))).toBeLessThan(50);
+  it('does not shade incomplete flood forecasts or invent an event ending across a data gap', () => {
+    const forecast = [p(0, 6), p(6, 6), p(120, 4)];
+    const { container } = render(<>
+      <ChartViewer locationId="carolina-beach" observedPoints={[]} predictedPoints={[]} adjustedPoints={forecast} deltaPoints={[]} domainStart={now} domainEnd={p(120,0).t} now={now} thresholds={thresholds} showDelta={false} timezone="local" />
+      <NextFloodingEventsCard adjustedPoints={forecast} predictedPoints={[]} windPoints={[]} precipPoints={[]} thresholds={thresholds} now={now} onTimeChange={vi.fn()} />
+    </>);
+    expect(container.querySelectorAll('[data-testid="forecast-flood-shading"]')).toHaveLength(0);
+    expect(screen.getByText('Flooding now · End unavailable')).toBeInTheDocument();
+    expect(screen.getByText('6.00')).toBeInTheDocument();
   });
 
 });

@@ -14,6 +14,41 @@ describe('weather timeline aggregation', () => {
     expect(weatherTimeline([], [], start, hour(24 * 21), 240).intervalHours).toBe(168);
   });
 
+  it('can expose genuine hourly variation hidden by a mobile overview average', () => {
+    const windPoints = [wind(0, 8, 0), wind(1, 24, 90), wind(2, 4, 180)];
+    expect(weatherTimeline(windPoints, [], start, hour(3), 80).intervals[0].windSpeed).toBe(12);
+    const hourly = weatherTimeline(windPoints, [rain(1, 0.2), rain(2, 0.1)], start, hour(3), 80, { intervalHours: 1 });
+    expect(hourly.intervalHours).toBe(1);
+    expect(hourly.intervals.map(interval => interval.windSpeed)).toEqual([8, 24, 4]);
+    expect(hourly.intervals.map(interval => interval.windDirection)).toEqual([0, 90, 180]);
+    expect(hourly.intervals.map(interval => interval.rain)).toEqual([0.2, 0.1, null]);
+  });
+
+  it('keeps hourly detail rainfall windows distinct and does not fill missing winds', () => {
+    const { intervals } = weatherTimeline([wind(0, 8)], [rain(1, 0.2), rain(1.8, 2), rain(2, 0)], start, hour(3), 80, { intervalHours: 1 });
+    expect(intervals.map(interval => interval.windSpeed)).toEqual([8, null, null]);
+    expect(intervals.map(interval => interval.rain)).toEqual([0.2, 0, null]);
+    expect(intervals.map(interval => interval.rainHours)).toEqual([1, 1, 0]);
+  });
+
+  it('does not reuse an outside-viewport hour for clipped hourly detail', () => {
+    const { intervals } = weatherTimeline([wind(0, 8), wind(1, 24)], [rain(1, 0.8), rain(2, 0.2)], hour(0.5), hour(1.5), 80, { intervalHours: 1 });
+    expect(intervals.map(interval => interval.expectedHours)).toEqual([0.5, 0.5]);
+    expect(intervals.map(interval => interval.windSpeed)).toEqual([null, 24]);
+    expect(intervals.map(interval => interval.rain)).toEqual([null, null]);
+  });
+
+  it('ignores malformed hourly modes rather than creating zero, negative or non-finite bins', () => {
+    for (const invalid of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 2, '1']) {
+      const options = { intervalHours: invalid } as unknown as { intervalHours: 1 };
+      const result = weatherTimeline([wind(0, 8), wind(1, 24)], [], start, hour(2), 80, options);
+      expect(result.intervalHours).toBe(2);
+      expect(result.intervals).toHaveLength(1);
+      expect(result.intervals[0].windSpeed).toBe(16);
+      expect(result.intervals[0].end).toEqual(hour(2));
+    }
+  });
+
   it('sums preceding-hour rainfall without changing inches or averaging the total', () => {
     const { intervals } = weatherTimeline([wind(0), wind(1, 18)], [rain(1, 0.2), rain(2, 0.1)], start, hour(2), 80);
     expect(intervals).toHaveLength(1);

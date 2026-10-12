@@ -2,6 +2,12 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it } from 'vitest';
 import { WeatherTimeline } from 'src/components/Tab2/WeatherTimeline';
 
+function pointer(target: Element, type: string, x: number, y: number) {
+  const event = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+  Object.defineProperty(event, 'pointerId', { value: 1 });
+  fireEvent(target, event);
+}
+
 const start = new Date('2026-10-11T00:00:00Z');
 const hour = (value: number) => new Date(+start + value * 3_600_000);
 const props = { start, end: hour(24), now: hour(12), x: 50, y: 200, width: 240, timezone: 'local' as const,
@@ -40,6 +46,43 @@ describe('legible weather rows', () => {
     fireEvent.keyDown(screen.getAllByRole('button')[0], { key: 'Escape' });
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getAllByRole('button')[1], { key: 'Enter' });
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+
+  it('opens a pointer tap but suppresses a drag click, including movement that returns to its origin', () => {
+    render(<svg><WeatherTimeline {...props} /></svg>);
+    const button = screen.getAllByRole('button')[0];
+    pointer(button, 'pointerdown', 30, 250);
+    pointer(button, 'pointerup', 33, 251);
+    fireEvent.click(button, { detail: 1 });
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    fireEvent.keyDown(button, { key: 'Escape' });
+    pointer(button, 'pointerdown', 30, 250);
+    pointer(button, 'pointermove', 40, 250);
+    pointer(button, 'pointerup', 30, 250);
+    fireEvent.click(button, { detail: 1 });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    pointer(button, 'pointerdown', 30, 250);
+    pointer(button, 'pointerup', 36, 250);
+    fireEvent.click(button, { detail: 1 });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('suppresses canceled touch clicks and still supports the next tap or keyboard activation', () => {
+    render(<svg><WeatherTimeline {...props} /></svg>);
+    const button = screen.getAllByRole('button')[0];
+    pointer(button, 'pointerdown', 30, 250);
+    pointer(button, 'pointercancel', 30, 250);
+    fireEvent.click(button, { detail: 1 });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    pointer(button, 'pointerdown', 30, 250);
+    pointer(button, 'pointerup', 30, 250);
+    fireEvent.click(button, { detail: 1 });
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    fireEvent.keyDown(button, { key: 'Escape' });
+    pointer(button, 'pointerdown', 30, 250);
+    pointer(button, 'pointercancel', 30, 250);
+    fireEvent.keyDown(button, { key: ' ' });
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 

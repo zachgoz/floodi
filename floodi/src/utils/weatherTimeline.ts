@@ -15,6 +15,13 @@ export interface WeatherInterval {
   expectedHours: number;
 }
 
+export function rainLabel(rain: number | null, complete: boolean): string {
+  if (rain === null || (!complete && rain === 0)) return '—';
+  if (!complete && rain < 0.01) return '>0 in';
+  const value = rain > 0 && rain < 0.01 ? '<0.01' : rain.toFixed(2);
+  return `${complete ? '' : '≥'}${value} in`;
+}
+
 export function compassDirection(degrees: number): string {
   return Number.isFinite(degrees) ? COMPASS[Math.round(((degrees % 360) + 360) % 360 / 22.5) % 16] : '—';
 }
@@ -32,11 +39,12 @@ export function parseWindDirection(value: unknown): number {
 /** Weather shares the water chart's UTC domain; bin density follows its rendered width. */
 export function weatherTimeline(
   windPoints: WindPoint[], precipPoints: PrecipPoint[], start: Date, end: Date, width: number,
+  options: { intervalHours?: 1 } = {},
 ): { intervals: WeatherInterval[]; intervalHours: number } {
   if (!Number.isFinite(+start) || !Number.isFinite(+end) || end <= start) return { intervals: [], intervalHours: 1 };
   const slots = Math.max(1, Math.floor(Math.max(0, width) / 80));
   const desiredHours = (+end - +start) / HOUR / slots;
-  const intervalHours = INTERVAL_HOURS.find(hours => hours >= desiredHours) ?? Math.ceil(desiredHours / 24) * 24;
+  const intervalHours = options.intervalHours === 1 ? 1 : (INTERVAL_HOURS.find(hours => hours >= desiredHours) ?? Math.ceil(desiredHours / 24) * 24);
   const span = intervalHours * HOUR;
   // Anchor the first cell to the visible hour, so a mobile viewport does not
   // split its only legible weather cell across an arbitrary multi-day boundary.

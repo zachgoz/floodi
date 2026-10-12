@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { PrecipPoint, WindPoint } from './types';
-import { compassDirection, weatherTimeline } from 'src/utils/weatherTimeline';
+import { compassDirection, rainLabel, weatherTimeline } from 'src/utils/weatherTimeline';
 
 export const WEATHER_TIMELINE_HEIGHT = 68;
 
@@ -16,17 +16,12 @@ interface WeatherTimelineProps {
   timezone: 'local' | 'gmt';
 }
 
-function rainLabel(rain: number | null, complete: boolean): string {
-  if (rain === null || (!complete && rain === 0)) return '—';
-  if (!complete && rain < 0.01) return '>0 in';
-  const value = rain > 0 && rain < 0.01 ? '<0.01' : rain.toFixed(2);
-  return `${complete ? '' : '≥'}${value} in`;
-}
-
 /** Two legible weather rows on the water plot's exact time scale. */
 export function WeatherTimeline({ windPoints, precipPoints, start, end, now, x, y, width, timezone }: WeatherTimelineProps) {
   const { intervals, intervalHours } = useMemo(() => weatherTimeline(windPoints, precipPoints, start, end, width), [windPoints, precipPoints, start, end, width]);
   const [selectedKey, setSelectedKey] = useState<number | null>(null);
+  const gesture = useRef<{ pointerId: number; x: number; y: number; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
   const selected = intervals.find(interval => +interval.start === selectedKey);
   const xOf = (time: Date) => x + (+time - +start) / (+end - +start) * width;
   const intervalLabel = `${intervals.some(interval => interval.expectedHours < intervalHours) ? '≤' : ''}${intervalHours >= 24 ? `${intervalHours / 24}d` : `${intervalHours}h`}`;
@@ -59,7 +54,29 @@ export function WeatherTimeline({ windPoints, precipPoints, start, end, now, x, 
       const coverage = `${interval.windHours} hourly readings`;
       const accessible = `${rangeLabel(interval.start, interval.end)}. Average wind ${windText}${interval.windDirection === null ? ', direction unavailable or variable' : ` from ${directionText}`}, ${coverage}. Rain ${rainLabel(interval.rain, completeRain)}, ${interval.rainHours}/${Number(interval.expectedHours.toFixed(1))} hours.${+interval.end > +now ? ' Includes forecast weather.' : ''}`;
       const activate = () => setSelectedKey(previous => previous === +interval.start ? null : +interval.start);
-      return <g key={+interval.start} role="button" tabIndex={0} aria-label={accessible} aria-pressed={selectedKey === +interval.start} onClick={activate} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); } else if (event.key === 'Escape') setSelectedKey(null); }} style={{ cursor: 'pointer' }}>
+      return <g key={+interval.start} role="button" tabIndex={0} aria-label={accessible} aria-pressed={selectedKey === +interval.start}
+        onPointerDown={event => {
+          suppressClick.current = false;
+          gesture.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+        }}
+        onPointerMove={event => {
+          const active = gesture.current;
+          if (active?.pointerId === event.pointerId && Math.hypot(event.clientX - active.x, event.clientY - active.y) >= 6) { active.moved = true; suppressClick.current = true; }
+        }}
+        onPointerUp={event => {
+          const active = gesture.current;
+          if (active?.pointerId === event.pointerId) {
+            suppressClick.current = active.moved || Math.hypot(event.clientX - active.x, event.clientY - active.y) >= 6;
+            gesture.current = null;
+          }
+        }}
+        onPointerCancel={() => { gesture.current = null; suppressClick.current = true; }}
+        onClick={() => {
+          if (suppressClick.current) { suppressClick.current = false; return; }
+          suppressClick.current = false;
+          activate();
+        }}
+        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); suppressClick.current = false; activate(); } else if (event.key === 'Escape') setSelectedKey(null); }} style={{ cursor: 'pointer' }}>
         <title>{accessible}</title>
         <rect x={left} y={y} width={cellWidth} height={WEATHER_TIMELINE_HEIGHT} fill={selectedKey === +interval.start ? 'var(--chart-grid)' : 'transparent'} />
         <line x1={right} x2={right} y1={y + 3} y2={y + 65} stroke="var(--chart-grid)" />

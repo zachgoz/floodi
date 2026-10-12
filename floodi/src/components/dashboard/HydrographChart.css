@@ -169,7 +169,7 @@
 .hydrograph-chart-wrapper {
   position: relative;
   width: 100%;
-  height: 480px;
+  --chart-plot-height: 480px;
   border-radius: 16px;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.02);
@@ -219,7 +219,7 @@
   }
   
   .hydrograph-chart-wrapper {
-    height: 380px; /* Slightly shorter on mobile */
+    --chart-plot-height: 380px; /* Slightly shorter on mobile */
   }
 }
 

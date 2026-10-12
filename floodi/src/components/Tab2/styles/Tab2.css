@@ -77,6 +77,56 @@
   z-index: 1;
 }
 
+.chart-viewer-layout {
+  width: 100%;
+  min-width: 0;
+}
+
+.chart-viewer-layout > .chart-plot {
+  height: var(--chart-plot-height, 420px);
+  min-height: 0;
+  max-height: none;
+}
+
+.chart-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 4px 8px;
+}
+
+.chart-weather-options {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--dash-type-label, .75rem);
+  color: var(--dash-subtitle-color, var(--ion-color-medium));
+}
+
+.chart-weather-options > span { margin-right: 4px; }
+
+.chart-weather-options button {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: var(--dash-type-body, .875rem);
+  color: var(--dash-title-color, var(--ion-text-color));
+  cursor: pointer;
+}
+
+.chart-weather-options button[aria-pressed=true] {
+  background: rgba(var(--ion-color-primary-rgb), .08);
+  color: var(--ion-color-primary);
+  font-weight: 600;
+}
+
+.chart-weather-options button:focus-visible { outline: 2px solid var(--ion-color-primary); }
+
 .chart-viewer svg {
   display: block;
   width: 100%;
@@ -86,21 +136,19 @@
 }
 
 .chart-comment-add-action {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  z-index: 20;
-  transform: translateX(-50%);
+  position: static;
+  margin-left: auto;
 }
 
 .chart-comment-add {
   --border-radius: 999px;
-  --box-shadow: 0 8px 22px rgba(var(--ion-color-primary-rgb), 0.34);
-  --padding-start: 16px;
-  --padding-end: 18px;
-  min-height: 42px;
-  font-size: 0.9rem;
-  font-weight: 800;
+  --box-shadow: none;
+  --padding-start: 8px;
+  --padding-end: 8px;
+  min-height: 44px;
+  margin: 0;
+  font-size: var(--dash-type-body, .875rem);
+  font-weight: 500;
   text-transform: none;
 }
 

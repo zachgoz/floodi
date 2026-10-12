@@ -336,7 +336,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
       .catch(() => { /* file not yet generated — map shows notice */ }));
   }, []);
 
-  // Reuse the same crossings as the event cards and forecast shading.
+  // Reuse the same forecast crossings as the event cards.
   const floodWindow = useMemo(() => {
     if (!processedData) return null;
     const target = activeAtmo.targetTime || new Date();

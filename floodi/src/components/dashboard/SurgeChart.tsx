@@ -228,7 +228,7 @@ export function SurgeChart({ points, estimatedPoints = [], forecast = [], experi
           <p>The line connects measured samples across gaps for readability; values between samples are interpolated visually. No observations are invented. The dashed forecast reconstructs the same physical water level as the main chart.</p>
           {forecastDescription && <p>{forecastDescription}</p>}
           {points.at(-1) && <p>Latest observation: {time(points.at(-1)!.t)}. Trend compares the preceding three hours; changes under 0.03 ft/hour are stable.</p>}
-          {experimentalForecast.length > 1 && <p>{showTrendProjection ? previewDescription || 'Purple: one-hour preview of the recent measured trend. Forecast reliability is not established.' : `Purple: ${comparisonLabel.toLowerCase()}.`} Flood cards and shading use the primary forecast.</p>}
+          {experimentalForecast.length > 1 && <p>{showTrendProjection ? previewDescription || 'Purple: one-hour preview of the recent measured trend. Forecast reliability is not established.' : `Purple: ${comparisonLabel.toLowerCase()}.`} Flood cards use the primary forecast.</p>}
           {patternAnalysis && <p>Repeating-pattern check: {patternAnalysis.reason} {patternAnalysis.validation?.improvementFraction !== null && patternAnalysis.validation?.improvementFraction !== undefined ? `Recent holdout error ${patternAnalysis.validation.improvementFraction >= 0 ? 'decreased' : 'increased'} ${Math.abs(patternAnalysis.validation.improvementFraction * 100).toFixed(0)}%.` : ''}</p>}
         </ChartInfo>
       </div>

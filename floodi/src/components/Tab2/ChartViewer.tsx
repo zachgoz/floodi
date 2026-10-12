@@ -1,7 +1,8 @@
-import { floodWindows, liveViewport } from 'src/utils/waterForecast';
+import { liveViewport } from 'src/utils/waterForecast';
 import React, { useRef, useEffect, useState, useMemo, useCallback, useId } from 'react';
 import type { Point, ChartConfig, WindPoint, PrecipPoint } from './types';
 import { WeatherTimeline, WEATHER_TIMELINE_HEIGHT } from './WeatherTimeline';
+import { HourlyWeatherDetails } from './HourlyWeatherDetails';
 import { compassDirection } from 'src/utils/weatherTimeline';
 import { useChartInteraction, formatTooltipTime, findNearestPoint } from './hooks/useChartInteraction';
 import { isCommentTimeRange, type Comment, type CommentTimeRange } from 'src/types/comment';
@@ -239,6 +240,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   const svgRef = useRef<SVGSVGElement>(null);
   const forecastClipId = `water-forecast-${useId().replace(/:/g, '')}`;
   const [size, setSize] = useState({ w: 900, h: 420 });
+  const [hourlyWeather, setHourlyWeather] = useState(false);
 
   const { hoverT, setHoverT, calculateTooltipData, calculateCommentTooltipData } = useChartInteraction();
   const [lastSimilarPeak, setLastSimilarPeak] = useState<WaterLevelPeak | null>(null);
@@ -503,16 +505,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     ? Math.max(latest, +point.t) : latest, +activeStart);
   const forecastClipStart = Math.min(margins.l + innerW, Math.max(margins.l, xOf(new Date(displayHandoff))));
 
-  // Only future threshold exceedance from the same series as event cards.
-  const floodRects = useMemo(() => floodWindows(adjustedPoints.length ? adjustedPoints : predictedPoints, thresholds.minor)
-    .flatMap(event => {
-      const start = new Date(Math.max(+event.startTime, +activeStart, +now));
-      const coverageEnd = (adjustedPoints.length ? adjustedPoints : predictedPoints).at(-1)?.t;
-      if (!coverageEnd) return [];
-      const end = new Date(Math.min(+(event.endTime || event.lastSampleTime), +activeEnd));
-      return end > start ? [{ x: xOf(start), w: xOf(end) - xOf(start) }] : [];
-    }), [adjustedPoints, predictedPoints, thresholds.minor, activeStart, activeEnd, now, xOf]);
-
   // Mouse/pointer interaction
   const computeTimeAtPointer = (event: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
@@ -619,9 +611,10 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   };
 
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
-    // If clicking a comment marker, ignore here
+    // Interactive markers and weather cells handle their own clicks. Capturing
+    // the pointer on the SVG would redirect a weather cell's click away from it.
     const target = event.target as HTMLElement;
-    if (target && target.closest && target.closest('[data-comment-marker]')) {
+    if (target && target.closest && (target.closest('[data-comment-marker]') || target.closest('[data-testid="weather-timeline"] [role="button"]'))) {
       return;
     }
 
@@ -861,12 +854,18 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   };
 
   const handleContainerKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key.toLowerCase();
     if (k === 'c') onToggleComments?.();
+    if (k === 'n' && onTimePointSelect) {
+      e.preventDefault();
+      onTimePointSelect(centerTime, centerLevel ?? undefined);
+    }
   };
 
   return (
-    <div className="chart-viewer" ref={containerRef} onKeyDown={handleContainerKeyDown} tabIndex={0} aria-keyshortcuts="C N" style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
+    <div className="chart-viewer-layout">
+    <div className="chart-viewer chart-plot" ref={containerRef} onKeyDown={handleContainerKeyDown} tabIndex={0} aria-keyshortcuts={onTimePointSelect ? 'C N' : 'C'} style={{ width: '100%', overflow: 'hidden', position: 'relative' }}>
 
       <svg
         ref={svgRef}
@@ -949,18 +948,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           fill="var(--chart-plot-bg)"
           stroke="var(--chart-plot-stroke)"
         />
-
-        {/* Flood zones (Active/Future) */}
-        {floodRects.map((rect, i) => (
-          <rect
-            key={`active-flood-${i}`} data-testid="forecast-flood-shading"
-            x={rect.x}
-            y={margins.t}
-            width={rect.w}
-            height={innerH}
-            fill="rgba(255,0,0,0.08)"
-          />
-        ))}
 
         {/* Flood Visual Indicators */}
         {thresholds && [
@@ -1695,20 +1682,36 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           </g>
         )}
       </svg>
+    </div>
+    {(hasWeather || onTimePointSelect) && <div className="chart-actions-row">
+      {hasWeather && <div className="chart-weather-options" role="group" aria-label="Weather detail">
+        <span>Weather</span>
+        <button type="button" aria-pressed={!hourlyWeather} onClick={() => setHourlyWeather(false)}>Auto</button>
+        <button type="button" aria-pressed={hourlyWeather} aria-expanded={hourlyWeather} onClick={() => setHourlyWeather(true)}>Hourly</button>
+      </div>}
       {onTimePointSelect && (
-        <div className="chart-comment-add-action">
+        <div className="chart-comment-add-action" role="toolbar" aria-label="Chart comments">
           <IonButton
             onClick={() => onTimePointSelect(centerTime, centerLevel ?? undefined)}
             aria-label="Add comment at current chart time"
             className="chart-comment-add"
             color="primary"
-            shape="round"
+            fill="clear"
           >
             <IonIcon icon={addCircleOutline} slot="start" />
             Add Comment
           </IonButton>
         </div>
       )}
+    </div>}
+    {hasWeather && hourlyWeather && <HourlyWeatherDetails
+      windPoints={windPoints}
+      precipPoints={precipPoints}
+      start={activeStart}
+      end={activeEnd}
+      now={now}
+      timezone={timezone}
+    />}
     </div>
   );
 };
