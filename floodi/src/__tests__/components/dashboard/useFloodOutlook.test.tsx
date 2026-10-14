@@ -45,7 +45,43 @@ describe('useFloodOutlook cached refresh', () => {
     cleanup();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
+  });
+
+  describe('production cached HTTP reads', () => {
+    beforeEach(() => {
+      vi.stubEnv('DEV', '');
+      vi.stubEnv('PROD', '1');
+    });
+
+    it.each(['rejected', 'hanging'] as const)('uses a fresh cached endpoint forecast without a %s Firestore SDK read', async failure => {
+      expect(import.meta.env.DEV).toBe(false);
+      const value = forecast();
+      fetchMock.mockResolvedValue(response(value));
+      if (failure === 'rejected') vi.mocked(getDoc).mockRejectedValue(new Error('SDK unavailable'));
+      else vi.mocked(getDoc).mockImplementation(() => new Promise<Awaited<ReturnType<typeof getDoc>>>(() => {}));
+      const { result } = renderHook(() => useFloodOutlook('carolina-beach'));
+      await settle();
+      expect(result.current.outlook).toEqual(value);
+      expect(fetchMock).toHaveBeenCalledWith('/api/outlook', expect.objectContaining({ cache: 'no-store', signal: expect.any(AbortSignal) }));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(getDoc).not.toHaveBeenCalled();
+    });
+
+    it.each(['malformed', 'expired', 'location'] as const)('falls back to Firestore for an invalid %s production HTTP cache', async failure => {
+      expect(import.meta.env.DEV).toBe(false);
+      const valid = forecast();
+      const invalid = failure === 'malformed' ? { points: [] } : failure === 'expired'
+        ? { ...valid, expiresAt: now.toISOString() } : { ...valid, locationId: 'other-location' };
+      fetchMock.mockResolvedValue(response(invalid));
+      vi.mocked(getDoc).mockResolvedValue(snapshot(valid));
+      const { result } = renderHook(() => useFloodOutlook('carolina-beach'));
+      await settle();
+      expect(result.current.outlook).toEqual(valid);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(getDoc).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('reads a fresh local cache without inference or a Firestore request', async () => {

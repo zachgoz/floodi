@@ -33,14 +33,13 @@ export function useFloodOutlook(locationId: string) {
     // Only read shared numerical caches. Refreshing a dashboard never triggers
     // model inference, training, or a Gemini request.
     const readCached = async (signal: AbortSignal): Promise<ForecastDocument | null> => {
-      if (import.meta.env.DEV) {
-        try {
-          const response = await fetch('/api/outlook', { signal, cache: 'no-store' });
-          const value: unknown = response.ok ? await response.json() : null;
-          if (currentForecast(value, locationId)) return value;
-        } catch {
-          // A failed or malformed local preview can still use the deployed cache.
-        }
+      try {
+        const response = await fetch('/api/outlook', { signal, cache: 'no-store' });
+        const value: unknown = response.ok ? await response.json() : null;
+        if (currentForecast(value, locationId)) return value;
+      } catch {
+        // Hosting and the local preview serve shared caches. A failed or
+        // malformed HTTP cache can still use the existing Firestore fallback.
       }
       if (!active || signal.aborted) return null;
       try {
