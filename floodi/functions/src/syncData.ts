@@ -5,6 +5,7 @@ import { fetchFimanData } from './etl/fiman';
 import { detectPeaks, detectFloodEvents } from './etl/processor';
 import { fetchNwsObservations, fetchNwsForecast } from './etl/weather';
 import { persistImage } from './utils/storage';
+import { sanitizeFirestorePayload } from './utils/firestorePayload';
 
 // Initialize admin if not already
 if (admin.apps.length === 0) {
@@ -43,19 +44,22 @@ export const syncWaterLevels = onSchedule({
     try {
       console.log(`Syncing observed data for ${loc.id}...`);
       
-      const [noaaData, fimanData, weatherData] = await Promise.all([
+      const [noaaResult, fimanResult, weatherResult] = await Promise.allSettled([
         fetchNoaaObserved(loc.noaaStationId, start, end),
         fetchFimanData(loc.fimanSensorId, start, end, loc.navd88ToMllwOffset),
-        fetchNwsObservations(loc.coords.lat, loc.coords.lon)
+        fetchNwsObservations(loc.coords.lat, loc.coords.lon, start, end)
       ]);
+      const noaaData = sourceData(noaaResult, 'NOAA observations', loc.id);
+      const fimanData = sourceData(fimanResult, 'FiMAN observations', loc.id);
+      const weatherData = sourceData(weatherResult, 'weather observations', loc.id);
 
       // 1. Persist Selective Imagery
       const persistedImagery: Record<string, Record<string, string>> = {};
-      for (const [t, cams] of Object.entries(fimanData.imagery)) {
-        const v = fimanData.waterLevels[t] || 0;
+      for (const [t, cams] of Object.entries(fimanData?.imagery || {})) {
+        const v = fimanData?.waterLevels[t];
         const date = new Date(t);
         const isTopOfHour = date.getUTCMinutes() < 10;
-        const isFlood = v >= loc.thresholds.minor;
+        const isFlood = v !== undefined && Number.isFinite(v) && v >= loc.thresholds.minor;
 
         if (isFlood || isTopOfHour) {
           persistedImagery[t] = {};
@@ -74,32 +78,24 @@ export const syncWaterLevels = onSchedule({
         }
       }
 
-      // 2. Update Monthly Buckets (Observations) via Transaction to prevent wiping data
+      // 2. Merge only individual supplied fields atomically. Reading and
+      // rewriting whole monthly maps is unnecessary and can expire or race.
       const months = getMonthsInRange(start, end);
       for (const month of months) {
         const monthRef = db.doc(`locations/${loc.id}/observations/${month}`);
         
-        const monthNoaa = filterByMonth(noaaData, month);
-        const monthFiman = filterByMonth(fimanData.waterLevels, month);
+        const monthNoaa = filterByMonth(noaaData || {}, month);
+        const monthFiman = filterByMonth(fimanData?.waterLevels || {}, month);
         const monthImagery = filterByMonth(persistedImagery, month);
-        const monthWeather = filterByMonth(weatherData, month);
+        const monthWeather = filterByMonth(weatherData || {}, month);
+        const available = availableBucketFields({ noaa: monthNoaa, fiman: monthFiman, imagery: monthImagery, weather: monthWeather });
+        if (!Object.keys(available).length) continue;
 
-        await db.runTransaction(async (tx) => {
-          const doc = await tx.get(monthRef);
-          const existing = doc.exists ? doc.data() : {};
-          
-          tx.set(monthRef, {
-            noaa: { ...(existing?.noaa || {}), ...monthNoaa },
-            fiman: { ...(existing?.fiman || {}), ...monthFiman },
-            imagery: { ...(existing?.imagery || {}), ...monthImagery },
-            weather: { ...(existing?.weather || {}), ...monthWeather },
-            lastUpdated: now.toISOString()
-          }, { merge: true });
-        });
+        await monthRef.set(sanitizeFirestorePayload({ ...available, lastUpdated: now.toISOString() }), { merge: true });
       }
 
       // 3. Process Peaks and Events (Observed)
-      const peaks = detectPeaks(fimanData.waterLevels);
+      const peaks = detectPeaks(fimanData?.waterLevels || {});
       for (const peak of peaks) {
         const peakId = `fiman_${peak.t.replace(/[:.-]/g, '')}`;
         await db.doc(`locations/${loc.id}/peaks/${peakId}`).set({
@@ -110,7 +106,7 @@ export const syncWaterLevels = onSchedule({
         });
       }
 
-      const events = detectFloodEvents(fimanData.waterLevels, loc.thresholds);
+      const events = detectFloodEvents(fimanData?.waterLevels || {}, loc.thresholds);
       for (const event of events) {
         const eventId = `fiman_${event.startTime.replace(/[:.-]/g, '')}`;
         const peakTime = event.peakTime;
@@ -123,7 +119,7 @@ export const syncWaterLevels = onSchedule({
         });
       }
 
-      console.log(`Successfully synced observed ${loc.id}`);
+      console.log(`Finished observed sync for ${loc.id}`);
     } catch (err) {
       console.error(`Failed to sync observed ${loc.id}:`, err);
     }
@@ -142,32 +138,27 @@ export const syncPredictions = onSchedule({
   for (const loc of LOCATIONS) {
     try {
       console.log(`Syncing predictions for ${loc.id}...`);
-      const [predData, weatherForecast] = await Promise.all([
+      const [predictionResult, weatherResult] = await Promise.allSettled([
         fetchNoaaPredictions(loc.noaaStationId, start, end),
         fetchNwsForecast(loc.coords.lat, loc.coords.lon)
       ]);
+      const predData = sourceData(predictionResult, 'NOAA predictions', loc.id);
+      const weatherForecast = sourceData(weatherResult, 'weather predictions', loc.id);
       
       // Update Monthly Buckets
       const months = getMonthsInRange(start, end);
       for (const month of months) {
         const monthRef = db.doc(`locations/${loc.id}/predictions/${month}`);
-        const monthData = filterByMonth(predData, month);
-        const monthWeather = filterByMonth(weatherForecast, month);
+        const monthData = filterByMonth(predData || {}, month);
+        const monthWeather = filterByMonth(weatherForecast || {}, month);
+        const available = availableBucketFields({ data: monthData, weather: monthWeather });
+        if (!Object.keys(available).length) continue;
         
-        await db.runTransaction(async (tx) => {
-          const doc = await tx.get(monthRef);
-          const existing = doc.exists ? doc.data() : {};
-          
-          tx.set(monthRef, {
-            data: { ...(existing?.data || {}), ...monthData },
-            weather: { ...(existing?.weather || {}), ...monthWeather },
-            lastUpdated: now.toISOString()
-          }, { merge: true });
-        });
+        await monthRef.set(sanitizeFirestorePayload({ ...available, lastUpdated: now.toISOString() }), { merge: true });
       }
 
       // Process Peaks (Future)
-      const peaks = detectPeaks(predData);
+      const peaks = detectPeaks(predData || {});
       for (const peak of peaks) {
         const peakId = `pred_${peak.t.replace(/[:.-]/g, '')}`;
         await db.doc(`locations/${loc.id}/peaks/${peakId}`).set({
@@ -177,7 +168,7 @@ export const syncPredictions = onSchedule({
           type: 'predicted'
         });
       }
-      console.log(`Successfully synced predictions for ${loc.id}`);
+      console.log(`Finished prediction sync for ${loc.id}`);
     } catch (err) {
       console.error(`Failed to sync predictions for ${loc.id}:`, err);
     }
@@ -185,14 +176,31 @@ export const syncPredictions = onSchedule({
 });
 
 // Helper functions
+function sourceData<T>(result: PromiseSettledResult<T>, source: string, locationId: string): T | null {
+  if (result.status === 'fulfilled') return result.value;
+  console.warn(`Failed to fetch ${source} for ${locationId}; existing source records are preserved:`, result.reason);
+  return null;
+}
+
+type BucketFields = Record<string, Record<string, unknown>>;
+
+function availableBucketFields(fields: BucketFields): BucketFields {
+  const clean = sanitizeFirestorePayload(fields);
+  return Object.fromEntries(Object.entries(clean)
+    .map(([source, records]) => [source, Object.fromEntries(Object.entries(records)
+      .filter(([, value]) => !(value && typeof value === 'object' && !Object.keys(value).length)))] as const)
+    .filter(([, records]) => Object.keys(records).length));
+}
+
 function getMonthsInRange(start: Date, end: Date): string[] {
   const months: string[] = [];
-  const curr = new Date(start);
-  while (curr <= end) {
+  const curr = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  const finalMonth = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1));
+  while (curr <= finalMonth) {
     months.push(curr.toISOString().substring(0, 7));
-    curr.setMonth(curr.getMonth() + 1);
+    curr.setUTCMonth(curr.getUTCMonth() + 1);
   }
-  return [...new Set(months)];
+  return months;
 }
 
 function filterByMonth<T>(data: Record<string, T>, month: string): Record<string, T> {

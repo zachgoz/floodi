@@ -296,6 +296,21 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   const [viewDomain, setViewDomain] = useState<{ start: Date, end: Date } | null>(null);
   const panStateRef = useRef<{ startX: number, startT0: number, startT1: number } | null>(null);
   const wheelTimeoutRef = useRef<any>(null);
+  const lastViewportChangeRef = useRef<number>(0);
+  const lastEmittedViewportRef = useRef<{ start: number; end: number; center: number } | null>(null);
+  const viewportTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCenterRequestRef = useRef<{ id: number; time: number } | null>(null);
+  const lastViewportRequestRef = useRef<{ id: number; start: number; end: number } | null>(null);
+
+  const invalidateViewportNotification = useCallback(() => {
+    // A linked chart can change the parent before our throttled notification
+    // fires. Returning to an earlier range must acknowledge the new command.
+    lastEmittedViewportRef.current = null;
+    if (viewportTimeoutRef.current !== null) {
+      clearTimeout(viewportTimeoutRef.current);
+      viewportTimeoutRef.current = null;
+    }
+  }, []);
 
   // Multi-touch interaction state
   const activePointersRef = useRef(new Map<number, { x: number; y: number }>());
@@ -329,19 +344,24 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
   // Handle center requests
   useEffect(() => {
-    if (centerRequest) {
-      const activeStart = viewDomain?.start || domainStart;
-      const activeEnd = viewDomain?.end || domainEnd;
-      setViewDomain(liveViewport(activeStart, activeEnd, centerRequest.time, nowRatio));
-    }
-  }, [centerRequest]);
+    if (!centerRequest) { lastCenterRequestRef.current = null; return; }
+    const previous = lastCenterRequestRef.current;
+    if (previous?.id === centerRequest.id && previous.time === +centerRequest.time) return;
+    lastCenterRequestRef.current = { id: centerRequest.id, time: +centerRequest.time };
+    invalidateViewportNotification();
+    setViewDomain(previous => liveViewport(previous?.start || domainStart,
+      previous?.end || domainEnd, centerRequest.time, nowRatio));
+  }, [centerRequest, invalidateViewportNotification]);
 
   // Apply a viewport selected on the linked chart without resetting the y-axis.
   useEffect(() => {
-    if (viewportRequest) {
-      setViewDomain({ start: viewportRequest.start, end: viewportRequest.end });
-    }
-  }, [viewportRequest]);
+    if (!viewportRequest) { lastViewportRequestRef.current = null; return; }
+    const previous = lastViewportRequestRef.current;
+    if (previous?.id === viewportRequest.id && previous.start === +viewportRequest.start && previous.end === +viewportRequest.end) return;
+    lastViewportRequestRef.current = { id: viewportRequest.id, start: +viewportRequest.start, end: +viewportRequest.end };
+    invalidateViewportNotification();
+    setViewDomain({ start: viewportRequest.start, end: viewportRequest.end });
+  }, [viewportRequest, invalidateViewportNotification]);
 
   // Handle explicit reset requests
   useEffect(() => {
@@ -378,10 +398,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     if (predRes && predRes.dtMin < 60) return predRes.point.v;
     return null;
   }, [centerTime, observedPoints, adjustedPoints, predictedPoints]);
-
-  const lastViewportChangeRef = useRef<number>(0);
-  const lastEmittedViewportRef = useRef<{ start: number; end: number; center: number } | null>(null);
-  const viewportTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Immediate notification of viewport changes to parent for simulation sync
   useEffect(() => {

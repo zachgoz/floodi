@@ -116,7 +116,9 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
     // Use Object.assign for performance with large objects
     if (bucket.noaa) Object.assign(merged.noaa, bucket.noaa);
     if (bucket.fiman) Object.assign(merged.fiman, bucket.fiman);
-    if (bucket.imagery) Object.assign(merged.imagery, bucket.imagery);
+    for (const [camera, images] of Object.entries(bucket.imagery || {})) {
+      merged.imagery[camera] = { ...merged.imagery[camera], ...images };
+    }
     if ((bucket as any).weather) Object.assign(merged.weather, (bucket as any).weather);
   }
 
@@ -133,7 +135,8 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
 
 /**
  * High-level orchestration for water level observations.
- * Fetches from Firestore but falls back to Live NOAA API if data is stale.
+ * Refreshes each stale source from its own provider while retaining archived
+ * history. NOAA freshness must never hide a stopped local gauge archive.
  */
 export async function fetchUnifiedObservations(locationId: string, start: Date, end: Date) {
   const metadata = {
@@ -141,7 +144,7 @@ export async function fetchUnifiedObservations(locationId: string, start: Date, 
     start: start.toISOString(),
     end: end.toISOString(),
   };
-  const dbData = await measurePerf('dataService.fetchUnifiedObservations.db', () => fetchObservations(locationId, start, end)).catch(err => {
+  const dbData: Awaited<ReturnType<typeof fetchObservations>> = await measurePerf('dataService.fetchUnifiedObservations.db', () => fetchObservations(locationId, start, end)).catch(err => {
     console.warn('[dataService] fetchObservations failed:', err);
     return { noaa: {}, fiman: {}, imagery: {}, weather: {} };
   });
@@ -150,35 +153,63 @@ export async function fetchUnifiedObservations(locationId: string, start: Date, 
   const location = LOCATIONS[locationId] || LOCATIONS['carolina-beach'];
   const stationId = location.noaaStationId;
 
-  // Gap filling logic
-  const lastPrimaryObsT = Object.keys(dbData.noaa).concat(Object.keys(dbData.fiman))
-    .reduce((max, t) => {
-      const ms = new Date(t).getTime();
-      return ms > max ? ms : max;
-    }, 0);
-
   const GAP_FILL_THRESHOLD_MS = 30 * 60_000;
-  if (now.getTime() - lastPrimaryObsT > GAP_FILL_THRESHOLD_MS && end >= now) {
-    const gapStart = new Date(Math.max(start.getTime(), lastPrimaryObsT > 0 ? lastPrimaryObsT - 60_000 : start.getTime()));
-    console.log(`[dataService] DB data stale (last point: ${lastPrimaryObsT ? new Date(lastPrimaryObsT).toISOString() : 'none'}). Gap-filling with NOAA...`);
+  const latestObservation = (series: Record<string, number>) => Object.entries(series)
+    .reduce((latest, [timestamp, value]) => {
+      const ms = Date.parse(timestamp);
+      return Number.isFinite(value) && Number.isFinite(ms) && ms <= +now ? Math.max(latest, ms) : latest;
+    }, 0);
+  const latestNoaa = latestObservation(dbData.noaa);
+  const latestFiman = latestObservation(dbData.fiman);
+  const noaaStale = +now - latestNoaa > GAP_FILL_THRESHOLD_MS;
+  const fimanStale = !!location.webcamIds?.length && +now - latestFiman > GAP_FILL_THRESHOLD_MS;
+
+  // Panning historical or future-only windows must not trigger current readings.
+  if (start <= now && end >= now && (noaaStale || fimanStale)) {
+    const provider = noaaStale && fimanStale ? 'both' : fimanStale ? 'fiman' : 'noaa';
+    const staleTimes = [
+      ...(noaaStale ? [latestNoaa] : []),
+      ...(fimanStale ? [latestFiman] : []),
+    ];
+    const firstMissingAt = Math.min(...staleTimes);
+    const gapStart = new Date(Math.max(+start, firstMissingAt > 0 ? firstMissingAt - 60_000 : +start));
     markPerf('dataService.fetchUnifiedObservations.gapFillNeeded', {
       ...metadata,
+      provider,
       gapStart: gapStart.toISOString(),
-      lastPrimaryObservation: lastPrimaryObsT ? new Date(lastPrimaryObsT).toISOString() : null,
+      latestNoaa: latestNoaa ? new Date(latestNoaa).toISOString() : null,
+      latestFiman: latestFiman ? new Date(latestFiman).toISOString() : null,
     });
 
-    const noaaLive = await measurePerf('dataService.fetchUnifiedObservations.noaaGapFill', () => fetchObservedWaterLevels({
+    const live = await measurePerf('dataService.fetchUnifiedObservations.liveGapFill', () => fetchObservedWaterLevels({
       station: stationId,
       start: gapStart,
       end: now,
       interval: 6,
-      provider: 'noaa',
-    }).catch(() => null), metadata);
+      datum: 'MLLW',
+      units: 'english',
+      provider,
+    }).catch(err => {
+      console.warn(`[dataService] ${provider} observation refresh failed:`, err);
+      return null;
+    }), metadata);
 
-    if (noaaLive?.data) {
-      // Merge live data into the NOAA series
-      Object.assign(dbData.noaa, noaaLive.data);
-      console.log(`[dataService] Gap-filled ${Object.keys(noaaLive.data).length} NOAA points`);
+    if (live) {
+      const mergeReadings = (source: 'fiman' | 'noaa', series: Record<string, number>) => {
+        for (const [timestamp, value] of Object.entries(series)) {
+          const ms = Date.parse(timestamp);
+          if (Number.isFinite(value) && Number.isFinite(ms) && ms >= +gapStart && ms <= +now) {
+            dbData[source][timestamp] = value;
+          }
+        }
+      };
+      // A failed FiMAN request can return NOAA fallback data. Honor its declared
+      // source; another station's readings must never become local measurements.
+      mergeReadings(live.source, live.data);
+      if (live.alternate) mergeReadings(live.source === 'fiman' ? 'noaa' : 'fiman', live.alternate);
+      for (const [camera, images] of Object.entries(live.imagery || {})) {
+        dbData.imagery[camera] = { ...dbData.imagery[camera], ...images };
+      }
     }
   }
 

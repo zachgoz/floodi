@@ -1,0 +1,11 @@
+# Sensor archive and surge recovery
+
+The public October observation bucket stopped at `2026-10-12T00:57:05Z` (October 11, 8:57 PM EDT), although gauge 30046 continued reporting through the Sunny Day Flooding provider and production proxy. Live Google Cloud logs confirmed repeated Firestore rejection of an undefined NWS precipitation field. Earlier failures also reported expired transactions. The current numerical forecast service was healthy; the local preview cache had expired.
+
+Weather ETL now omits absent/invalid measurements, retains genuine zeros, and bounds requests. Observations, predictions and backfill isolate source failures and use sanitized atomic nested-field merges without reading or rewriting monthly buckets. Empty records cannot erase archived weather. Recovery upserts preserve saved event images and metadata and do not delete monthly history. The recovery endpoint accepts `days=1..60`, defaulting to the existing 60-day range.
+
+The dashboard independently checks each observation source and can retrieve current same-gauge FiMAN measurements even when the stored bucket is stale or NOAA is fresh. It preserves station/datum provenance and the existing one-hour freshness gate. FiMAN parsing matches the requested platform, tolerates qualified or malformed camera timestamps, and merges validated same-gauge samples across platform responses. The local preview was refreshed from current public observations, NOAA tides and weather without invoking Gemini.
+
+The final interaction run exposed an existing race when Return to Live followed a surge pan before the tide chart's delayed notification. Genuine external viewport commands now invalidate stale notification deduplication, keeping both plots aligned without resetting zoom.
+
+Verification: **578 app tests and 46 backend tests passed**, both builds passed, and ESLint reported zero errors with 215 existing warnings. Actual Firestore SDK validation reproduces the original undefined-field failure and accepts repaired payloads; SDK leaf-mask tests verify preservation of omitted timestamp/measurement fields. The new fast-pan/Return-to-Live test reproduces the previous race before the fix. Private credential payloads were absent from browser JavaScript. Production recovery verification is recorded below after deployment.

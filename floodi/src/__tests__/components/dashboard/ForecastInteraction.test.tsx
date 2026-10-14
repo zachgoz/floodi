@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { ChartViewer } from "src/components/Tab2/ChartViewer";
 import { SurgeChart } from "src/components/dashboard/SurgeChart";
 import { HydrographChart } from "src/components/dashboard/HydrographChart";
@@ -406,6 +406,34 @@ describe('linked forecast and residual charts', () => {
       expect(+new Date(domains[0].end!) - +now).toBe(72 * 3600_000);
       expect(+new Date(domains[0].end!) - +new Date(domains[0].start!)).toBe(span);
     });
+  });
+  it('synchronizes an immediate return to live before the surge pan notification is emitted', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const { container, unmount } = render(<LinkedCharts />);
+    try {
+      const surge = container.querySelectorAll<SVGSVGElement>('svg[data-domain-start]')[1];
+      mockChartSize(surge);
+      fireEvent.click(screen.getByRole('button', { name: 'Next 3 days' }));
+      act(() => vi.advanceTimersByTime(50));
+      const live = chartDomains(container)[0];
+      expect(chartDomains(container)[1]).toEqual(live);
+
+      fireEvent.wheel(surge, { deltaX: -100 });
+      expect(chartDomains(container)[0].start).not.toBe(live.start);
+      // Return before the tide chart's 50 ms notification can acknowledge the
+      // pan. Returning to its last emitted range must still update the parent.
+      fireEvent.click(screen.getByRole('button', { name: 'Return to Live' }));
+      act(() => vi.advanceTimersByTime(50));
+      expect(chartDomains(container)[0]).toEqual(live);
+      expect(chartDomains(container)[1]).toEqual(live);
+      act(() => vi.advanceTimersByTime(1000));
+      expect(chartDomains(container)[0]).toEqual(live);
+      expect(chartDomains(container)[1]).toEqual(live);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
   });
   it('shares preset windows, wheel zoom and pan in both directions, and return-to-live preserves the shared duration', async () => {
     const { container } = render(<LinkedCharts />);

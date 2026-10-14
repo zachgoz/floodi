@@ -348,7 +348,10 @@ export async function fetchObservedWaterLevels(opts: {
 
       try {
         const data = await requestFiMAN(params) as any;
-        const properties = data.features?.[0]?.properties;
+        const properties = data.features?.find((feature: { properties?: { platform_id?: string } }) => {
+          const id = feature.properties?.platform_id?.toLowerCase();
+          return id === platform || id === `sunnyd_${platform}` || platform === `sunnyd_${id}`;
+        })?.properties;
         const parameters = properties?.parameters || [];
 
         const cameraParams = parameters.filter((p: any) => p.id === "Camera");
@@ -360,11 +363,14 @@ export async function fetchObservedWaterLevels(opts: {
             const urls = cameraParam.observations.values;
             const platformImagery: Record<string, string> = {};
             for (let i = 0; i < times.length; i++) {
-              const t = new Date(times[i] + 'Z').toISOString();
-              platformImagery[t] = urls[i];
+              const stamp = typeof times[i] === 'string' ? Date.parse(/(Z|[+-]\d\d:\d\d)$/.test(times[i]) ? times[i] : times[i] + 'Z') : NaN;
+              if (Number.isFinite(stamp) && typeof urls?.[i] === 'string' && urls[i].trim()) {
+                platformImagery[new Date(stamp).toISOString()] = urls[i];
+              }
             }
 
-            const firstUrl = urls[0];
+            const firstUrl = Object.values(platformImagery)[0];
+            if (!firstUrl) return;
             const filename = firstUrl.split('/').pop() || '';
             const derivedId = filename.split('.')[0];
 
@@ -400,16 +406,16 @@ export async function fetchObservedWaterLevels(opts: {
       return { series: null, platform };
     };
 
-    // Fetch all 4 in parallel — all share one water level sensor, so we use
-    // only the first result that has data, but we need all 4 for camera imagery.
+    // Each platform carries the same validated regional gauge. Merge its
+    // readings so an older platform response cannot hide another's live tail.
     const platformResults = await measurePerf('noaa.fetchObservedWaterLevels.fimanPlatforms', () => Promise.all(sensors.map(fetchOnePlatform)), {
       ...metadata,
       platforms: sensors,
     });
-    const firstWithData = platformResults.find(r => r.series !== null);
-    if (firstWithData?.series) {
-      fimanSeries = firstWithData.series;
-      console.log(`[FiMAN] Got ${Object.keys(fimanSeries).length} water level points (from ${firstWithData.platform}); imagery from ${Object.keys(allImagery).length} cameras`);
+    const gaugeData = Object.assign({}, ...platformResults.map(result => result.series || {})) as TimeSeries;
+    if (Object.keys(gaugeData).length) {
+      fimanSeries = gaugeData;
+      console.log(`[FiMAN] Got ${Object.keys(fimanSeries).length} water level points; imagery from ${Object.keys(allImagery).length} cameras`);
     }
   }
 
