@@ -2,6 +2,7 @@ import * as admin from 'firebase-admin';
 import fetch from 'node-fetch';
 import * as logger from 'firebase-functions/logger';
 import { safeError } from './observability';
+import { interpolate, type WaterPoint } from '../forecast/water';
 
 /**
  * Downloads an image from a URL and uploads it to Firebase Storage.
@@ -46,11 +47,20 @@ export async function persistImageryBatch(locationId: string, imagery: Record<st
   const max = options.maxImages ?? 12;
   const patch: Record<string, Record<string, string>> = {};
   let attempted = 0, succeeded = 0, failed = 0;
+  const waterPoints: WaterPoint[] = [...new Map(Object.entries(levels)
+    .map(([t, v]) => ({ t: new Date(t), v }))
+    .filter(point => Number.isFinite(+point.t) && Number.isFinite(point.v))
+    .map(point => [+point.t, point] as const)).values()].sort((a, b) => +a.t - +b.t);
   // Newest images first. A small work budget prevents a camera backlog from
   // consuming the scheduled execution or delaying useful source writes.
   for (const [t, cameras] of Object.entries(imagery).sort(([a], [b]) => Date.parse(b) - Date.parse(a))) {
     const time = new Date(t);
-    if (!Number.isFinite(+time) || !(time.getUTCMinutes() < 10 || (Number.isFinite(levels[t]) && levels[t] >= threshold))) continue;
+    if (!Number.isFinite(+time)) continue;
+    // Camera and gauge samples arrive on independent clocks. For archival
+    // selection only, interpolate between measured samples at most 30 minutes
+    // apart. Never extrapolate or change the forecast interpolation limits.
+    const level = interpolate(waterPoints, time, 30 * 60_000);
+    if (!(time.getUTCMinutes() < 10 || (level !== null && level >= threshold))) continue;
     for (const [camera, url] of Object.entries(cameras)) {
       if (typeof url !== 'string' || url.startsWith('storage://')) continue;
       if (Date.now() >= deadline || attempted >= max) return { patch, attempted, succeeded, failed, deferred: true };

@@ -9,19 +9,9 @@ import { persistImageryBatch } from './utils/storage';
 import { sanitizeFirestorePayload } from './utils/firestorePayload';
 import { ObservationBucketWriteError, readObservationRange, writeObservationBuckets } from './utils/observationBuckets';
 import { recordJobOutcome, safeError, sourceHealth } from './utils/observability';
+import { LOCATIONS } from './locations';
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
-const LOCATIONS = [
-  {
-    id: 'carolina-beach',
-    name: 'Carolina Beach',
-    noaaStationId: '8658163',
-    fimanSensorId: 'SUNNYD_CB_03',
-    coords: { lat: 34.0352, lon: -77.8931 },
-    thresholds: { minor: 5.6, moderate: 7.0, major: 7.7, extreme: 8.5 },
-    navd88ToMllwOffset: 2.75
-  }
-];
 
 export const syncWaterLevels = onSchedule({ schedule: 'every 10 minutes', memory: '1GiB', timeoutSeconds: 540, maxInstances: 1, concurrency: 1 }, async () => {
   const failures: unknown[] = [];

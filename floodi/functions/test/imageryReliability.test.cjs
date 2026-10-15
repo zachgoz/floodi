@@ -26,3 +26,81 @@ test('a failed camera is isolated and a different camera still archives',async()
 test('non-HTTPS sources never trigger a network download',async()=>{
  let calls=0;const api=load(async()=>{calls++;});await assert.rejects(api.persistImage('http://images.example/unsafe.jpg','imagery/test.jpg'),/HTTPS/);assert.equal(calls,0);
 });
+
+const imageResponse = async () => ({ ok: true, buffer: async () => Buffer.from('jpeg'), headers: { get: () => 'image/jpeg' } });
+const imageAt = time => ({ [time]: { CAM: 'https://images.example/current.jpg' } });
+
+test('an offset camera timestamp archives flooding between bracketed observed gauge samples', async () => {
+ const api = load(imageResponse);
+ const time = '2026-10-14T11:23:17.000Z';
+ const result = await api.persistImageryBatch('carolina-beach', imageAt(time), {
+  '2026-10-14T11:28:05.000Z': 6.2,
+  '2026-10-14T11:18:05.000Z': 6,
+  'invalid': 9,
+  '2026-10-14T11:20:00.000Z': NaN,
+ }, 5.6);
+ assert.equal(result.succeeded, 1);
+ assert.ok(result.patch[time].CAM.startsWith('storage://'));
+});
+
+test('interpolation below flood stage does not archive merely because the later gauge sample exceeds stage', async () => {
+ const api = load(imageResponse);
+ const time = '2026-10-14T11:22:30.000Z';
+ const result = await api.persistImageryBatch('carolina-beach', imageAt(time), {
+  '2026-10-14T11:20:00.000Z': 5.4,
+  '2026-10-14T11:30:00.000Z': 6,
+ }, 5.6);
+ assert.equal(result.attempted, 0);
+ assert.equal(api.saved.length, 0);
+});
+
+test('interpolation above flood stage archives after the calculated crossing', async () => {
+ const api = load(imageResponse);
+ const time = '2026-10-14T11:25:00.000Z';
+ const result = await api.persistImageryBatch('carolina-beach', imageAt(time), {
+  '2026-10-14T11:20:00.000Z': 5.4,
+  '2026-10-14T11:30:00.000Z': 6,
+ }, 5.6);
+ assert.equal(result.succeeded, 1);
+});
+
+test('missing, unbracketed or greater-than-30-minute observation gaps cannot infer flooding', async () => {
+ const time = '2026-10-14T11:25:00.000Z';
+ for (const levels of [
+  {},
+  { '2026-10-14T11:20:00.000Z': 8 },
+  { '2026-10-14T11:30:00.000Z': 8 },
+  { '2026-10-14T11:10:00.000Z': 8, '2026-10-14T11:40:01.000Z': 8 },
+  { '2026-10-14T11:20:00.000Z': Infinity, '2026-10-14T11:30:00.000Z': 8 },
+ ]) {
+  const api = load(imageResponse);
+  const result = await api.persistImageryBatch('carolina-beach', imageAt(time), levels, 5.6);
+  assert.equal(result.attempted, 0);
+  assert.equal(api.saved.length, 0);
+ }
+});
+
+test('an exactly 30-minute bracket is allowed for image selection while forecast interpolation retains its own limit', async () => {
+ const api = load(imageResponse);
+ const time = '2026-10-14T11:25:00.000Z';
+ const result = await api.persistImageryBatch('carolina-beach', imageAt(time), {
+  '2026-10-14T11:10:00.000Z': 6,
+  '2026-10-14T11:40:00.000Z': 6,
+ }, 5.6);
+ assert.equal(result.succeeded, 1);
+ const { interpolate } = require('../lib/forecast/water');
+ assert.equal(interpolate([
+  { t: new Date('2026-10-14T11:10:00.000Z'), v: 6 },
+  { t: new Date('2026-10-14T11:40:00.000Z'), v: 6 },
+ ], new Date(time)), null);
+});
+
+test('exact observed threshold matches and hourly captures retain their established behavior', async () => {
+ const exactTime = '2026-10-14T11:25:00.000Z';
+ const exact = load(imageResponse);
+ assert.equal((await exact.persistImageryBatch('carolina-beach', imageAt(exactTime), { [exactTime]: 5.6 }, 5.6)).succeeded, 1);
+ const below = load(imageResponse);
+ assert.equal((await below.persistImageryBatch('carolina-beach', imageAt(exactTime), { [exactTime]: 5.5 }, 5.6)).attempted, 0);
+ const hourly = load(imageResponse);
+ assert.equal((await hourly.persistImageryBatch('carolina-beach', imageAt('2026-10-14T11:06:00.000Z'), {}, 5.6)).succeeded, 1);
+});
