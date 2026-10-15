@@ -19,6 +19,8 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { AuthProvider } from 'src/contexts/AuthContext';
 import { installPerfLogger, markPerf } from 'src/lib/perfLogger';
+import { installErrorReporting } from 'src/lib/errorReporting';
+import { AppErrorBoundary } from 'src/components/AppErrorBoundary';
 
 /**
  * Initialize and mount the FloodCast React application
@@ -38,6 +40,7 @@ import { installPerfLogger, markPerf } from 'src/lib/perfLogger';
 // Get the root DOM element where the app will be mounted
 const container = document.getElementById('root');
 
+installErrorReporting();
 installPerfLogger();
 markPerf('main.beforeCreateRoot');
 
@@ -49,9 +52,11 @@ markPerf('main.beforeRender');
 // Render the application with StrictMode enabled for development benefits
 root.render(
   <React.StrictMode>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+    <AppErrorBoundary>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </AppErrorBoundary>
   </React.StrictMode>
 );
 

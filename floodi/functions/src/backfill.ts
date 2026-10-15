@@ -5,6 +5,9 @@ import { fetchFimanData } from './etl/fiman';
 import { detectPeaks, detectFloodEvents } from './etl/processor';
 import { fetchNwsObservations } from './etl/weather';
 import { sanitizeFirestorePayload } from './utils/firestorePayload';
+import { writeObservationBuckets, ObservationBucketWriteError, partitionObservationBuckets } from './utils/observationBuckets';
+import { safeError } from './utils/observability';
+import * as logger from 'firebase-functions/logger';
 
 // Initialize admin if not already
 if (admin.apps.length === 0) {
@@ -24,25 +27,11 @@ const LOCATIONS = [
   }
 ];
 
-function getMonthsInRange(start: Date, end: Date): string[] {
-  const months: string[] = [];
-  const curr = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-  while (curr <= end) {
-    months.push(curr.toISOString().substring(0, 7));
-    curr.setUTCMonth(curr.getUTCMonth() + 1);
+export const runBackfillData = onRequest({ timeoutSeconds: 540, memory: '1GiB', invoker: 'private', maxInstances: 1, concurrency: 1 }, async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(405).send('Use an authenticated administrative POST request');
+    return;
   }
-  return [...new Set(months)];
-}
-
-function filterByMonth<T>(data: Record<string, T>, month: string): Record<string, T> {
-  const out: Record<string, T> = {};
-  for (const [t, v] of Object.entries(data)) {
-    if (t.startsWith(month)) out[t] = v;
-  }
-  return out;
-}
-
-export const runBackfillData = onRequest({ timeoutSeconds: 540, memory: '1GiB' }, async (req, res) => {
   const rawDays = req.query?.days;
   const days = rawDays === undefined ? 60 : typeof rawDays === 'string' && /^[1-9]\d*$/.test(rawDays) ? Number(rawDays) : NaN;
   if (!Number.isInteger(days) || days < 1 || days > 60) {
@@ -52,7 +41,8 @@ export const runBackfillData = onRequest({ timeoutSeconds: 540, memory: '1GiB' }
   const endTotal = new Date();
   const startTotal = new Date(endTotal.getTime() - days * 24 * 3600_000);
 
-  console.log(`Backfilling data from ${startTotal.toISOString()} to ${endTotal.toISOString()}...`);
+  const summary = { requestedChunks: 0, completedChunks: 0, partialChunks: 0, failedChunks: 0, daysWritten: 0, recordsWritten: 0, rejectedRecords: 0, sourceRecords: { fiman: 0, noaa: 0, weather: 0, imagery: 0 }, sourceFailures: { fiman: 0, noaa: 0, weather: 0 } };
+  logger.info('Backfill started', { start: startTotal.toISOString(), end: endTotal.toISOString(), days });
 
   // Process in 15-day chunks to respect NOAA limits
   const CHUNK_MS = 15 * 24 * 3600_000;
@@ -67,6 +57,8 @@ export const runBackfillData = onRequest({ timeoutSeconds: 540, memory: '1GiB' }
       
       console.log(`  Fetching chunk ${currStart.toISOString()} to ${currEnd.toISOString()}...`);
       
+      summary.requestedChunks++;
+      let partial = false;
       try {
         const [fimanResult, noaaResult, weatherResult] = await Promise.allSettled([
           fetchFimanData(loc.fimanSensorId, currStart, currEnd, loc.navd88ToMllwOffset),
@@ -77,33 +69,28 @@ export const runBackfillData = onRequest({ timeoutSeconds: 540, memory: '1GiB' }
         const noaaData = sourceData(noaaResult, 'NOAA observations', loc.id);
         const weatherData = sourceData(weatherResult, 'weather observations', loc.id);
         
-        const months = getMonthsInRange(currStart, currEnd);
-        for (const month of months) {
-          const monthFiman = filterByMonth(fimanData?.waterLevels || {}, month);
-          const monthImagery = filterByMonth(fimanData?.imagery || {}, month);
-          const monthNoaa = filterByMonth(noaaData || {}, month);
-          const monthWeather = filterByMonth(weatherData || {}, month);
-          const available = Object.fromEntries(Object.entries(sanitizeFirestorePayload({
-            fiman: monthFiman, noaa: monthNoaa, imagery: monthImagery, weather: monthWeather,
-          })).map(([source, records]) => [source, Object.fromEntries(Object.entries(records)
-            .filter(([, record]) => !(record && typeof record === 'object' && !Object.keys(record).length)))] as const)
-            .filter(([, records]) => Object.keys(records).length));
-          
-          if (Object.keys(available).length > 0) {
-            console.log(`    Writing ${Object.keys(monthFiman).length} FiMAN, ${Object.keys(monthNoaa).length} NOAA records for ${month}...`);
-            const monthRef = db.doc(`locations/${loc.id}/observations/${month}`);
-            // Atomic nested-field merge keeps older samples and partially
-            // available weather fields without reading or rewriting the month.
-            await monthRef.set(sanitizeFirestorePayload({
-              ...available,
-              lastUpdated: new Date().toISOString(),
-            }), { merge: true });
-          }
+        for (const [source, result] of [['fiman', fimanResult], ['noaa', noaaResult], ['weather', weatherResult]] as const) {
+          if (result.status === 'rejected') { summary.sourceFailures[source]++; partial = true; }
+        }
+        const written = await writeObservationBuckets(db, loc.id, {
+          fiman: fimanData?.waterLevels, noaa: noaaData || undefined,
+          imagery: fimanData?.imagery, weather: weatherData || undefined,
+        }, { now: endTotal, observedThrough: currEnd });
+        summary.daysWritten += written.daysWritten;
+        summary.recordsWritten += written.recordsWritten;
+        summary.rejectedRecords += written.rejectedRecords;
+        for (const source of ['fiman', 'noaa', 'weather', 'imagery'] as const) summary.sourceRecords[source] += written.sourceRecords[source];
+        if (written.recordsWritten === 0) {
+          summary.failedChunks++;
+          logger.error('Backfill chunk produced no valid observations', { locationId: loc.id, start: currStart.toISOString(), end: currEnd.toISOString() });
+          currStart = new Date(currEnd.getTime() + 1);
+          continue;
         }
 
         // Deterministic IDs upsert recovered peaks/events. Never delete a
         // whole month of derived history for a partial-range recovery.
-        const peaks = detectPeaks(fimanData?.waterLevels || {});
+        const acceptedFiman: Record<string, number> = Object.fromEntries(Object.values(partitionObservationBuckets({ fiman: fimanData?.waterLevels }, { observedThrough: currEnd }).buckets).flatMap(bucket => Object.entries(bucket.fiman)));
+        const peaks = detectPeaks(acceptedFiman);
         for (const peak of peaks) {
           const peakId = `fiman_${peak.t.replace(/[:.-]/g, '')}`;
           await db.doc(`locations/${loc.id}/peaks/${peakId}`).set(sanitizeFirestorePayload({
@@ -114,7 +101,7 @@ export const runBackfillData = onRequest({ timeoutSeconds: 540, memory: '1GiB' }
           }), { merge: true });
         }
 
-        const events = detectFloodEvents(fimanData?.waterLevels || {}, loc.thresholds);
+        const events = detectFloodEvents(acceptedFiman, loc.thresholds);
         for (const event of events) {
           const eventId = `fiman_${event.startTime.replace(/[:.-]/g, '')}`;
           await db.doc(`locations/${loc.id}/flood_events/${eventId}`).set(sanitizeFirestorePayload({
@@ -123,20 +110,30 @@ export const runBackfillData = onRequest({ timeoutSeconds: 540, memory: '1GiB' }
           }), { merge: true });
         }
 
+        if (partial) summary.partialChunks++;
+        else summary.completedChunks++;
       } catch (err) {
-        console.error(`    Error backfilling chunk for ${loc.id}:`, err);
+        summary.failedChunks++;
+        if (err instanceof ObservationBucketWriteError) {
+          summary.daysWritten += err.progress.daysWritten;
+          summary.recordsWritten += err.progress.recordsWritten;
+          summary.rejectedRecords += err.progress.rejectedRecords;
+          for (const source of ['fiman', 'noaa', 'weather', 'imagery'] as const) summary.sourceRecords[source] += err.progress.sourceRecords[source];
+        }
+        logger.error('Backfill chunk failed', { locationId: loc.id, start: currStart.toISOString(), end: currEnd.toISOString(), error: safeError(err) });
       }
       
       currStart = new Date(currEnd.getTime() + 1); // increment by 1ms to avoid overlap
     }
   }
   
-  console.log('Backfill complete!');
-  res.status(200).send('Backfill complete');
+  const outcome = summary.recordsWritten === 0 ? 'failed' : summary.failedChunks || summary.partialChunks ? 'partial' : 'complete';
+  logger.info('Backfill finished', { outcome, ...summary });
+  res.status(outcome === 'failed' ? 503 : outcome === 'partial' ? 207 : 200).send({ outcome, ...summary });
 });
 
 function sourceData<T>(result: PromiseSettledResult<T>, source: string, locationId: string): T | null {
   if (result.status === 'fulfilled') return result.value;
-  console.warn(`Failed to backfill ${source} for ${locationId}; other available sources will continue:`, result.reason);
+  logger.warn('Backfill source unavailable; continuing independent sources', { source, locationId, error: safeError(result.reason) });
   return null;
 }

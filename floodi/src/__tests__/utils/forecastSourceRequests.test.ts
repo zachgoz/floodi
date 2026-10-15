@@ -13,7 +13,7 @@ describe('bounded NOAA and regional-gauge source requests', () => {
   it.each([fetchNoaaObserved, fetchNoaaPredictions])('bounds a NOAA request and rejects an HTTP-success provider error', async request => {
     upstream.fetch.mockResolvedValueOnce(response({ error: { message: 'No data was found' } }));
     await expect(request('8658163', start, end)).rejects.toThrow('No data was found');
-    expect(upstream.fetch).toHaveBeenCalledWith(expect.stringContaining('station=8658163'), { timeout: 30_000 });
+    expect(upstream.fetch).toHaveBeenCalledWith(expect.stringContaining('station=8658163'), expect.objectContaining({ timeout: 30_000, size: 4_000_000 }));
   });
   it('bounds gauge retrieval and preserves its verified physical reference', async () => {
     upstream.fetch.mockResolvedValueOnce(response({ features: [{ properties: {

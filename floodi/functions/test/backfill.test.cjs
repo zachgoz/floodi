@@ -21,6 +21,7 @@ function loadBackfill(sources, initial = {}) {
   const buckets = new Map();
   let reads = 0;
   let deletions = 0;
+  let configuration;
   const db = {
     doc: path => ({
       path,
@@ -40,7 +41,7 @@ function loadBackfill(sources, initial = {}) {
   };
   const dependencies = {
     'firebase-admin': { apps: [{}], firestore: () => db },
-    'firebase-functions/v2/https': { onRequest: (_options, callback) => callback },
+    'firebase-functions/v2/https': { onRequest: (options, callback) => { configuration = options; return callback; } },
     './etl/fiman': { fetchFimanData: sources.fiman },
     './etl/noaa': { fetchNoaaObserved: sources.noaa },
     './etl/weather': { fetchNwsObservations: sources.weather },
@@ -56,10 +57,10 @@ function loadBackfill(sources, initial = {}) {
   let handler;
   try { handler = require(path).runBackfillData; } finally { Module._load = originalLoad; }
   return {
-    writes, buckets, reads: () => reads, deletions: () => deletions,
-    run: async (query = {}) => {
+    writes, buckets, reads: () => reads, deletions: () => deletions, configuration: () => configuration,
+    run: async (query = {}, method = 'POST') => {
       const result = {};
-      await handler({ query }, { status: value => { result.status = value; return { send: value => { result.body = value; } }; } });
+      await handler({ query, method }, { status: value => { result.status = value; return { send: value => { result.body = value; } }; } });
       return result;
     },
   };
@@ -74,7 +75,13 @@ test('backfill writes genuine FiMAN values when NOAA and weather fail, preservin
     fiman: async (_sensor, start) => ({ waterLevels: { [timestamp(start)]: 0 }, imagery: {} }),
     noaa: failed, weather: failed,
   });
-  assert.equal((await api.run()).status, 200);
+  const result = await api.run();
+  assert.equal(result.status, 207);
+  assert.equal(result.body.outcome, 'partial');
+  assert.equal(result.body.partialChunks, result.body.requestedChunks);
+  assert.equal(result.body.sourceRecords.fiman, result.body.recordsWritten);
+  assert.equal(result.body.sourceRecords.noaa, 0);
+  assert.ok(api.writes.every(write => /\/observations\/\d{4}-\d\d-\d\d$/.test(write.path)));
   assert.ok(api.writes.length >= 4);
   for (const write of api.writes) {
     assert.deepEqual(Object.keys(write.data).sort(), ['fiman', 'lastUpdated']);
@@ -121,7 +128,10 @@ test('weather-only recovery writes available weather while empty water-level sou
 
 test('all unavailable sources produce no bucket writes or false freshness updates', async () => {
   const api = loadBackfill({ fiman: failed, noaa: failed, weather: failed });
-  await api.run();
+  const result = await api.run();
+  assert.equal(result.status, 503);
+  assert.equal(result.body.failedChunks, result.body.requestedChunks);
+  assert.equal(result.body.recordsWritten, 0);
   assert.deepEqual(api.writes, []);
   assert.equal(api.reads(), 0);
   assert.equal(api.deletions(), 0);
@@ -209,4 +219,32 @@ test('four-day recovery fetches only that range and atomically preserves partial
   assert.ok(api.writes.some(write => write.path.endsWith(`/peaks/fiman_${peakTime.replace(/[:.-]/g, '')}`)));
   assert.equal(api.reads(), 0);
   assert.equal(api.deletions(), 0);
+});
+
+test('a later derived-event failure reports partial recovery without hiding measurements already persisted', async () => {
+  const time = new Date().toISOString();
+  const api = loadBackfill({
+    fiman: async () => ({ waterLevels: { [time]: 4.3 }, imagery: {} }),
+    noaa: async () => ({}), weather: async () => ({}),
+    processor: { detectPeaks: () => { throw new Error('derived-event failure'); }, detectFloodEvents: () => [] },
+  });
+  const result = await api.run({ days: '4' });
+  assert.equal(result.status, 207);
+  assert.equal(result.body.outcome, 'partial');
+  assert.equal(result.body.failedChunks, 1);
+  assert.equal(result.body.recordsWritten, 1);
+  assert.equal(result.body.sourceRecords.fiman, 1);
+  assert.equal(api.writes.length, 1);
+});
+
+test('backfill is private, bounded to one concurrent instance and rejects non-POST requests before work', async () => {
+  let fetches = 0;
+  const fetch = async () => { fetches++; return {}; };
+  const api = loadBackfill({ fiman: fetch, noaa: fetch, weather: fetch });
+  assert.equal(api.configuration().invoker, 'private');
+  assert.equal(api.configuration().maxInstances, 1);
+  assert.equal(api.configuration().concurrency, 1);
+  for (const method of ['GET', 'PUT', 'OPTIONS', 'DELETE']) assert.equal((await api.run({}, method)).status, 405);
+  assert.equal(fetches, 0);
+  assert.equal(api.writes.length, 0);
 });

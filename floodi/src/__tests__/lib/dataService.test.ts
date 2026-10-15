@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDoc } from 'firebase/firestore';
 import { fetchObservedWaterLevels } from 'src/lib/noaa';
-import { clearDataServiceCache, fetchUnifiedObservations } from 'src/lib/dataService';
+import { clearDataServiceCache, extractWeatherData, fetchObservations, fetchUnifiedObservations } from 'src/lib/dataService';
+import { reportClientError } from 'src/lib/errorReporting';
 
 vi.mock('src/lib/firebase', () => ({ db: {}, storage: {} }));
 vi.mock('firebase/firestore', () => ({
@@ -11,6 +12,7 @@ vi.mock('firebase/firestore', () => ({
 }));
 vi.mock('firebase/storage', () => ({ ref: vi.fn(), getDownloadURL: vi.fn() }));
 vi.mock('src/lib/noaa', () => ({ fetchObservedWaterLevels: vi.fn(), fetchPredictions: vi.fn() }));
+vi.mock('src/lib/errorReporting', () => ({ reportClientError: vi.fn() }));
 vi.mock('src/constants/locations', () => ({
   LOCATIONS: {
     'carolina-beach': { noaaStationId: '8658163', webcamIds: ['SUNNYD_CB_03'] },
@@ -28,11 +30,12 @@ type Bucket = {
   fiman?: Record<string, number>;
   imagery?: Record<string, Record<string, string>>;
   weather?: Record<string, unknown>;
+  lastUpdated?: string;
 };
 function archived(bucket: Bucket | null) {
   vi.mocked(getDoc).mockImplementation(async reference => ({
     exists: () => String(reference).endsWith('/2026-10') && bucket !== null,
-    data: () => bucket,
+    data: () => bucket ? { lastUpdated: now.toISOString(), ...bucket } : bucket,
   }) as Awaited<ReturnType<typeof getDoc>>);
 }
 
@@ -168,7 +171,7 @@ describe('fetchUnifiedObservations source freshness and recovery', () => {
   });
 
   it('retains camera history from earlier monthly buckets when recovering new imagery', async () => {
-    const older = '2026-09-30T23:30:00Z';
+    const older = '2026-09-30T23:30:00.000Z';
     vi.mocked(getDoc).mockImplementation(async reference => {
       const path = String(reference);
       const bucket = path.endsWith('/2026-09')
@@ -207,5 +210,73 @@ describe('fetchUnifiedObservations source freshness and recovery', () => {
     expect(failed.fiman).toEqual({ [at(-90)]: 4.2 });
     expect(recovered.fiman).toEqual({ [at(-90)]: 4.2, [at(-12)]: 4.6 });
     expect(fetchObservedWaterLevels).toHaveBeenCalledTimes(2);
+  });
+
+  it('merges legacy months and daily corrections without losing partial weather or camera history', async () => {
+    const legacy = { fiman: { '2026-10-14T07:48:00-04:00': 4.2 }, noaa: { [at(-6)]: 3.6 }, weather: { [at(-12)]: { windSpeed: 3, precip: .2 } }, imagery: { SUNNYD_CB_03: { [at(-90)]: 'old.jpg' } }, lastUpdated: now.toISOString() };
+    const daily = { fiman: { [at(-12)]: 4.6 }, weather: { [at(-12)]: { windSpeed: 0 } }, imagery: { [at(-12)]: { SUNNYD_CB_03: 'new.jpg', SUNNYD_CB_02: 'other.jpg' } }, lastUpdated: now.toISOString() };
+    vi.mocked(getDoc).mockImplementation(async reference => {
+      const bucket = String(reference).endsWith('/2026-10') ? legacy : String(reference).endsWith('/2026-10-14') ? daily : null;
+      return { exists: () => bucket !== null, data: () => bucket } as Awaited<ReturnType<typeof getDoc>>;
+    });
+    const result = await fetchObservations('carolina-beach', new Date('2026-10-14T00:00:00Z'), now);
+    expect(result.fiman).toEqual({ [at(-12)]: 4.6 });
+    expect(result.noaa).toEqual(legacy.noaa);
+    expect(result.weather[at(-12)]).toEqual({ precip: .2, windSpeed: 0 });
+    expect(result.imagery).toEqual({ SUNNYD_CB_03: { [at(-90)]: 'old.jpg', [at(-12)]: 'new.jpg' }, SUNNYD_CB_02: { [at(-12)]: 'other.jpg' } });
+    expect(legacy.fiman['2026-10-14T07:48:00-04:00']).toBe(4.2);
+  });
+
+  it('quarantines monthly weather that was in the future when last written, even after that time passes', async () => {
+    const archivedAt = at(-120);
+    archived({ fiman: { [at(-12)]: 4.5 }, weather: { [at(-180)]: { precip: .2 }, [at(-60)]: { precip: 99 }, [at(60)]: { precip: 100 } }, lastUpdated: archivedAt });
+    const result = await fetchObservations('carolina-beach', start, end);
+    expect(result.weather).toEqual({ [at(-180)]: { precip: .2 } });
+  });
+
+  it('reads every UTC day around a midnight/DST boundary and never fetches future observation days', async () => {
+    vi.setSystemTime(new Date('2026-11-02T01:00:00Z'));
+    archived(null);
+    await fetchObservations('carolina-beach', new Date('2026-10-31T23:59:00Z'), new Date('2026-11-04T00:00:00Z'));
+    const observationDays = vi.mocked(getDoc).mock.calls.map(([path]) => String(path)).filter(path => /\/\d{4}-\d\d-\d\d$/.test(path));
+    expect(observationDays).toEqual([
+      'locations/carolina-beach/observations/2026-10-31',
+      'locations/carolina-beach/observations/2026-11-01',
+      'locations/carolina-beach/observations/2026-11-02',
+    ]);
+  });
+
+  it('retains legacy observations if a daily read fails, reports the handled failure, and retries next time', async () => {
+    let failDaily = true;
+    vi.mocked(getDoc).mockImplementation(async reference => {
+      if (String(reference).endsWith('/2026-10-14') && failDaily) throw new Error('daily unavailable');
+      const bucket = String(reference).endsWith('/2026-10') ? { fiman: { [at(-12)]: 4.5 } }
+        : String(reference).endsWith('/2026-10-14') ? { fiman: { [at(-12)]: 4.6 } } : null;
+      return { exists: () => bucket !== null, data: () => bucket } as Awaited<ReturnType<typeof getDoc>>;
+    });
+    expect((await fetchObservations('carolina-beach', start, end)).fiman[at(-12)]).toBe(4.5);
+    expect(reportClientError).toHaveBeenCalledWith('water_data_unavailable', expect.any(Error), { provider: 'firestore' });
+    failDaily = false;
+    expect((await fetchObservations('carolina-beach', start, end)).fiman[at(-12)]).toBe(4.6);
+  });
+
+  it('keeps archived image URLs when daily buckets and provider gap filling refresh raw camera links', async () => {
+    vi.mocked(getDoc).mockImplementation(async reference => {
+      const bucket = String(reference).endsWith('/2026-10') ? { fiman: { [at(-90)]: 4.3 }, noaa: { [at(-6)]: 3.5 }, imagery: { [at(-90)]: { Camera: 'storage://archived.jpg' } } }
+        : String(reference).endsWith('/2026-10-14') ? { imagery: { [at(-90)]: { Camera: 'https://camera/latest.jpg' } }, persistedImagery: { [at(-90)]: { Other: 'storage://other.jpg' } } } : null;
+      return { exists: () => bucket !== null, data: () => bucket } as Awaited<ReturnType<typeof getDoc>>;
+    });
+    vi.mocked(fetchObservedWaterLevels).mockResolvedValue({ source: 'fiman', data: { [at(-12)]: 4.5 }, imagery: { Camera: { [at(-90)]: 'https://camera/replaced.jpg' } } });
+    const result = await fetchUnifiedObservations('carolina-beach', start, end);
+    expect(result.imagery.Camera[at(-90)]).toBe('storage://archived.jpg');
+    expect(result.imagery.Other[at(-90)]).toBe('storage://other.jpg');
+  });
+
+  it('preserves calm wind and zero rainfall while excluding missing/nonfinite weather from chart series', () => {
+    expect(extractWeatherData({ weather: {
+      [at(-12)]: { windSpeed: 0, windDirection: 0, precip: 0 },
+      [at(-6)]: { windSpeed: null, windDirection: 90, precip: NaN },
+      [at(-3)]: { windSpeed: 12, windDirection: Infinity, precip: null },
+    } })).toEqual({ wind: { [at(-12)]: { speed: 0, dir: 0 } }, precip: { [at(-12)]: 0 } });
   });
 });

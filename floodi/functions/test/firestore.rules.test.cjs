@@ -114,6 +114,21 @@ describe('Firestore account roles and forecast boundaries', {
     }
   });
 
+  it('keeps daily and legacy observations public and denies all client writes', async () => {
+    await seed('trusted', 'admin');
+    const paths = ['locations/carolina-beach/observations/2026-10', 'locations/carolina-beach/observations/2026-10-14'];
+    await environment.withSecurityRulesDisabled(async context => {
+      for (const path of paths) await setDoc(doc(context.firestore(), path), { fiman: { '2026-10-14T12:00:00Z': 4.3 } });
+    });
+    for (const path of paths) {
+      await assertSucceeds(getDoc(doc(environment.unauthenticatedContext().firestore(), path)));
+      for (const uid of ['resident', 'trusted']) {
+        await assertFails(setDoc(doc(client(uid), path), { fiman: { forged: 99 } }));
+        await assertFails(deleteDoc(doc(client(uid), path)));
+      }
+    }
+  });
+
   it('keeps forecast models and private input archives inaccessible to clients', async () => {
     await seed('trusted', 'admin');
     for (const uid of ['resident', 'trusted']) {

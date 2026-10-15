@@ -36,7 +36,7 @@ export const PrivacyPolicy: React.FC = () => {
         <div className="privacy-container">
           <div className="privacy-header-section">
             <h1 className="privacy-title">Privacy Policy</h1>
-            <p className="privacy-subtitle">Last Updated: July 19, 2026</p>
+            <p className="privacy-subtitle">Last Updated: October 14, 2026</p>
           </div>
 
           <IonCard className="glass-card">
@@ -86,8 +86,8 @@ export const PrivacyPolicy: React.FC = () => {
             <IonCardContent>
               <p>
                 FloodCast utilizes browser local storage to save your preference settings (such as theme mode, offset configurations, 
-                and threshold adjustments) locally on your device. We do not store or track personal identifiers or sell your personal 
-                location details.
+                and threshold adjustments) locally on your device. Account information and comments are processed separately from these
+                device preferences.
               </p>
               <p style={{ marginTop: '12px' }}>
                 We fetch real-time public water level predictions and measurements from regional networks (like NOAA and NC FiMAN) 
@@ -98,7 +98,25 @@ export const PrivacyPolicy: React.FC = () => {
 
           <IonCard className="glass-card">
             <IonCardHeader>
-              <IonCardTitle>4. Consent</IonCardTitle>
+              <IonCardTitle>4. Reliability Diagnostics</IonCardTitle>
+            </IonCardHeader>
+            <IonCardContent>
+              <p>
+                We collect limited application error reports to detect crashes and unavailable data. Reports include a fixed error category,
+                app version, a general page name, service status codes, and application script locations. They exclude comment text,
+                account identifiers, email addresses, credentials, full page URLs, and arbitrary error messages. A temporary counter in
+                browser session storage limits reporting; reports are not saved on your device for later upload.
+              </p>
+              <p style={{ marginTop: '12px' }}>
+                Reports are processed using Google Cloud Logging under the project’s configured retention. Our hosting and cloud providers
+                also maintain standard request and security logs, which may include network metadata such as IP addresses.
+              </p>
+            </IonCardContent>
+          </IonCard>
+
+          <IonCard className="glass-card">
+            <IonCardHeader>
+              <IonCardTitle>5. Consent</IonCardTitle>
             </IonCardHeader>
             <IonCardContent>
               <p>

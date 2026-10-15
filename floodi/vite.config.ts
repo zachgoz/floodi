@@ -6,12 +6,49 @@
 
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir, mkdir, rename } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { readFileSync, readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { join, relative, dirname } from 'node:path'
 import { validateForecast } from './functions/src/forecast/schema'
 import { localForecastRefreshPlugin } from './dev/localForecastRefresh'
 
+const appDirectory = fileURLToPath(new URL('.', import.meta.url))
+const fingerprint = createHash('sha256')
+const fingerprintSources = (directory: string) => {
+  for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) fingerprintSources(path)
+    else if (entry.isFile()) {
+      fingerprint.update(relative(appDirectory, path)).update(readFileSync(path))
+    }
+  }
+}
+fingerprintSources(join(appDirectory, 'src'))
+// Numerical/schema modules are shared with the backend and are also bundled
+// into the app. Their changes must produce a distinct diagnostic release ID.
+fingerprintSources(join(appDirectory, 'functions', 'src'))
+for (const file of ['package-lock.json', 'index.html', 'vite.config.ts']) fingerprint.update(readFileSync(join(appDirectory, file)))
+const buildId = fingerprint.digest('hex').slice(0, 16)
+
+// Hidden maps are archived outside Hosting's public directory. The matching
+// build ID in error reports identifies the private maps needed for diagnosis.
+const archiveSourceMaps = async (directory: string) => {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) await archiveSourceMaps(path)
+    else if (entry.name.endsWith('.map')) {
+      const target = join(appDirectory, '.private-source-maps', buildId, relative(join(appDirectory, 'dist'), path))
+      await mkdir(dirname(target), { recursive: true })
+      await rename(path, target)
+    }
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
+  define: { 'import.meta.env.VITE_APP_BUILD_ID': JSON.stringify(buildId) },
   resolve: {
     alias: {
       src: '/src',
@@ -24,9 +61,15 @@ export default defineConfig({
   },
   build: {
     target: 'es2020',
+    sourcemap: 'hidden',
   },
   plugins: [
     react(),
+    {
+      name: 'archive-private-source-maps',
+      apply: 'build',
+      closeBundle: () => archiveSourceMaps(join(appDirectory, 'dist')),
+    },
     localForecastRefreshPlugin(),
     {
       name: 'local-cached-flood-outlook',

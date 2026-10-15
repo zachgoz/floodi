@@ -1,4 +1,16 @@
-# NOAA API Integration Documentation
+# FloodCast APIs and Integrations
+
+## Application services
+
+| Endpoint/service | Contract |
+| --- | --- |
+| `GET /api/outlook` | Read the shared, schema-validated numerical outlook. A dashboard read never trains a model or invokes Gemini. Unavailable/expired results return 503. |
+| `POST /api/client-errors` | Strict allowlisted JSON diagnostics from production web/native builds. Returns 204 on acceptance; rejects invalid origin, content type, oversized/private fields and exhausted quotas. No general console or arbitrary error-message upload. See [frontend diagnostics](docs/FRONTEND-ERROR-COLLECTION.md). |
+| `GET /api/fiman/**` | Existing bounded upstream proxy with cached public provider data. |
+| `runBackfillData?days=1..60` | Private administrative POST to the function URL, requiring an authorized Google identity. Structured 200/207/503 recovery summary; never a browser endpoint. |
+| `checkDataHealth` | Scheduled independent freshness inspection; no public HTTP endpoint. Private operational status and structured Cloud Logging events support alerts. |
+
+Observations use bounded daily UTC documents and compatible legacy monthly reads. See [storage and migration](docs/DAILY-OBSERVATION-STORAGE.md) and [the reliability release verification](docs/RELIABILITY-IMPLEMENTATION-2026-10-14.md). Existing NOAA integration details follow.
 
 ## Overview
 

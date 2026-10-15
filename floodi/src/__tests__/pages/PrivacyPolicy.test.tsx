@@ -11,5 +11,8 @@ describe('PrivacyPolicy Page Component', () => {
     expect(screen.getByText(/Google AdSense & Third-Party Cookies/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Google Ads Settings/i })).toBeInTheDocument();
     expect(screen.getByText(/Local Storage and Data Collection/i)).toBeInTheDocument();
+    expect(screen.getByText(/Reliability Diagnostics/i)).toBeInTheDocument();
+    expect(screen.getByText(/They exclude comment text/i)).toBeInTheDocument();
+    expect(screen.getByText(/IP addresses/i)).toBeInTheDocument();
   });
 });

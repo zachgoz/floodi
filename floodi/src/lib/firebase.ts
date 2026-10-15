@@ -23,7 +23,8 @@ import {
 } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
-import { getAnalytics, type Analytics, isSupported } from 'firebase/analytics';
+import type { Analytics } from 'firebase/analytics';
+import { configuredMeasurementId, initializeOptionalAnalytics } from 'src/lib/optionalAnalytics';
 
 type FirebaseConfig = {
   apiKey: string;
@@ -32,6 +33,7 @@ type FirebaseConfig = {
   storageBucket: string;
   messagingSenderId: string;
   appId: string;
+  measurementId?: string;
 };
 
 const isTestEnv = (() => {
@@ -59,6 +61,7 @@ const config: FirebaseConfig = {
   storageBucket: requireEnv(env.VITE_FIREBASE_STORAGE_BUCKET, 'VITE_FIREBASE_STORAGE_BUCKET'),
   messagingSenderId: requireEnv(env.VITE_FIREBASE_MESSAGING_SENDER_ID, 'VITE_FIREBASE_MESSAGING_SENDER_ID'),
   appId: requireEnv(env.VITE_FIREBASE_APP_ID, 'VITE_FIREBASE_APP_ID'),
+  ...(configuredMeasurementId(env.VITE_FIREBASE_MEASUREMENT_ID) ? { measurementId: configuredMeasurementId(env.VITE_FIREBASE_MEASUREMENT_ID) } : {}),
 };
 
 /** Firebase application instance */
@@ -84,15 +87,7 @@ export const storage: FirebaseStorage = getStorage(app);
 /** Firebase Analytics instance */
 export let analytics: Analytics | undefined = undefined;
 
-isSupported()
-  .then((supported) => {
-    if (supported) {
-      analytics = getAnalytics(app);
-    }
-  })
-  .catch((err) => {
-    console.warn('Firebase Analytics check failed:', err);
-  });
+void initializeOptionalAnalytics(app).then(instance => { analytics = instance; });
 
 /**
  * Usage:

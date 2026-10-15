@@ -1,4 +1,4 @@
-import fetch from 'node-fetch';
+import { providerJson } from '../utils/providerRequest';
 
 const NOAA_BASE = 'https://api.tidesandcurrents.noaa.gov/api/prod/datagetter';
 
@@ -24,17 +24,14 @@ export async function fetchNoaaObserved(station: string, start: Date, end: Date)
     end_date: fmtDate(end),
   });
 
-  const res = await fetch(`${NOAA_BASE}?${params.toString()}`, { timeout: 30_000 });
-  if (!res.ok) throw new Error(`NOAA API error: ${res.statusText}`);
-  
-  const data = await res.json() as any;
+  const data = await providerJson(`${NOAA_BASE}?${params.toString()}`, { provider: 'noaa', cacheMs: 5 * 60_000 });
   if (data.error) throw new Error(`NOAA: ${String(data.error.message).slice(0, 200)}`);
   const out: Record<string, number> = {};
   
   for (const row of data.data || []) {
-    const v = parseFloat(row.v);
-    const t = row.t.replace(' ', 'T') + 'Z';
-    if (!isNaN(v)) out[t] = v;
+    const v = (typeof row.v === 'string' && row.v.trim() !== '') || typeof row.v === 'number' ? Number(row.v) : NaN;
+    const t = typeof row.t === 'string' ? row.t.replace(' ', 'T') + 'Z' : '';
+    if (Number.isFinite(v) && Number.isFinite(Date.parse(t))) out[t] = v;
   }
   
   return out;
@@ -49,8 +46,8 @@ export async function fetchNoaaPredictions(station: string, start: Date, end: Da
     units: 'english',
     datum: 'MLLW',
     station,
-    begin_date: fmtDate(start),
-    end_date: fmtDate(end),
+    begin_date: fmtDate(new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()))),
+    end_date: fmtDate(new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate(), 23, 59))),
     interval: 'hilo' // We might want full 6-min predictions for better charting
   });
 
@@ -58,17 +55,16 @@ export async function fetchNoaaPredictions(station: string, start: Date, end: Da
   params.delete('interval');
   params.append('interval', '6');
 
-  const res = await fetch(`${NOAA_BASE}?${params.toString()}`, { timeout: 30_000 });
-  if (!res.ok) throw new Error(`NOAA API error: ${res.statusText}`);
-  
-  const data = await res.json() as any;
+  const data = await providerJson(`${NOAA_BASE}?${params.toString()}`, { provider: 'noaa', cacheMs: 24 * 3600_000 });
   if (data.error) throw new Error(`NOAA: ${String(data.error.message).slice(0, 200)}`);
   const out: Record<string, number> = {};
   
+  // Cache a fixed UTC-day request across scheduler invocations, then return
+  // only the caller's requested interval. Astronomical predictions are static.
   for (const row of data.predictions || []) {
-    const v = parseFloat(row.v);
-    const t = row.t.replace(' ', 'T') + 'Z';
-    if (!isNaN(v)) out[t] = v;
+    const v = (typeof row.v === 'string' && row.v.trim() !== '') || typeof row.v === 'number' ? Number(row.v) : NaN;
+    const t = typeof row.t === 'string' ? row.t.replace(' ', 'T') + 'Z' : '';
+    if (Number.isFinite(v) && Number.isFinite(Date.parse(t)) && Date.parse(t) >= +start && Date.parse(t) <= +end) out[t] = v;
   }
   
   return out;

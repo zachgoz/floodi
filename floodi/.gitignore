@@ -10,6 +10,7 @@
 
 # production
 /dist
+/.private-source-maps/
 
 # misc
 .DS_Store

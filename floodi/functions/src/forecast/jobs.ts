@@ -1,10 +1,12 @@
 import * as admin from "firebase-admin";
+import * as logger from "firebase-functions/logger";
+import { recordJobOutcome, safeError } from "../utils/observability";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onRequest } from "firebase-functions/v2/https";
 import { buildGaugeForecast, explanationIsDue, GAUGE_FORECAST_MODEL_VERSION, restoreGaugeModel, serializeGaugeModel } from "./gaugePipeline";
 import { collectHistory, FORECAST_TIDE_DAYS, points, SITE, weatherForecast } from "./sources";
 import { explainWithGemini } from "./gemini";
-import { ForecastDocument, validateForecast } from "./schema";
+import { ForecastDocument, validateForecast, validateExplanation } from "./schema";
 import { fetchFimanData } from "../etl/fiman";
 import { fetchNoaaPredictions } from "../etl/noaa";
 import { residuals } from "./water";
@@ -25,6 +27,9 @@ export const refreshResidualHistory = onSchedule(
     concurrency: 1,
   },
   async () => {
+    const attemptedAt = new Date().toISOString();
+    let stage = 'history';
+    try {
     const end = new Date(Date.now() - 7 * 24 * 3600_000);
     const start = new Date(+end - 90 * 24 * 3600_000);
     const result = await collectHistory(start, end);
@@ -48,6 +53,7 @@ export const refreshResidualHistory = onSchedule(
       failures: result.failures,
     });
     const reference = { station: SITE.sensor, datum: SITE.datum, units: SITE.units };
+    stage = 'training';
     const model = trainWeatherResponse(result.history, result.tide, result.weather, reference, reference);
     const modelCache = serializeGaugeModel(model, new Date(), path);
     if (!restoreGaugeModel(modelCache, new Date())) throw new Error("Daily history cannot support a valid model; retaining the previous model pointer");
@@ -56,6 +62,11 @@ export const refreshResidualHistory = onSchedule(
     // snapshots live outside that public namespace and are server-only.
     await db.doc(modelPath).create(plainJson({ ...modelCache, trainingMetadata: result.metadata }));
     await db.doc(`forecast_models/${SITE.id}`).set(plainJson({ ...modelCache, archivePath: modelPath }));
+    await recordJobOutcome(db, 'refreshResidualHistory', SITE.id, { attemptedAt, status: result.failures.length ? 'partial' : 'ok', modelCreatedAt: modelCache.createdAt, historyCount: result.history.length, missingIntervals: result.failures.length });
+    } catch (error) {
+      await recordJobOutcome(db, 'refreshResidualHistory', SITE.id, { attemptedAt, status: 'failed', stage, error: safeError(error) });
+      throw error;
+    }
   },
 );
 export const generateFloodOutlook = onSchedule(
@@ -78,6 +89,9 @@ export const generateFloodOutlook = onSchedule(
     )
       return;
     let document: ForecastDocument;
+    let stage = 'model';
+    let numericalError: unknown;
+    let degraded = false;
     try {
       const modelSnapshot = await db.doc(`forecast_models/${SITE.id}`).get();
       const modelCache = modelSnapshot.data();
@@ -85,6 +99,7 @@ export const generateFloodOutlook = onSchedule(
       if (!modelSnapshot.exists || !model) throw new Error("Daily model cache missing, stale or incompatible");
       const start = new Date(+now - 3 * 24 * 3600_000);
       const end = new Date(+now + FORECAST_TIDE_DAYS * 24 * 3600_000);
+      stage = 'sources';
       const [sensor, rawTide, forecastWeather] = await Promise.all([
         fetchFimanData(SITE.retrievalPlatform, start, now, SITE.offsetFt),
         fetchNoaaPredictions(
@@ -92,7 +107,11 @@ export const generateFloodOutlook = onSchedule(
           new Date(+start - 2 * 3600_000),
           end,
         ),
-        weatherForecast().catch(() => []),
+        weatherForecast().catch(error => {
+          degraded = true;
+          logger.warn('Issued weather unavailable; numerical fallback remains independent', { event: 'forecast_weather_failed', provider: 'open_meteo', error: safeError(error) });
+          return [];
+        }),
       ]);
       const issuedAt = new Date();
       const tide = points(rawTide).map((p) => ({
@@ -110,6 +129,7 @@ export const generateFloodOutlook = onSchedule(
         reference,
         reference,
       );
+      stage = 'numerical';
       document = buildGaugeForecast(
         recent,
         [],
@@ -136,7 +156,19 @@ export const generateFloodOutlook = onSchedule(
         weather: forecastWeather.map(w => ({ ...w, t: w.t.toISOString() })),
       });
       if (Buffer.byteLength(JSON.stringify(snapshot), 'utf8') > 512_000) throw new Error("Forecast input snapshot exceeds the private archive size limit");
+      stage = 'archive';
       await db.doc(`forecast_input_archive/${SITE.id}/issues/${issuedAt.toISOString()}`).create(snapshot);
+      if (document.status === "available" && isCurrentOutlook(cachedDocument, issuedAt) &&
+          cachedDocument.explanationSource === 'gemini-3.8-flash' &&
+          Date.parse(cachedDocument.generatedAt) >= +issuedAt - 65 * 60_000 &&
+          cachedDocument.explanation.headline === document.explanation.headline &&
+          validateExplanation(cachedDocument.explanation, document.evidence) &&
+          cachedDocument.explanation.evidenceIds.includes('availability')) {
+        // Gemini selects evidence IDs, not prose or numbers. Reusing a valid
+        // selection binds it to this issue's freshly calculated evidence text.
+        document.explanation = cachedDocument.explanation;
+        document.explanationSource = 'gemini-3.8-flash';
+      }
       if (document.status === "available") try {
         const stateRef = db.doc(`forecast_explanation_state/${SITE.id}`);
         const reserved = await db.runTransaction(async transaction => {
@@ -148,15 +180,17 @@ export const generateFloodOutlook = onSchedule(
         if (reserved) try {
           document.explanation = await explainWithGemini(document);
           document.explanationSource = "gemini-3.8-flash";
-        } catch {
-          console.warn(
-            "Gemini unavailable; using calculated evidence fallback",
-          );
+        } catch (error) {
+          degraded = true;
+          logger.warn('Gemini explanation unavailable; calculated forecast remains intact', { event: 'gemini_explanation_failed', provider: 'vertex', model: 'gemini-3.8-flash', error: safeError(error) });
         }
-      } catch {
-        console.warn("Explanation scheduling unavailable; using calculated evidence fallback");
+      } catch (error) {
+        degraded = true;
+        logger.warn('Explanation scheduling unavailable', { event: 'gemini_schedule_failed', error: safeError(error) });
       }
-    } catch {
+    } catch (error) {
+      numericalError = error;
+      logger.error('Numerical forecast update failed', { event: 'forecast_generation_failed', stage, error: safeError(error) });
       document = buildGaugeForecast([], [], [], [], [], now, { model: null });
       document.limitations.push(
         "One or more required backend data sources is unavailable.",
@@ -167,13 +201,20 @@ export const generateFloodOutlook = onSchedule(
     // A temporary upstream outage must not erase a usable calculated issue or
     // manufacture a new freshness timestamp for it. Its original expiry stands.
     if (document.status === "unavailable" && isCurrentOutlook(cachedDocument, new Date()) && cachedDocument.status === "available") {
-      console.warn("Numerical update unavailable; retaining the previous forecast until its original expiry");
-      return;
+      await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, { attemptedAt: now.toISOString(), status: 'failed', stage, retainedGeneratedAt: cachedDocument.generatedAt, ...(numericalError ? { error: safeError(numericalError) } : { error: { message: 'Required observations unavailable or stale' } }) });
+      throw new Error('Numerical update failed; existing outlook retained until its original expiry');
     }
+    try {
     await ref.set(plainJson(document));
     await db
       .doc(`forecast_archive/${SITE.id}/issues/${document.generatedAt}`)
       .create(plainJson(document));
+    } catch (error) {
+      await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, { attemptedAt: now.toISOString(), status: 'failed', stage: 'publish', error: safeError(error) });
+      throw error;
+    }
+    await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, { attemptedAt: now.toISOString(), status: document.status === 'unavailable' ? 'failed' : degraded ? 'partial' : 'ok', stage, numericalGeneratedAt: document.generatedAt, observationAt: document.observationAt, explanationSource: document.explanationSource, ...(numericalError ? { error: safeError(numericalError) } : {}) });
+    if (document.status === 'unavailable') throw new Error('No current numerical outlook could be generated');
   },
 );
 /** Public cached read; visitors cannot trigger training or Gemini spending. */
@@ -200,7 +241,8 @@ export const floodOutlook = onRequest(
       const remaining = Math.floor((Date.parse(data.expiresAt) - Date.now()) / 1000);
       if (remaining > 0) res.set("Cache-Control", `public, max-age=${Math.min(60, remaining)}, s-maxage=${Math.min(300, remaining)}`);
       res.json(data);
-    } catch {
+    } catch (error) {
+      logger.error('Cached outlook read failed', { event: 'forecast_read_failed', error: safeError(error) });
       res.status(503).json({ error: "Outlook unavailable" });
     }
   },

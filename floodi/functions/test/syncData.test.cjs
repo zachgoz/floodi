@@ -1,290 +1,138 @@
 const { test, beforeEach, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
-
-const records = new Map();
-const writes = [];
-const warnings = [];
-const errors = [];
-const imageCalls = [];
-const sourceCalls = [];
-let noaa;
-let fiman;
-let weather;
-let prediction;
-let forecastWeather;
-let imageFailure;
-
-function assertFirestoreValues(value) {
-  assert.notEqual(value, undefined, 'Firestore payload must not contain undefined');
-  if (typeof value === 'number') assert.ok(Number.isFinite(value), 'Firestore payload must not contain nonfinite numbers');
-  if (value && typeof value === 'object') Object.values(value).forEach(assertFirestoreValues);
-}
-
-// Firestore merge:true writes a nested field mask, preserving omitted sample
-// timestamps and omitted properties within the same weather record.
-function mergeFields(previous, patch) {
+const records = new Map(), writes = [], calls = [], logs = [];
+let noaa, fiman, weather, prediction, forecastWeather, imageFailure, writeFailure;
+function merge(previous, patch) {
   const result = { ...(previous || {}) };
-  for (const [key, value] of Object.entries(patch)) {
-    result[key] = value && typeof value === 'object' && !Array.isArray(value)
-      ? Object.keys(value).length ? mergeFields(result[key], value) : {}
-      : value;
-  }
+  for (const [key, value] of Object.entries(patch)) result[key] = value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).length ? merge(result[key], value) : {} : value;
   return result;
 }
-
-const db = {
-  doc: path => ({ path, set: async (value, options) => {
-    assertFirestoreValues(value);
-    writes.push({ path, value, options });
-    records.set(path, options?.merge ? mergeFields(records.get(path), value) : value);
-  } }),
-};
-
-async function source(name, result, args) {
-  sourceCalls.push({ name, args });
-  if (result instanceof Error) throw result;
-  return result;
-}
-
-// Exercise the actual scheduled handlers with isolated upstream sources and a
-// Firestore-like atomic merge boundary that rejects the original undefined bug.
+const db = { doc: path => ({ path, get: async () => ({ exists: records.has(path), data: () => records.get(path) }), set: async (value, options) => {
+  if (writeFailure && path.includes('/observations/')) throw writeFailure;
+  writes.push({ path, value, options }); records.set(path, options?.merge ? merge(records.get(path), value) : value);
+} }) };
 const schedulerPath = require.resolve('../lib/syncData');
 const originalLoad = Module._load;
 Module._load = function(request, parent, isMain) {
+  if (request === 'firebase-functions/logger') return Object.fromEntries(['info','warn','error'].map(level => [level, (...args) => logs.push({ level,args })]));
   if (parent?.filename === schedulerPath) {
     if (request === 'firebase-admin') return { apps: [{}], firestore: () => db };
     if (request === 'firebase-functions/v2/scheduler') return { onSchedule: (_options, handler) => handler };
-    if (request === './etl/noaa') return {
-      fetchNoaaObserved: (...args) => source('noaa', noaa, args),
-      fetchNoaaPredictions: (...args) => source('prediction', prediction, args),
-    };
-    if (request === './etl/fiman') return { fetchFimanData: (...args) => source('fiman', fiman, args) };
-    if (request === './etl/weather') return {
-      fetchNwsObservations: (...args) => source('weather', weather, args),
-      fetchNwsForecast: (...args) => source('forecastWeather', forecastWeather, args),
-    };
-    if (request === './utils/storage') return { persistImage: async (...args) => {
-      imageCalls.push(args);
+    const source = async value => { if (value instanceof Error) throw value; return value; };
+    if (request === './etl/noaa') return { fetchNoaaObserved: () => source(noaa), fetchNoaaPredictions: () => source(prediction) };
+    if (request === './etl/fiman') return { fetchFimanData: () => source(fiman) };
+    if (request === './etl/weather') return { fetchNwsObservations: () => source(weather), fetchNwsForecast: () => source(forecastWeather) };
+    if (request === './utils/storage') return { persistImageryBatch: async (_location, imagery) => {
+      calls.push('images');
+      assert.ok(writes.some(write => write.path.includes('/observations/')), 'measurements must commit before cameras');
       if (imageFailure) throw imageFailure;
+      return { patch: Object.fromEntries(Object.keys(imagery).map(t => [t, { CAM: 'storage://archived.jpg' }])), attempted: 1, succeeded: 1, failed: 0, deferred: false };
     } };
   }
   return originalLoad.call(this, request, parent, isMain);
 };
 let handlers;
-try { handlers = require(schedulerPath); }
-finally { Module._load = originalLoad; }
-
+try { handlers = require(schedulerPath); } finally { Module._load = originalLoad; }
 const now = new Date('2026-10-14T12:00:00Z');
-const observedPath = 'locations/carolina-beach/observations/2026-10';
+const path = 'locations/carolina-beach/observations/2026-10-14';
 const predictedPath = 'locations/carolina-beach/predictions/2026-10';
-const oldTime = '2026-10-12T00:57:05.000Z';
-const firstTime = '2026-10-14T11:30:00.000Z';
-const peakTime = '2026-10-14T11:36:00.000Z';
-const lastTime = '2026-10-14T11:42:00.000Z';
-const oldBucket = () => ({
-  noaa: { [oldTime]: 4.1 }, fiman: { [oldTime]: 4.5 },
-  imagery: { [oldTime]: { OLD: 'https://images.example/old.jpg' } },
-  weather: { [oldTime]: { windSpeed: 12, precip: 0 } },
-  lastUpdated: '2026-10-12T01:05:00.000Z',
-});
-
+const first = '2026-10-14T11:30:00.000Z', peak = '2026-10-14T11:36:00.000Z', last = '2026-10-14T11:42:00.000Z';
+const health = () => records.get('operationalHealth/syncWaterLevels_carolina-beach');
 beforeEach(() => {
   mock.timers.enable({ apis: ['Date'], now: +now });
-  mock.method(console, 'log', () => {});
-  mock.method(console, 'warn', (...args) => { warnings.push(args); });
-  mock.method(console, 'error', (...args) => { errors.push(args); });
-  records.clear(); writes.length = 0; warnings.length = 0; errors.length = 0;
-  imageCalls.length = 0; sourceCalls.length = 0; imageFailure = undefined;
-  records.set(observedPath, oldBucket());
-  records.set(predictedPath, { data: { [oldTime]: 4.2 }, weather: { [oldTime]: { windSpeed: 9 } }, lastUpdated: oldBucket().lastUpdated });
-  noaa = { [peakTime]: 4.3 };
-  fiman = {
-    waterLevels: { [firstTime]: 5.4, [peakTime]: 6.1, [lastTime]: 5.3 },
-    imagery: { [peakTime]: { SUNNYD_CB_03: 'https://images.example/current.jpg' } },
-  };
-  weather = { [peakTime]: { windSpeed: 0, precip: 0, temp: undefined, windDirection: undefined, pressure: Infinity } };
-  prediction = { [firstTime]: 4.4, [peakTime]: 5.1, [lastTime]: 4.5 };
-  forecastWeather = { [peakTime]: { windSpeed: 15, windDirection: undefined, description: 'Cloudy', icon: undefined } };
+  records.clear(); writes.length = calls.length = logs.length = 0; imageFailure = writeFailure = undefined;
+  noaa = { [peak]: 4.3 };
+  fiman = { waterLevels: { [first]: 5.4, [peak]: 6.1, [last]: 5.3 }, imagery: { [peak]: { CAM: 'https://images.example/current.jpg' } } };
+  weather = { [peak]: { windSpeed: 0, precip: 0, temp: undefined, pressure: Infinity } };
+  prediction = { [first]: 4.4, [peak]: 5.1, [last]: 4.5 };
+  forecastWeather = { [peak]: { windSpeed: 15, description: 'Cloudy', icon: undefined } };
 });
-
 afterEach(() => { mock.restoreAll(); mock.timers.reset(); });
 
-test('writes real gauge/NOAA/imagery records when optional weather fields contain undefined or nonfinite values', async () => {
-  await handlers.syncWaterLevels({});
-  assert.equal(errors.length, 0);
-  const bucket = records.get(observedPath);
-  assert.equal(bucket.fiman[peakTime], 6.1);
-  assert.equal(bucket.fiman[oldTime], 4.5);
-  assert.equal(bucket.noaa[peakTime], 4.3);
-  assert.deepEqual(bucket.weather[peakTime], { windSpeed: 0, precip: 0 });
-  assert.equal(bucket.weather[oldTime].windSpeed, 12);
-  assert.match(bucket.imagery[peakTime].SUNNYD_CB_03, /^storage:\/\/imagery\/carolina-beach\//);
-  assert.equal(imageCalls.length, 1);
-  assert.equal(bucket.lastUpdated, now.toISOString());
-  assert.equal(sourceCalls.find(call => call.name === 'weather').args[2].toISOString(), '2026-10-13T12:00:00.000Z');
-  assert.equal(sourceCalls.find(call => call.name === 'weather').args[3].toISOString(), now.toISOString());
-  assert.ok(writes.some(write => write.path.startsWith('locations/carolina-beach/peaks/fiman_')));
-  assert.ok(writes.some(write => write.path.startsWith('locations/carolina-beach/flood_events/fiman_')));
-  const patch = writes.find(write => write.path === observedPath);
-  assert.deepEqual(patch.options, { merge: true });
-  assert.equal(Object.hasOwn(patch.value.fiman, oldTime), false);
-  assert.equal(Object.hasOwn(patch.value.weather, oldTime), false);
+test('commits valid daily measurements before cameras, omits undefined, and reports per-source freshness', async () => {
+  await handlers.syncWaterLevels();
+  const bucket = records.get(path);
+  assert.equal(bucket.fiman[peak],6.1); assert.equal(bucket.noaa[peak],4.3);
+  assert.deepEqual(bucket.weather[peak], { windSpeed:0,precip:0 });
+  assert.equal(bucket.persistedImagery[peak].CAM,'storage://archived.jpg');
+  assert.equal(health().status,'ok'); assert.equal(health().sources.fiman.latestAt,last);
+  assert.equal(health().sources.fiman.count,3);
+  assert.equal(writes.some(write => /observations\/\d{4}-\d\d$/.test(write.path)),false);
 });
-
-test('atomic observed merges retain archived samples and optional fields when weather updates are partial', async () => {
-  records.get(observedPath).weather[peakTime] = { windDirection: 45, pressure: 1015, precip: .2 };
-  weather = { [peakTime]: { windSpeed: 0, precip: undefined, pressure: undefined } };
-  await handlers.syncWaterLevels({});
-  assert.deepEqual(records.get(observedPath).weather[peakTime], { windSpeed: 0, windDirection: 45, pressure: 1015, precip: .2 });
-  assert.equal(records.get(observedPath).fiman[oldTime], 4.5);
-  assert.deepEqual(writes.find(write => write.path === observedPath).value.weather[peakTime], { windSpeed: 0 });
-  assert.equal(errors.length, 0);
+test('weather and NOAA failures retain existing history while allowing gauge writes and report partial success', async () => {
+  records.set(path,{ noaa:{old:2},weather:{old:{windSpeed:8}} });
+  noaa=new Error('NOAA unavailable'); weather=new Error('NWS unavailable');
+  await handlers.syncWaterLevels();
+  assert.equal(records.get(path).fiman[peak],6.1); assert.deepEqual(records.get(path).noaa,{old:2});
+  assert.equal(health().status,'partial'); assert.equal(health().sources.noaa.status,'failed');
+  assert.ok(logs.some(log => log.level==='warn' && log.args[1].event==='job_outcome'));
 });
-
-test('the real Firestore SDK creates leaf merge masks without replacing monthly maps or omitted weather properties', async () => {
-  weather = { [peakTime]: { windSpeed: 0, precip: undefined } };
-  await handlers.syncWaterLevels({});
-  const patch = writes.find(write => write.path === observedPath);
-  const { Firestore } = require('@google-cloud/firestore');
-  const firestore = new Firestore({ projectId: 'demo-floodcast-sync-mask' });
-  const batch = firestore.batch();
-  batch.set(firestore.doc(observedPath), patch.value, patch.options);
-  // Serialize the queued operation only: no commit, credentials or network.
-  const operation = batch._ops[0].op();
-  const fields = operation.updateMask.fieldPaths;
-  assert.ok(fields.includes(`fiman.\`${peakTime}\``));
-  assert.ok(fields.includes(`weather.\`${peakTime}\`.windSpeed`));
-  assert.equal(fields.includes(`weather.\`${peakTime}\`.precip`), false);
-  assert.equal(fields.includes('fiman'), false);
-  assert.equal(fields.includes('weather'), false);
-  assert.ok(fields.every(field => !field.includes(oldTime)));
+test('camera failure cannot discard committed observations or original camera URL', async () => {
+  imageFailure=new Error('Camera storage timed out');
+  await handlers.syncWaterLevels();
+  assert.equal(records.get(path).fiman[peak],6.1);
+  assert.equal(records.get(path).imagery[peak].CAM,'https://images.example/current.jpg');
+  assert.equal(health().status,'partial');
 });
-
-test('NOAA and weather failures do not block fresh FiMAN observations, images, peaks or events', async () => {
-  noaa = new Error('NOAA gateway unavailable');
-  weather = new Error('NWS unavailable');
-  const previous = records.get(observedPath);
-  await handlers.syncWaterLevels({});
-  const bucket = records.get(observedPath);
-  assert.equal(bucket.fiman[peakTime], 6.1);
-  assert.deepEqual(bucket.noaa, previous.noaa);
-  assert.deepEqual(bucket.weather, previous.weather);
-  const patch = writes.find(write => write.path === observedPath).value;
-  assert.equal(Object.hasOwn(patch, 'noaa'), false);
-  assert.equal(Object.hasOwn(patch, 'weather'), false);
-  assert.equal(warnings.length, 2);
-  assert.ok(warnings.every(warning => warning[0].includes('existing source records are preserved')));
-  assert.ok(writes.some(write => write.path.includes('/flood_events/')));
-  assert.equal(errors.length, 0);
+test('zero successful measurement sources fail the schedule without manufacturing observation freshness', async () => {
+  noaa=new Error('No NOAA'); fiman=new Error('No gauge'); weather=new Error('No weather');
+  await assert.rejects(handlers.syncWaterLevels(),/Observation sync/);
+  assert.equal(records.has(path),false); assert.equal(health().status,'failed');
+  assert.equal(health().sources.fiman.status,'failed');
+  assert.ok(logs.some(log => log.level==='error' && log.args[1].event==='job_outcome'));
 });
-
-test('a FiMAN failure preserves its archived measurements and imagery while updating NOAA and weather', async () => {
-  fiman = new Error('FiMAN unavailable');
-  const previous = records.get(observedPath);
-  await handlers.syncWaterLevels({});
-  const bucket = records.get(observedPath);
-  assert.deepEqual(bucket.fiman, previous.fiman);
-  assert.deepEqual(bucket.imagery, previous.imagery);
-  assert.equal(bucket.noaa[peakTime], 4.3);
-  assert.deepEqual(bucket.weather[peakTime], { windSpeed: 0, precip: 0 });
-  const patch = writes.find(write => write.path === observedPath).value;
-  assert.equal(Object.hasOwn(patch, 'fiman'), false);
-  assert.equal(Object.hasOwn(patch, 'imagery'), false);
-  assert.equal(imageCalls.length, 0);
-  assert.equal(writes.some(write => write.path.includes('/peaks/') || write.path.includes('/flood_events/')), false);
-  assert.equal(warnings.length, 1);
+test('empty and invalid weather sources fail rather than reporting an ingestion success', async () => {
+  noaa={}; fiman={waterLevels:{},imagery:{}}; weather={ [peak]:{precip:undefined,pressure:NaN} };
+  await assert.rejects(handlers.syncWaterLevels(),/Observation sync/);
+  assert.equal(records.has(path),false); assert.equal(health().status,'failed');
 });
-
-test('all source failures leave observations and their original freshness timestamp untouched', async () => {
-  noaa = new Error('NOAA unavailable'); fiman = new Error('FiMAN unavailable'); weather = new Error('Weather unavailable');
-  const previous = structuredClone(records.get(observedPath));
-  await handlers.syncWaterLevels({});
-  assert.deepEqual(records.get(observedPath), previous);
-  assert.deepEqual(writes, []);
-  assert.equal(warnings.length, 3);
+test('fatal database write failure is visible to Scheduler and structured health', async () => {
+  writeFailure=new Error('Database unavailable');
+  await assert.rejects(handlers.syncWaterLevels(),/Observation sync/);
+  assert.equal(health().status,'failed'); assert.equal(calls.length,0);
 });
-
-test('empty sources and weather containing only missing fields do not manufacture records or new freshness', async () => {
-  noaa = {}; fiman = { waterLevels: {}, imagery: {} };
-  weather = { [peakTime]: { windSpeed: undefined, precip: NaN } };
-  const previous = structuredClone(records.get(observedPath));
-  await handlers.syncWaterLevels({});
-  assert.deepEqual(records.get(observedPath), previous);
-  assert.deepEqual(writes, []);
+test('derived peak/event refresh preserves attached metadata and existing peak image keys', async () => {
+  const peakPath=`locations/carolina-beach/peaks/fiman_${peak.replace(/[:.-]/g,'')}`;
+  records.set(peakPath,{review:'verified',images:{KEEP:'photo'}});
+  await handlers.syncWaterLevels();
+  assert.equal(records.get(peakPath).review,'verified'); assert.deepEqual(records.get(peakPath).images,{KEEP:'photo'});
+  assert.ok(writes.filter(write=>write.path.includes('/peaks/')||write.path.includes('/flood_events/')).every(write=>write.options?.merge===true));
 });
-
-test('a UTC Oct 31 to Nov 1 lookback writes both month buckets without skipping November', async () => {
+test('daily buckets span UTC midnight without rewriting month archives', async () => {
   mock.timers.setTime(Date.parse('2026-11-01T00:30:00Z'));
-  const octoberTime = '2026-10-31T23:54:00.000Z';
-  const novemberTime = '2026-11-01T00:06:00.000Z';
-  noaa = { [octoberTime]: 4, [novemberTime]: 4.2 };
-  fiman = { waterLevels: { [octoberTime]: 4.4, [novemberTime]: 4.6 }, imagery: {} };
-  weather = { [novemberTime]: { windSpeed: 0, precip: 0 } };
-  await handlers.syncWaterLevels({});
-  assert.equal(records.get(observedPath).fiman[octoberTime], 4.4);
-  const novemberPath = 'locations/carolina-beach/observations/2026-11';
-  assert.equal(records.get(novemberPath).fiman[novemberTime], 4.6);
-  assert.equal(records.get(novemberPath).noaa[novemberTime], 4.2);
-  assert.deepEqual(records.get(novemberPath).weather[novemberTime], { windSpeed: 0, precip: 0 });
-  assert.equal(errors.length, 0);
+  const october='2026-10-31T23:54:00Z',november='2026-11-01T00:06:00Z';
+  noaa={ [october]:4,[november]:4.2 }; fiman={waterLevels:{ [october]:4.4,[november]:4.6 },imagery:{}}; weather={};
+  await handlers.syncWaterLevels();
+  assert.equal(records.get('locations/carolina-beach/observations/2026-10-31').fiman[new Date(october).toISOString()],4.4);
+  assert.equal(records.get('locations/carolina-beach/observations/2026-11-01').fiman[new Date(november).toISOString()],4.6);
 });
-
-test('image storage failure retains the source URL and does not prevent gauge bucket writes', async () => {
-  imageFailure = new Error('Image storage unavailable');
-  await handlers.syncWaterLevels({});
-  assert.equal(records.get(observedPath).fiman[peakTime], 6.1);
-  assert.equal(records.get(observedPath).imagery[peakTime].SUNNYD_CB_03, 'https://images.example/current.jpg');
-  assert.equal(errors.length, 1);
-  assert.match(errors[0][0], /Failed to persist image/);
+test('the real SDK daily leaf mask preserves omitted samples and partial weather fields',async()=>{
+  records.set(path,{weather:{[peak]:{windDirection:45,pressure:1015}}});
+  await handlers.syncWaterLevels();
+  assert.equal(records.get(path).weather[peak].windDirection,45);
+  const patch=writes.find(write=>write.path===path);
+  const {Firestore}=require('@google-cloud/firestore');const firestore=new Firestore({projectId:'demo-sync-mask'});
+  const batch=firestore.batch();batch.set(firestore.doc(path),patch.value,patch.options);
+  const fields=batch._ops[0].op().updateMask.fieldPaths;
+  assert.ok(fields.includes(`fiman.\`${peak}\``));assert.equal(fields.includes('fiman'),false);
+  assert.equal(fields.includes(`weather.\`${peak}\`.pressure`),false);
 });
-
-test('prediction writes omit missing weather fields while preserving numerical predictions and archived weather', async () => {
-  await handlers.syncPredictions({});
-  const bucket = records.get(predictedPath);
-  assert.equal(bucket.data[peakTime], 5.1);
-  assert.equal(bucket.data[oldTime], 4.2);
-  assert.deepEqual(bucket.weather[peakTime], { windSpeed: 15, description: 'Cloudy' });
-  assert.deepEqual(bucket.weather[oldTime], { windSpeed: 9 });
-  assert.equal(errors.length, 0);
+test('predictions preserve historical fields and metadata while reporting partial source failure',async()=>{
+  records.set(predictedPath,{data:{old:3},weather:{old:{windSpeed:8}}});forecastWeather=new Error('NWS failed');
+  await handlers.syncPredictions();
+  assert.equal(records.get(predictedPath).data[peak],5.1);assert.equal(records.get(predictedPath).data.old,3);
+  assert.deepEqual(records.get(predictedPath).weather,{old:{windSpeed:8}});
+  assert.equal(records.get('operationalHealth/syncPredictions_carolina-beach').status,'partial');
 });
-
-test('atomic prediction merges preserve prior optional weather properties omitted from a partial refresh', async () => {
-  records.get(predictedPath).weather[peakTime] = { windDirection: 90, icon: 'https://weather.example/icon.svg' };
-  await handlers.syncPredictions({});
-  assert.deepEqual(records.get(predictedPath).weather[peakTime], { windSpeed: 15, windDirection: 90, description: 'Cloudy', icon: 'https://weather.example/icon.svg' });
-  const patch = writes.find(write => write.path === predictedPath);
-  assert.deepEqual(patch.options, { merge: true });
-  assert.equal(Object.hasOwn(patch.value.data, oldTime), false);
-  assert.equal(errors.length, 0);
+test('all unavailable prediction sources fail the schedule and leave existing forecast freshness untouched',async()=>{
+  records.set(predictedPath,{lastUpdated:'original'});prediction=new Error('NOAA failed');forecastWeather=new Error('NWS failed');
+  await assert.rejects(handlers.syncPredictions(),/Prediction sync/);
+  assert.deepEqual(records.get(predictedPath),{lastUpdated:'original'});
 });
-
-test('failed forecast weather does not stop NOAA prediction writes or alter archived weather', async () => {
-  forecastWeather = new Error('NWS hourly forecast unavailable');
-  const previous = records.get(predictedPath);
-  await handlers.syncPredictions({});
-  const bucket = records.get(predictedPath);
-  assert.equal(bucket.data[peakTime], 5.1);
-  assert.deepEqual(bucket.weather, previous.weather);
-  assert.equal(Object.hasOwn(writes.find(write => write.path === predictedPath).value, 'weather'), false);
-  assert.equal(warnings.length, 1);
-});
-
-test('failed NOAA predictions preserve astronomical predictions while available forecast weather updates', async () => {
-  prediction = new Error('NOAA unavailable');
-  const previous = records.get(predictedPath);
-  await handlers.syncPredictions({});
-  assert.deepEqual(records.get(predictedPath).data, previous.data);
-  assert.deepEqual(records.get(predictedPath).weather[peakTime], { windSpeed: 15, description: 'Cloudy' });
-  assert.equal(writes.some(write => write.path.includes('/peaks/')), false);
-  assert.equal(warnings.length, 1);
-});
-
-test('fully unavailable predictions retain the previous bucket and freshness timestamp', async () => {
-  prediction = new Error('NOAA unavailable'); forecastWeather = new Error('NWS unavailable');
-  const previous = structuredClone(records.get(predictedPath));
-  await handlers.syncPredictions({});
-  assert.deepEqual(records.get(predictedPath), previous);
-  assert.deepEqual(writes, []);
-  assert.equal(warnings.length, 2);
+test('weather-only writes cannot count as gauge measurements or produce a successful water-level sync',async()=>{
+ noaa={};fiman={waterLevels:{},imagery:{}};
+ await assert.rejects(handlers.syncWaterLevels(),/Observation sync/);
+ assert.equal(records.get(path).weather[peak].precip,0);assert.equal(health().measurementWrites,0);assert.equal(health().status,'failed');
+ assert.equal(health().sourceLastSuccessfulAt?.noaa,undefined);assert.equal(health().sourceLastSuccessfulAt?.fiman,undefined);
 });

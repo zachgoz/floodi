@@ -1,4 +1,6 @@
-import fetch from "node-fetch";
+import { providerJson } from "../utils/providerRequest";
+import * as logger from "firebase-functions/logger";
+import { safeError } from "../utils/observability";
 import { fetchFimanData } from "../etl/fiman";
 import { fetchNoaaPredictions } from "../etl/noaa";
 import { WeatherPoint } from "./model";
@@ -26,9 +28,7 @@ export function points(series: Record<string, number>): WaterPoint[] {
     .sort((a, b) => +a.t - +b.t);
 }
 async function json(url: string) {
-  const res = await fetch(url, { timeout: 40_000 });
-  if (!res.ok) throw new Error(`Weather source HTTP ${res.status}`);
-  const data = await res.json();
+  const data = await providerJson(url, { provider: 'open_meteo', timeoutMs: 40_000, cacheMs: url.includes('archive-api') ? 24 * 3600_000 : 30 * 60_000 });
   if (data.error)
     throw new Error(`Weather source: ${String(data.reason).slice(0, 160)}`);
   return data;
@@ -108,8 +108,9 @@ export async function collectHistory(start: Date, end: Date) {
       Object.assign(observed, sensor.waterLevels);
       Object.assign(predicted, tide);
     } catch (e) {
+      logger.warn('Historical source interval unavailable', { event: 'history_interval_failed', start: a.toISOString(), end: b.toISOString(), error: safeError(e) });
       failures.push(
-        `${a.toISOString().slice(0, 10)}: ${e instanceof Error ? e.message : "source unavailable"}`,
+        `${a.toISOString().slice(0, 10)}: ${safeError(e).message}`,
       );
     }
   }

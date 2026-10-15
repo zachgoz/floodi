@@ -26,9 +26,7 @@ export async function explainWithGemini(
   // from Firebase. Keep Firebase's runtime project and storage configuration intact.
   const project = process.env.VERTEX_AI_PROJECT?.trim() || await auth.getProjectId();
   const client = await auth.getClient();
-  const response = await client.request<{
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-  }>({
+  const response = await client.request<GeminiResponse>({
     url: `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/publishers/google/models/gemini-3.8-flash:generateContent`,
     method: "POST",
     timeout: 30_000,
@@ -69,7 +67,10 @@ export async function explainWithGemini(
       ],
       generationConfig: {
         temperature: 0,
-        maxOutputTokens: 400,
+        // The configured 3.8 Flash endpoint rejects MINIMAL. Use LOW with a
+        // bounded reserve and reject truncated responses instead of repairing JSON.
+        maxOutputTokens: 2048,
+        thinkingConfig: { thinkingLevel: "LOW", includeThoughts: false },
         responseMimeType: "application/json",
         responseSchema: {
           type: "OBJECT",
@@ -96,17 +97,32 @@ export async function explainWithGemini(
       },
     },
   });
-  const raw = response.data.candidates?.[0]?.content?.parts
-    ?.map((p) => p.text || "")
-    .join("");
-  const value: unknown = JSON.parse(raw || "null");
+  return parseGeminiExplanation(response.data, document);
+}
+
+export interface GeminiResponse {
+  candidates?: { finishReason?: string; content?: { parts?: { text?: string; thought?: boolean }[] } }[];
+  usageMetadata?: { candidatesTokenCount?: number; thoughtsTokenCount?: number };
+  promptFeedback?: { blockReason?: string };
+}
+class GeminiResponseError extends Error {
+  constructor(message: string, public code: string, public finishReason?: string, public outputTextLength?: number, public responseTokens?: number, public thinkingTokens?: number) { super(message); this.name = 'GeminiResponseError'; }
+}
+export function parseGeminiExplanation(response: GeminiResponse, document: ForecastDocument): Explanation {
+  const candidate = response.candidates?.[0];
+  const raw = candidate?.content?.parts?.filter(part => part.thought !== true).map(part => part.text || '').join('') || '';
+  const finish = candidate?.finishReason;
+  const failure = (message: string, code: string) => new GeminiResponseError(message, code, finish, raw.length, response.usageMetadata?.candidatesTokenCount, response.usageMetadata?.thoughtsTokenCount);
+  if (finish && finish !== 'STOP') throw failure('Gemini did not finish a complete explanation', finish === 'MAX_TOKENS' ? 'GEMINI_OUTPUT_TRUNCATED' : 'GEMINI_INCOMPLETE_RESPONSE');
+  if (!raw) throw failure('Gemini returned no explanation text', 'GEMINI_EMPTY_RESPONSE');
+  let value: unknown;
+  try { value = JSON.parse(raw); }
+  catch { throw failure('Gemini returned incomplete or invalid JSON', 'GEMINI_INVALID_JSON'); }
   if (
     !validateExplanation(value, document.evidence) ||
     !value.evidenceIds.includes("availability") ||
     (value.headline === "No evaluated forecast" && document.status !== "unavailable") ||
-    (value.headline === "Elevated flood risk" &&
-      document.explanation.headline !== "Elevated flood risk")
-  )
-    throw new Error("Unsupported Gemini explanation");
+    (value.headline === "Elevated flood risk" && document.explanation.headline !== "Elevated flood risk")
+  ) throw failure("Unsupported Gemini explanation", 'GEMINI_UNSUPPORTED_EXPLANATION');
   return value;
 }

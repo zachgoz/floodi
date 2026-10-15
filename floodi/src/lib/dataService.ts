@@ -3,16 +3,17 @@
  * 
  * Provides centralized access to water level observations, predictions,
  * and flood events stored in Firestore. Uses a bucket-based model
- * (monthly documents) for efficient fetching and caching.
+ * (daily observations with legacy monthly history) for fetching and caching.
  */
 
 import { db, storage } from 'src/lib/firebase';
-import { doc, getDoc, collection, query, where, orderBy, getDocs, limit, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
-import { fetchObservedWaterLevels, fetchPredictions as fetchNoaaPredictions } from 'src/lib/noaa';
+import { fetchObservedWaterLevels } from 'src/lib/noaa';
 import { LOCATIONS } from 'src/constants/locations';
 import type { ObservationBucket, PredictionBucket, WaterLevelPeak, FloodEvent } from 'src/types/data';
 import { markPerf, measurePerf } from 'src/lib/perfLogger';
+import { reportClientError } from 'src/lib/errorReporting';
 
 /**
  * Resolves a URL that might be a storage:// path.
@@ -56,6 +57,7 @@ export async function prefetchMonths(locationId: string, months: string[], type:
           return snap.exists() ? snap.data() : null;
         } catch (err) {
           console.warn(`Failed to prefetch ${type} for ${month}:`, err);
+          reportClientError('water_data_unavailable', err, { provider: 'firestore' });
           delete bucketCache[cacheKey]; // Don't cache failures permanently
           return null;
         }
@@ -76,10 +78,8 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
   };
   
   // Proactive pre-fetch: Add previous and next month to the fetch list for seamless scrolling
-  const prevMonth = new Date(start);
-  prevMonth.setMonth(prevMonth.getMonth() - 1);
-  const nextMonth = new Date(end);
-  nextMonth.setMonth(nextMonth.getMonth() + 1);
+  const prevMonth = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - 1, 1));
+  const nextMonth = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 1));
   
   const allMonths = [...new Set([
     prevMonth.toISOString().substring(0, 7),
@@ -87,7 +87,12 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
     nextMonth.toISOString().substring(0, 7)
   ])];
 
-  const results = await measurePerf('dataService.fetchObservations.prefetchMonths', () => prefetchMonths(locationId, allMonths, 'obs'), {
+  const now = new Date();
+  const days = getDaysInRange(start, new Date(Math.min(+end, +now)));
+  // Legacy months remain readable while daily buckets replace unbounded month
+  // writes. Fetch only days in the requested range, and use the same TTL cache.
+  const ids = [...allMonths, ...days];
+  const results = await measurePerf('dataService.fetchObservations.prefetchMonths', () => prefetchMonths(locationId, ids, 'obs'), {
     ...metadata,
     allMonths,
   });
@@ -96,31 +101,55 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
     noaa: Record<string, number>; 
     fiman: Record<string, number>; 
     imagery: Record<string, Record<string, string>>;
-    weather: Record<string, any>;
+    weather: Record<string, Record<string, unknown>>;
   } = {
     noaa: {},
     fiman: {},
     imagery: {},
     weather: {}
   };
+  const archivedImagery: Record<string, Record<string, string>> = {};
 
   // Only merge data for requested months into the final result
   // The others remain in bucketCache for future quick access
-  for (let i = 0; i < allMonths.length; i++) {
-    const month = allMonths[i];
-    if (!requestedMonths.includes(month)) continue;
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    if (id.length === 7 && !requestedMonths.includes(id)) continue;
     
     const bucket = (await results[i]) as ObservationBucket | null;
     if (!bucket) continue;
     
-    // Use Object.assign for performance with large objects
-    if (bucket.noaa) Object.assign(merged.noaa, bucket.noaa);
-    if (bucket.fiman) Object.assign(merged.fiman, bucket.fiman);
-    for (const [camera, images] of Object.entries(bucket.imagery || {})) {
-      merged.imagery[camera] = { ...merged.imagery[camera], ...images };
+    for (const source of ['noaa', 'fiman'] as const) {
+      for (const [t, value] of Object.entries(bucket[source] || {})) {
+        const ms = observationTimestamp(t);
+        if (Number.isFinite(ms) && ms <= +now && Number.isFinite(value)) merged[source][new Date(ms).toISOString()] = value;
+      }
     }
-    if ((bucket as any).weather) Object.assign(merged.weather, (bucket as any).weather);
+    // Both timestamp->camera and camera->timestamp occurred in legacy data.
+    for (const source of ['imagery', 'persistedImagery'] as const) {
+      for (const [outer, entries] of Object.entries(bucket[source] || {})) {
+        if (!entries || typeof entries !== 'object') continue;
+        const outerMs = observationTimestamp(outer);
+        for (const [key, url] of Object.entries(entries)) {
+          const ms = Number.isFinite(outerMs) ? outerMs : observationTimestamp(key);
+          const camera = Number.isFinite(outerMs) ? key : outer;
+          if (!Number.isFinite(ms) || ms > +now || typeof url !== 'string') continue;
+          const target = url.startsWith('storage://') ? archivedImagery : merged.imagery;
+          if (source === 'persistedImagery' && target !== archivedImagery) continue;
+          (target[camera] ||= {})[new Date(ms).toISOString()] = url;
+        }
+      }
+    }
+    const updated = Date.parse(bucket.lastUpdated || '');
+    const weatherCutoff = id.length === 7 ? (Number.isFinite(updated) ? Math.min(+now, updated) : 0) : +now;
+    for (const [t, weather] of Object.entries(bucket.weather || {})) {
+      const ms = observationTimestamp(t);
+      if (!Number.isFinite(ms) || ms > weatherCutoff || !weather || typeof weather !== 'object' || Array.isArray(weather)) continue;
+      const canonical = new Date(ms).toISOString();
+      merged.weather[canonical] = { ...merged.weather[canonical], ...weather };
+    }
   }
+  for (const [camera, images] of Object.entries(archivedImagery)) merged.imagery[camera] = { ...merged.imagery[camera], ...images };
 
   markPerf('dataService.fetchObservations.complete', {
     ...metadata,
@@ -146,6 +175,7 @@ export async function fetchUnifiedObservations(locationId: string, start: Date, 
   };
   const dbData: Awaited<ReturnType<typeof fetchObservations>> = await measurePerf('dataService.fetchUnifiedObservations.db', () => fetchObservations(locationId, start, end)).catch(err => {
     console.warn('[dataService] fetchObservations failed:', err);
+    reportClientError('water_data_unavailable', err, { provider: 'firestore' });
     return { noaa: {}, fiman: {}, imagery: {}, weather: {} };
   });
 
@@ -167,6 +197,7 @@ export async function fetchUnifiedObservations(locationId: string, start: Date, 
   // Panning historical or future-only windows must not trigger current readings.
   if (start <= now && end >= now && (noaaStale || fimanStale)) {
     const provider = noaaStale && fimanStale ? 'both' : fimanStale ? 'fiman' : 'noaa';
+    reportClientError('water_data_fallback', undefined, { provider: 'firestore' });
     const staleTimes = [
       ...(noaaStale ? [latestNoaa] : []),
       ...(fimanStale ? [latestFiman] : []),
@@ -191,6 +222,7 @@ export async function fetchUnifiedObservations(locationId: string, start: Date, 
       provider,
     }).catch(err => {
       console.warn(`[dataService] ${provider} observation refresh failed:`, err);
+      reportClientError('water_data_unavailable', err, { provider: provider === 'both' ? 'app' : provider });
       return null;
     }), metadata);
 
@@ -208,7 +240,10 @@ export async function fetchUnifiedObservations(locationId: string, start: Date, 
       mergeReadings(live.source, live.data);
       if (live.alternate) mergeReadings(live.source === 'fiman' ? 'noaa' : 'fiman', live.alternate);
       for (const [camera, images] of Object.entries(live.imagery || {})) {
-        dbData.imagery[camera] = { ...dbData.imagery[camera], ...images };
+        const cameraImages = dbData.imagery[camera] ||= {};
+        for (const [t, url] of Object.entries(images)) {
+          if (!cameraImages[t]?.startsWith('storage://')) cameraImages[t] = url;
+        }
       }
     }
   }
@@ -246,15 +281,15 @@ export async function fetchUnifiedPredictions(locationId: string, start: Date, e
 /**
  * Extracts and formats weather data (wind/precip) from merged observation/prediction buckets
  */
-export function extractWeatherData(mergedData: { weather: Record<string, any> }) {
+export function extractWeatherData(mergedData: { weather: Record<string, Record<string, unknown>> }) {
   const wind: Record<string, { speed: number, dir: number }> = {};
   const precip: Record<string, number> = {};
 
   for (const [t, w] of Object.entries(mergedData.weather)) {
-    if (w.windSpeed !== undefined && w.windDirection !== undefined) {
+    if (typeof w.windSpeed === 'number' && Number.isFinite(w.windSpeed) && typeof w.windDirection === 'number' && Number.isFinite(w.windDirection)) {
       wind[t] = { speed: w.windSpeed, dir: w.windDirection };
     }
-    if (w.precip !== undefined) {
+    if (typeof w.precip === 'number' && Number.isFinite(w.precip)) {
       precip[t] = w.precip;
     }
   }
@@ -286,7 +321,7 @@ export async function fetchPredictions(locationId: string, start: Date, end: Dat
     allMonths,
   });
 
-  const merged: { data: Record<string, number>; weather: Record<string, any> } = {
+  const merged: { data: Record<string, number>; weather: Record<string, Record<string, unknown>> } = {
     data: {},
     weather: {}
   };
@@ -299,7 +334,6 @@ export async function fetchPredictions(locationId: string, start: Date, end: Dat
     if (!bucket) continue;
     
     if (bucket.data) Object.assign(merged.data, bucket.data);
-    // @ts-ignore
     if (bucket.weather) Object.assign(merged.weather, bucket.weather);
   }
 
@@ -366,6 +400,10 @@ export async function findLastSimilarLevel(locationId: string, targetLevel: numb
 }
 
 // Helpers
+function observationTimestamp(value: string): number {
+  return /(Z|[+-]\d\d:\d\d)$/i.test(value) ? Date.parse(value) : NaN;
+}
+
 /**
  * Generates an array of ISO date strings (YYYY-MM-DD) for each day in the range.
  * @param start Start date
@@ -374,10 +412,9 @@ export async function findLastSimilarLevel(locationId: string, targetLevel: numb
  */
 function getDaysInRange(start: Date, end: Date): string[] {
   const days: string[] = [];
-  const curr = new Date(start);
-  while (curr <= end) {
-    days.push(curr.toISOString().split('T')[0]);
-    curr.setDate(curr.getDate() + 1);
+  if (!Number.isFinite(+start) || !Number.isFinite(+end) || start > end) return days;
+  for (let ms = Math.floor(+start / 86_400_000) * 86_400_000; ms <= +end; ms += 86_400_000) {
+    days.push(new Date(ms).toISOString().split('T')[0]);
   }
   return [...new Set(days)];
 }
@@ -392,10 +429,10 @@ function getMonthsInRange(start: Date, end: Date): string[] {
   const months: string[] = [];
   const endMonth = end.toISOString().substring(0, 7);
   
-  const iter = new Date(start.getFullYear(), start.getMonth(), 1);
+  const iter = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
   while (iter.toISOString().substring(0, 7) <= endMonth) {
     months.push(iter.toISOString().substring(0, 7));
-    iter.setMonth(iter.getMonth() + 1);
+    iter.setUTCMonth(iter.getUTCMonth() + 1);
   }
   return [...new Set(months)];
 }

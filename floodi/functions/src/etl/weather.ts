@@ -1,4 +1,6 @@
-import fetch from 'node-fetch';
+import { providerJson } from '../utils/providerRequest';
+import * as logger from 'firebase-functions/logger';
+import { safeError } from '../utils/observability';
 
 /**
  * NWS Weather ETL utilities
@@ -35,36 +37,15 @@ function validTimestamp(value: unknown): value is string {
 }
 
 export async function fetchNwsObservations(lat: number, lon: number, start?: Date, end?: Date): Promise<Record<string, WeatherData>> {
-  // 1. Get nearest station
-  const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`, {
-    headers: HEADERS, timeout: 30_000
-  });
-  if (!pointRes.ok) throw new Error(`NWS Point API error: ${pointRes.statusText}`);
-  const pointData = await pointRes.json() as any;
-  
-  const stationsRes = await fetch(pointData.properties.observationStations, {
-    headers: HEADERS, timeout: 30_000
-  });
-  if (!stationsRes.ok) throw new Error(`NWS Stations API error: ${stationsRes.statusText}`);
-  const stationsData = await stationsRes.json() as any;
-  const stationId = stationsData.features?.[0]?.id;
-  if (typeof stationId !== 'string') throw new Error('NWS Stations API returned no observation station');
-
-  // 2. Fetch observations
-  let url = `${stationId}/observations`;
-  if (start && end) {
-    url += `?start=${start.toISOString()}&end=${end.toISOString()}`;
-  } else {
-    url += `?limit=24`;
-  }
-
-  const obsRes = await fetch(url, {
-    headers: HEADERS, timeout: 30_000
-  });
-  if (!obsRes.ok) throw new Error(`NWS Observations API error: ${obsRes.statusText}`);
-  const obsData = await obsRes.json() as any;
-
   const out: Record<string, WeatherData> = {};
+  let nwsFailure: unknown;
+  try {
+    const pointData = await providerJson(`https://api.weather.gov/points/${lat},${lon}`, { provider: 'nws', headers: HEADERS, cacheMs: 24 * 3600_000 });
+    const stationsData = await providerJson(pointData.properties.observationStations, { provider: 'nws', headers: HEADERS, cacheMs: 24 * 3600_000 });
+    const stationId = stationsData.features?.[0]?.id;
+    if (typeof stationId !== 'string') throw new Error('NWS Stations API returned no observation station');
+    const url = start && end ? `${stationId}/observations?start=${start.toISOString()}&end=${end.toISOString()}` : `${stationId}/observations?limit=24`;
+    const obsData = await providerJson(url, { provider: 'nws', headers: HEADERS, cacheMs: 5 * 60_000 });
   for (const feature of obsData.features || []) {
     const p = feature?.properties;
     const t = p?.timestamp;
@@ -81,6 +62,11 @@ export async function fetchNwsObservations(lat: number, lon: number, start?: Dat
     if (Object.keys(record).length) out[t] = record;
   }
 
+  } catch (error) {
+    nwsFailure = error;
+    logger.warn('NWS unavailable; attempting independent weather augmentation', { event: 'weather_source_partial', provider: 'nws', error: safeError(error) });
+  }
+
   // 3. Fetch from Open-Meteo to augment/replace wind and precip data
   let omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,precipitation,surface_pressure,wind_speed_10m,wind_direction_10m`;
   
@@ -93,11 +79,8 @@ export async function fetchNwsObservations(lat: number, lon: number, start?: Dat
   }
 
   try {
-    const omRes = await fetch(omUrl, {
-      headers: HEADERS, timeout: 30_000
-    });
-    if (omRes.ok) {
-      const omData = await omRes.json() as any;
+    const omData = await providerJson(omUrl, { provider: 'open_meteo', headers: HEADERS, cacheMs: 60 * 60_000 });
+    {
       const hourly = omData.hourly;
       if (Array.isArray(hourly?.time)) {
         for (let i = 0; i < hourly.time.length; i++) {
@@ -123,11 +106,10 @@ export async function fetchNwsObservations(lat: number, lon: number, start?: Dat
           if (Object.keys(record).length) out[t] = record;
         }
       }
-    } else {
-      console.warn('Open-Meteo API error:', omRes.statusText);
     }
   } catch (e) {
-    console.warn('Failed to fetch Open-Meteo data:', e);
+    logger.warn('Open-Meteo augmentation unavailable', { event: 'weather_source_partial', provider: 'open_meteo', error: safeError(e) });
+    if (nwsFailure || !Object.keys(out).length) throw e;
   }
 
   return out;
@@ -150,17 +132,8 @@ function compassToDeg(val: string | number | undefined): number | undefined {
 }
 
 export async function fetchNwsForecast(lat: number, lon: number): Promise<Record<string, WeatherData>> {
-  const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`, {
-    headers: HEADERS, timeout: 30_000
-  });
-  if (!pointRes.ok) throw new Error(`NWS Point API error: ${pointRes.statusText}`);
-  const pointData = await pointRes.json() as any;
-  
-  const forecastRes = await fetch(pointData.properties.forecastHourly, {
-    headers: HEADERS, timeout: 30_000
-  });
-  if (!forecastRes.ok) throw new Error(`NWS Forecast API error: ${forecastRes.statusText}`);
-  const forecastData = await forecastRes.json() as any;
+  const pointData = await providerJson(`https://api.weather.gov/points/${lat},${lon}`, { provider: 'nws', headers: HEADERS, cacheMs: 24 * 3600_000 });
+  const forecastData = await providerJson(pointData.properties.forecastHourly, { provider: 'nws', headers: HEADERS, cacheMs: 30 * 60_000 });
 
   const out: Record<string, WeatherData> = {};
   for (const period of forecastData.properties?.periods || []) {

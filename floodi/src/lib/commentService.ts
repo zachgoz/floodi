@@ -21,6 +21,7 @@ import {
 } from 'firebase/firestore';
 import { db } from 'src/lib/firebase';
 import { trackCommentSubmit } from 'src/lib/analytics';
+import { reportClientError } from 'src/lib/errorReporting';
 import type {
   Comment,
   CreateCommentData,
@@ -94,25 +95,25 @@ export const createComment = async (
   let added;
   try {
     added = await addDoc(col, payload);
-  } catch (err: any) {
-    console.error('addDoc failed with permission denied. Payload:', payload, 'Auth:', ctx);
-    throw new Error(`Write rejected by database permissions: ${err.message}`);
+  } catch (err: unknown) {
+    reportClientError('comment_write_failed', err, { provider: 'comments' });
+    throw new Error('Unable to save your comment. Please try again.');
   }
 
   let snap;
   try {
     snap = await getDoc(added);
-  } catch (err: any) {
-    console.error('getDoc immediately after addDoc failed:', err);
-    throw new Error(`Read rejected by database permissions: ${err.message}`);
+  } catch (err: unknown) {
+    reportClientError('comment_read_failed', err, { provider: 'comments' });
+    throw new Error('Your comment was saved, but could not be loaded. Refresh to check it before submitting again.');
   }
   
   if (!snap.exists()) throw new Error('Failed to create comment');
   const created = { id: snap.id, ...(snap.data() as Omit<Comment, 'id'>) } as Comment;
   try {
     trackCommentSubmit(created.metadata.station.id, created.metadata.locationId);
-  } catch (e) {
-    console.warn('[Analytics] trackCommentSubmit error:', e);
+  } catch {
+    // Optional analytics must not expose request details or block comments.
   }
   return created;
 };
@@ -275,7 +276,7 @@ export const subscribeToCommentsByTimeRange = (
       .filter((c) => Date.parse(c.metadata.timeRange.endTime) >= start);
     cb(items);
   }, (err) => {
-    console.warn('Realtime subscription error:', err);
+    reportClientError('comment_subscription_failed', err, { provider: 'comments' });
   });
 };
 
@@ -294,6 +295,8 @@ export const subscribeToComments = (
   return onSnapshot(q, (snap) => {
     const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Comment, 'id'>) } as Comment));
     cb(items);
+  }, (err) => {
+    reportClientError('comment_subscription_failed', err, { provider: 'comments' });
   });
 };
 

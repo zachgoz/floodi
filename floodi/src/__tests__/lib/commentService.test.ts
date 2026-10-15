@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { UserRole } from 'src/types/user';
+import { reportClientError } from 'src/lib/errorReporting';
 
 vi.mock('src/lib/firebase', () => ({ db: {} }));
+vi.mock('src/lib/errorReporting', () => ({ reportClientError: vi.fn() }));
+vi.mock('src/lib/analytics', () => ({ trackCommentSubmit: vi.fn() }));
 
 const {
   addDoc,
@@ -94,6 +97,23 @@ describe('commentService', () => {
     const created = await createComment({ content: 'Hello', metadata: validMeta, authorUid: 'u1', authorDisplayName: 'T', authorPhotoURL: null }, { role: UserRole.User, currentUserUid: 'u1' });
     expect(addDoc).toHaveBeenCalled();
     expect(created.id).toBe('c1');
+  });
+
+  it('reports comment write failure without logging content or account payloads', async () => {
+    const error = Object.assign(new Error('private server detail'), { code: 'permission-denied' });
+    addDoc.mockRejectedValueOnce(error);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(createComment({ content: 'Private comment', metadata: validMeta, authorUid: 'privacy-test', authorDisplayName: 'Private', authorPhotoURL: null }, { role: UserRole.User, currentUserUid: 'privacy-test' })).rejects.toThrow('Unable to save your comment. Please try again.');
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(reportClientError).toHaveBeenCalledWith('comment_write_failed', error, { provider: 'comments' });
+  });
+
+  it('distinguishes a saved comment from a failed follow-up read so users do not resubmit', async () => {
+    addDoc.mockResolvedValueOnce({ id: 'saved' });
+    const error = new Error('private server detail');
+    getDoc.mockRejectedValueOnce(error);
+    await expect(createComment({ content: 'Private comment', metadata: validMeta, authorUid: 'read-test', authorDisplayName: 'Private', authorPhotoURL: null }, { role: UserRole.User, currentUserUid: 'read-test' })).rejects.toThrow('Your comment was saved, but could not be loaded.');
+    expect(reportClientError).toHaveBeenCalledWith('comment_read_failed', error, { provider: 'comments' });
   });
 
   it('lists station comments with pagination', async () => {

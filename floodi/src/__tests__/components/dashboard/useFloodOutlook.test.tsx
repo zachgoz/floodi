@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDoc } from 'firebase/firestore';
 import type { ForecastDocument } from '../../../../functions/src/forecast/schema';
 import { useFloodOutlook } from 'src/components/dashboard/useFloodOutlook';
+import { reportClientError } from 'src/lib/errorReporting';
 
+vi.mock('src/lib/errorReporting', () => ({ reportClientError: vi.fn() }));
 vi.mock('src/lib/firebase', () => ({ db: {} }));
 vi.mock('firebase/firestore', () => ({ doc: vi.fn(), getDoc: vi.fn() }));
 
@@ -81,7 +83,17 @@ describe('useFloodOutlook cached refresh', () => {
       expect(result.current.outlook).toEqual(valid);
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(getDoc).toHaveBeenCalledTimes(1);
+      expect(reportClientError).toHaveBeenCalledWith('outlook_http_fallback', undefined, expect.objectContaining({ provider: 'outlook' }));
     });
+  });
+
+  it('reports handled forecast degradation with a fixed category and provider', async () => {
+    const failure = Object.assign(new Error('not transmitted by the reporter'), { code: 'permission-denied' });
+    vi.mocked(getDoc).mockRejectedValueOnce(failure);
+    const { result } = renderHook(() => useFloodOutlook('carolina-beach'));
+    await settle();
+    expect(result.current.outlook).toBeNull();
+    expect(reportClientError).toHaveBeenCalledWith('outlook_unavailable', failure, { provider: 'firestore' });
   });
 
   it('reads a fresh local cache without inference or a Firestore request', async () => {
@@ -166,6 +178,7 @@ describe('useFloodOutlook cached refresh', () => {
     await settle();
     await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
     expect(result.current.outlook).toBeNull();
+    expect(reportClientError).toHaveBeenCalledWith('outlook_timeout', undefined, { provider: 'outlook' });
     const recovered = forecast(new Date(Date.now()));
     recovered.trend = 'Decreasing';
     fetchMock.mockResolvedValueOnce(response(recovered));

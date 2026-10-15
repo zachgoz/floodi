@@ -84,3 +84,26 @@ test('bounds long-horizon explanation input while retaining measured forecast ex
   assert.ok(sampled.includes(points[4913]));
   assert.ok(sampled.every((p, i) => i === 0 || p.t > sampled[i - 1].t));
 });
+
+test('bounds Gemini output with low thinking supported by the configured endpoint for concise structured answers', async () => {
+  process.env.VERTEX_AI_PROJECT = 'existing-vertex-project';
+  const requests = mockRequest(JSON.stringify({ headline: 'No evaluated forecast', evidenceIds: ['availability'] }));
+  await explainWithGemini(document);
+  assert.deepEqual(requests[0].data.generationConfig.thinkingConfig, { thinkingLevel: 'LOW', includeThoughts: false });
+  assert.equal(requests[0].data.generationConfig.maxOutputTokens, 2048);
+});
+test('reports truncated JSON with safe finish and token diagnostics without retaining response text', () => {
+  const { parseGeminiExplanation } = require('../lib/forecast/gemini');
+  const { safeError } = require('../lib/utils/observability');
+  assert.throws(() => parseGeminiExplanation({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: '{"headline":"private-response' }] } }], usageMetadata: { candidatesTokenCount: 13, thoughtsTokenCount: 387 } }, document), error => {
+    const safe = safeError(error);
+    assert.equal(safe.code, 'GEMINI_OUTPUT_TRUNCATED'); assert.equal(safe.finishReason, 'MAX_TOKENS');
+    assert.equal(safe.responseTokens, 13); assert.equal(safe.thinkingTokens, 387); assert.equal(JSON.stringify(safe).includes('private-response'), false);
+    return true;
+  });
+});
+test('ignores thought content and rejects malformed final JSON with a stable diagnostic code', () => {
+  const { parseGeminiExplanation } = require('../lib/forecast/gemini');
+  assert.equal(parseGeminiExplanation({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'private reasoning', thought: true }, { text: JSON.stringify({ headline: 'No evaluated forecast', evidenceIds: ['availability'] }) }] } }] }, document).headline, 'No evaluated forecast');
+  assert.throws(() => parseGeminiExplanation({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: '{invalid' }] } }] }, document), error => error.code === 'GEMINI_INVALID_JSON');
+});

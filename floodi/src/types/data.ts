@@ -3,8 +3,8 @@
  */
 
 /**
- * Observed Water Level Data (Monthly Bucket)
- * Path: locations/{locationId}/observations/{YYYY-MM}
+ * Observed Water Level Data (daily buckets, plus read-only legacy months).
+ * Path: locations/{locationId}/observations/{YYYY-MM-DD}
  */
 export interface ObservationBucket {
   /** Map of ISO string timestamp to water level value for FiMAN */
@@ -13,6 +13,10 @@ export interface ObservationBucket {
   noaa?: Record<string, number>;
   /** Map of ISO string timestamp to webcam imagery metadata */
   imagery?: Record<string, Record<string, string>>;
+  /** Archived storage URLs overlay refreshable camera URLs. */
+  persistedImagery?: Record<string, Record<string, string>>;
+  /** Actual observed weather; future forecast weather is kept in predictions. */
+  weather?: Record<string, Record<string, unknown>>;
   /** Last sync timestamp */
   lastUpdated: string;
 }
@@ -24,6 +28,7 @@ export interface ObservationBucket {
 export interface PredictionBucket {
   /** Map of ISO string timestamp to predicted water level value */
   data: Record<string, number>;
+  weather?: Record<string, Record<string, unknown>>;
   /** Last sync timestamp */
   lastUpdated: string;
 }

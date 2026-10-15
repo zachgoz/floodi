@@ -2,7 +2,9 @@
 
 ## Overview
 
-FloodCast is a modern React-based mobile and web application that provides hyperlocal tide and flood insights using real-time data from the NOAA Tides and Currents API. The application combines observed water level data with harmonic tide predictions to generate storm surge estimates and flood warnings.
+FloodCast is a React mobile and web application that provides hyperlocal tide and flood insights from NOAA predictions and regional gauge measurements. It combines observed water levels with astronomical tides to estimate non-tidal residuals and potential flooding. Positive residuals are not automatically attributed to storms.
+
+The production reliability path uses daily UTC observation buckets with legacy monthly compatibility, independent source updates, private job/freshness status, bounded provider caching, and privacy-safe frontend error collection. See [the October 14 implementation](docs/RELIABILITY-IMPLEMENTATION-2026-10-14.md), [storage compatibility](docs/DAILY-OBSERVATION-STORAGE.md), and [frontend diagnostics](docs/FRONTEND-ERROR-COLLECTION.md) for the current contracts and deployment verification.
 
 ## Technology Stack
 

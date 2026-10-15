@@ -17,6 +17,10 @@
         "function": "floodOutlook"
       },
       {
+        "source": "/api/client-errors",
+        "function": "collectClientErrors"
+      },
+      {
         "source": "/api/fiman/**",
         "function": "fimanProxy"
       },

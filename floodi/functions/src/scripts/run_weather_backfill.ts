@@ -8,6 +8,7 @@
 
 import * as admin from 'firebase-admin';
 import { fetchNwsObservations } from '../etl/weather';
+import { writeObservationBuckets } from '../utils/observationBuckets';
 
 if (admin.apps.length === 0) {
   admin.initializeApp();
@@ -21,24 +22,6 @@ const LOCATIONS = [
     coords: { lat: 34.0352, lon: -77.8931 },
   }
 ];
-
-function getMonthsInRange(start: Date, end: Date): string[] {
-  const months: string[] = [];
-  const curr = new Date(start.getFullYear(), start.getMonth(), 1);
-  while (curr <= end) {
-    months.push(curr.toISOString().substring(0, 7));
-    curr.setMonth(curr.getMonth() + 1);
-  }
-  return [...new Set(months)];
-}
-
-function filterByMonth<T>(data: Record<string, T>, month: string): Record<string, T> {
-  const out: Record<string, T> = {};
-  for (const [t, v] of Object.entries(data)) {
-    if (t.startsWith(month)) out[t] = v;
-  }
-  return out;
-}
 
 async function run() {
   const endTotal = new Date();
@@ -71,27 +54,11 @@ async function run() {
         const allKeys = Object.keys(weatherData).sort();
         console.log(`  Got ${allKeys.length} hourly points.`);
 
-        // Group by month and merge into Firestore
-        const months = getMonthsInRange(currStart, currEnd);
-        for (const month of months) {
-          const monthWeather = filterByMonth(weatherData, month);
-          const count = Object.keys(monthWeather).length;
-          if (count === 0) {
-            console.log(`  [${month}] No data — skipping.`);
-            continue;
-          }
-
-          console.log(`  [${month}] Merging ${count} weather points into Firestore...`);
-          const monthRef = db.doc(`locations/${loc.id}/observations/${month}`);
-
-          await monthRef.set(
-            { weather: monthWeather, lastUpdated: new Date().toISOString() },
-            { merge: true }
-          );
-          console.log(`  [${month}] ✓ Done`);
-        }
+        const result = await writeObservationBuckets(db, loc.id, { weather: weatherData }, { now: endTotal, observedThrough: currEnd });
+        console.log(`  Wrote ${result.recordsWritten} observations across ${result.daysWritten} daily buckets.`);
       } catch (err) {
         console.error(`  Error for chunk starting ${currStart.toISOString()}:`, err);
+        process.exitCode = 1;
       }
 
       currStart = new Date(currEnd.getTime() + 1);
@@ -99,7 +66,6 @@ async function run() {
   }
 
   console.log('\n✅ Weather backfill complete!');
-  process.exit(0);
 }
 
 run();

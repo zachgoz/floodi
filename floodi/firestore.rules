@@ -170,7 +170,9 @@ service cloud.firestore {
       // Basic station info is public
       allow read: if true;
 
-      match /observations/{month} {
+      // Public environmental data: daily buckets and read-only legacy months.
+      // Every client write remains denied; trusted Admin SDK jobs own ingestion.
+      match /observations/{bucketId} {
         allow read: if true;
       }
 

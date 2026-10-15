@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from 'src/lib/firebase';
+import { reportClientError } from 'src/lib/errorReporting';
 import {
   validateForecast,
   type ForecastDocument,
@@ -37,7 +38,9 @@ export function useFloodOutlook(locationId: string) {
         const response = await fetch('/api/outlook', { signal, cache: 'no-store' });
         const value: unknown = response.ok ? await response.json() : null;
         if (currentForecast(value, locationId)) return value;
-      } catch {
+        reportClientError('outlook_http_fallback', undefined, { provider: 'outlook', status: response.status });
+      } catch (error: unknown) {
+        if (!signal.aborted) reportClientError('outlook_http_fallback', error, { provider: 'outlook' });
         // Hosting and the local preview serve shared caches. A failed or
         // malformed HTTP cache can still use the existing Firestore fallback.
       }
@@ -45,8 +48,11 @@ export function useFloodOutlook(locationId: string) {
       try {
         const snap = await getDoc(doc(db, `locations/${locationId}/outlook/current`));
         const value: unknown = snap.data();
-        return currentForecast(value, locationId) ? value : null;
-      } catch {
+        if (currentForecast(value, locationId)) return value;
+        if (active && !signal.aborted) reportClientError('outlook_unavailable', undefined, { provider: 'firestore' });
+        return null;
+      } catch (error: unknown) {
+        if (active && !signal.aborted) reportClientError('outlook_unavailable', error, { provider: 'firestore' });
         return null;
       }
     };
@@ -79,6 +85,7 @@ export function useFloodOutlook(locationId: string) {
       cancelRead = cancel;
       const deadline = setTimeout(() => {
         requestController.abort();
+        if (active) reportClientError('outlook_timeout', undefined, { provider: 'outlook' });
         finish(null);
       }, READ_TIMEOUT_MS);
       // Firestore getDoc cannot be aborted. Its late result settles only this

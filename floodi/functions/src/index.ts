@@ -1,5 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import fetch from "node-fetch";
+import * as logger from 'firebase-functions/logger';
+import { safeError } from './utils/observability';
 
 /**
  * CORS proxy for the Sunny Day Flooding (FiMAN) API.
@@ -38,9 +40,12 @@ export const fimanProxy = onRequest({ cors: true, maxInstances: 10 }, async (req
   try {
     const upstream = await fetch(url, {
       headers: { Accept: "application/json" },
+      timeout: 20_000,
+      size: 10_000_000,
     });
 
     if (!upstream.ok) {
+      logger.warn('FiMAN proxy upstream unavailable', { event: 'fiman_proxy_failed', httpStatus: upstream.status });
       res
         .status(upstream.status)
         .json({ error: `Upstream returned ${upstream.status}` });
@@ -53,7 +58,7 @@ export const fimanProxy = onRequest({ cors: true, maxInstances: 10 }, async (req
     res.set("Cache-Control", "public, s-maxage=300, max-age=60");
     res.status(200).json(data);
   } catch (err) {
-    console.error("FiMAN proxy error:", err);
+    logger.error('FiMAN proxy failed', { event: 'fiman_proxy_failed', error: safeError(err) });
     res.status(502).json({ error: "Failed to fetch from FiMAN API" });
   }
 });
@@ -62,3 +67,5 @@ export { syncWaterLevels, syncPredictions } from "./syncData";
 export { runBackfillData } from "./backfill";
 export { syncImagery } from "./syncImagery";
 export { refreshResidualHistory, generateFloodOutlook, floodOutlook } from './forecast/jobs';
+export { checkDataHealth } from './health';
+export { collectClientErrors } from './clientErrors';

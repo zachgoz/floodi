@@ -10,6 +10,7 @@ import { trainWeatherResponse, LONG_RANGE_FEATURES, LONG_RANGE_LEADS, WEATHER_RE
 
 const backend = vi.hoisted(() => {
   const records = new Map<string, unknown>();
+  const logs: { level: string; details: Record<string, unknown> }[] = [];
   const schedules: { schedule: string }[] = [];
   const save = vi.fn(async (_data: unknown, _options: unknown) => undefined);
   const file = vi.fn(() => ({ save }));
@@ -22,8 +23,9 @@ const backend = vi.hoisted(() => {
     }),
   }));
   const runTransaction = vi.fn(async (work: (transaction: { get: (ref: { get: () => Promise<unknown> }) => Promise<unknown>; set: (ref: { set: (value: unknown) => Promise<void> }, value: unknown) => void }) => unknown) => work({ get: ref => ref.get(), set: (ref, value) => { void ref.set(value); } }));
-  return { records, schedules, save, file, doc, runTransaction };
+  return { records, schedules, save, file, doc, runTransaction, logs };
 });
+vi.mock('../../../functions/node_modules/firebase-functions/lib/logger/index.js', () => Object.fromEntries(['info', 'warn', 'error'].map(level => [level, (_message: string, details: Record<string, unknown>) => backend.logs.push({ level, details })])));
 vi.mock('../../../functions/node_modules/firebase-admin/lib/index.js', () => ({
   apps: [{}], initializeApp: vi.fn(), firestore: () => ({ doc: backend.doc, runTransaction: backend.runTransaction }),
   storage: () => ({ bucket: () => ({ file: backend.file }) }),
@@ -93,6 +95,7 @@ beforeEach(() => {
   vi.setSystemTime(initialNow);
   vi.clearAllMocks();
   backend.records.clear();
+  backend.logs.length = 0;
   const cache = serializeGaugeModel(model(), initialNow, 'forecast-training/carolina-beach/2026-10-10/history.json');
   backend.records.set('forecast_models/carolina-beach', { ...cache, archivePath: 'forecast_model_archive/carolina-beach/models/2026-10-10' });
   vi.mocked(fetchFimanData).mockImplementation(async () => ({ waterLevels: measuredRecord(), imagery: {} }));
@@ -134,7 +137,7 @@ describe('scheduled numerical forecast and private issued-input archive', () => 
     if (failure === 'source-error') vi.mocked(fetchFimanData).mockRejectedValueOnce(new Error('Provider unavailable'));
     if (failure === 'missing-observations') vi.mocked(fetchFimanData).mockResolvedValueOnce({ waterLevels: {}, imagery: {} });
     if (failure === 'invalid-model') backend.records.set('forecast_models/carolina-beach', { version: 'old' });
-    await runForecast();
+    await expect(runForecast()).rejects.toThrow('existing outlook retained');
     expect(backend.records.get(liveDoc)).toBe(previous);
     expect([...backend.records.keys()].filter(path => path.startsWith('forecast_archive/'))).toHaveLength(1);
     expect(explainWithGemini).toHaveBeenCalledTimes(1);
@@ -144,7 +147,7 @@ describe('scheduled numerical forecast and private issued-input archive', () => 
     const previous = backend.records.get(liveDoc) as { expiresAt: string };
     vi.setSystemTime(new Date(previous.expiresAt));
     vi.mocked(fetchFimanData).mockRejectedValueOnce(new Error('Provider unavailable'));
-    await runForecast();
+    await expect(runForecast()).rejects.toThrow('No current numerical outlook');
     expect(backend.records.get(liveDoc)).toMatchObject({ status: 'unavailable', points: [] });
     expect(backend.records.get(liveDoc)).not.toBe(previous);
   });
@@ -222,6 +225,29 @@ describe('scheduled numerical forecast and private issued-input archive', () => 
     expect([...backend.records.keys()].filter(path => path.startsWith('forecast_input_archive/'))).toHaveLength(3);
     expect(trainWeatherResponse).not.toHaveBeenCalled();
   });
+  it('preserves safe Vertex failure diagnostics and exposes partial health without losing numerical output', async () => {
+    const error = Object.assign(new Error('Generic transport failure'), { response: { status: 403, data: { error: { status: 'PERMISSION_DENIED', message: 'Vertex model access denied' } } }, config: { headers: { Authorization: 'Bearer private-test-credential' }, data: 'complete forecast payload' } });
+    vi.mocked(explainWithGemini).mockRejectedValueOnce(error);
+    await runForecast();
+    expect(backend.records.get(liveDoc)).toMatchObject({ status: 'available', explanationSource: 'fallback' });
+    expect(backend.logs).toContainEqual(expect.objectContaining({ level: 'warn', details: expect.objectContaining({ event: 'gemini_explanation_failed', error: expect.objectContaining({ httpStatus: 403, apiStatus: 'PERMISSION_DENIED', message: 'Vertex model access denied' }) }) }));
+    expect(backend.records.get('operationalHealth/generateFloodOutlook_carolina-beach')).toMatchObject({ status: 'partial', explanationSource: 'fallback', numericalGeneratedAt: initialNow.toISOString() });
+    expect(JSON.stringify(backend.logs)).not.toContain('private-test-credential');
+    expect(JSON.stringify(backend.logs)).not.toContain('complete forecast payload');
+  });
+  it('reuses a schema-valid Gemini evidence selection between hourly calls with current calculated text', async () => {
+    vi.mocked(explainWithGemini).mockResolvedValueOnce({ headline: 'Elevated flood risk', evidenceIds: ['availability'] });
+    await runForecast();
+    vi.setSystemTime(new Date(+initialNow + 10 * 60_000));
+    await runForecast();
+    expect(explainWithGemini).toHaveBeenCalledTimes(1);
+    expect(backend.records.get(liveDoc)).toMatchObject({ status: 'available', explanationSource: 'gemini-3.8-flash', generatedAt: new Date(+initialNow + 10 * 60_000).toISOString() });
+  });
+  it('records numerical failure with the failing stage and keeps the original provider cause', async () => {
+    vi.mocked(fetchFimanData).mockRejectedValueOnce(Object.assign(new Error('FiMAN transport timed out'), { code: 'ETIMEDOUT' }));
+    await expect(runForecast()).rejects.toThrow('No current numerical outlook');
+    expect(backend.records.get('operationalHealth/generateFloodOutlook_carolina-beach')).toMatchObject({ status: 'failed', stage: 'sources', error: expect.objectContaining({ message: 'FiMAN transport timed out', code: 'ETIMEDOUT' }) });
+  });
   it('keeps calculated forecasts available when explanation reservation storage is unavailable', async () => {
     backend.runTransaction.mockRejectedValueOnce(new Error('State unavailable'));
     await runForecast();
@@ -230,7 +256,7 @@ describe('scheduled numerical forecast and private issued-input archive', () => 
   });
   it('withholds a numerical forecast for a malformed cache without fitting or calling providers', async () => {
     backend.records.set('forecast_models/carolina-beach', { version: 'old', model: {} });
-    await runForecast();
+    await expect(runForecast()).rejects.toThrow('No current numerical outlook');
     const document = backend.records.get(liveDoc) as { status: string; points: unknown[] };
     expect(document.status).toBe('unavailable');
     expect(document.points).toEqual([]);

@@ -6,6 +6,7 @@ function loadWeather(fetch) {
   const path = require.resolve('../lib/etl/weather');
   const originalLoad = Module._load;
   delete require.cache[path];
+  delete require.cache[require.resolve('../lib/utils/providerRequest')];
   Module._load = function (request, ...args) {
     if (request === 'node-fetch') return fetch;
     return originalLoad.call(this, request, ...args);
