@@ -34,17 +34,40 @@ import 'src/components/dashboard/DashboardView.css';
 import HydrographChart from 'src/components/dashboard/HydrographChart';
 import AtmosphericOverlay from 'src/components/dashboard/AtmosphericOverlay';
 import { findNextTideExtremum } from 'src/utils/tideExtrema';
-import InundationMap, { RoadProperties } from 'src/components/dashboard/InundationMap';
+import type { RoadProperties } from 'src/components/dashboard/InundationMap';
 import InundationSimulator from 'src/components/dashboard/InundationSimulator';
 import WebcamFeedCard from 'src/components/dashboard/WebcamFeedCard';
 import NextFloodingEventsCard from 'src/components/dashboard/NextFloodingEventsCard';
 import { WEBCAMS } from 'src/constants/webcams';
-import { APIProvider } from '@vis.gl/react-google-maps';
 import { markPerf, measurePerf } from 'src/lib/perfLogger';
 import { IntroTourOverlay } from 'src/components/onboarding/IntroTourOverlay';
 import { useHistory } from 'react-router-dom';
 import { floodWindows, hasUpcomingFlooding } from 'src/utils/waterForecast';
 import { AdSenseUnit } from 'src/components/common/AdSenseUnit';
+import { reportClientError } from 'src/lib/errorReporting';
+
+const DeferredInundationMap = React.lazy(async () => {
+  try {
+    const [{ default: MapComponent }, { APIProvider }] = await Promise.all([
+      import('src/components/dashboard/InundationMap'),
+      import('@vis.gl/react-google-maps'),
+    ]);
+    const MapWithProvider = (props: React.ComponentProps<typeof MapComponent>) => (
+      <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}>
+        <MapComponent {...props} />
+      </APIProvider>
+    );
+    return { default: MapWithProvider };
+  } catch (error) {
+    // A blocked optional map chunk must not replace the working dashboard
+    // with the application-wide crash recovery screen.
+    reportClientError('map_unavailable', error, { provider: 'app' });
+    const UnavailableMap = () => React.cloneElement(mapPlaceholder, { role: 'alert', 'aria-label': 'Flood map unavailable' }, 'Map unavailable');
+    return { default: UnavailableMap };
+  }
+});
+
+const mapPlaceholder = <div role="status" aria-label="Flood map loading" style={{ height: 420, width: '100%', borderRadius: 20, marginBottom: 24, background: 'var(--dash-card-bg, rgba(128, 145, 165, 0.08))' }} />;
 
 /**
  * Professional FloodCast Tab2 Component
@@ -199,10 +222,9 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   const fetchedBufferRef = useRef<{ start: Date; end: Date } | null>(null);
   useEffect(() => {
     if (!processedData) return;
-    const FETCH_BUFFER_MS = 5 * 24 * 3600_000;
     fetchedBufferRef.current = {
-      start: new Date(processedData.timeDomain.start.getTime() - FETCH_BUFFER_MS),
-      end: new Date(processedData.timeDomain.end.getTime() + FETCH_BUFFER_MS),
+      start: processedData.loadedDomain.start,
+      end: processedData.loadedDomain.end,
     };
   }, [processedData]);
 
@@ -327,14 +349,33 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   }, [selectedTimeRange, selectedComments]);
 
 
-  // Road elevation GeoJSON — fetched from /public/data/
+  // The map's libraries and elevation dataset are optional below-fold work.
+  // Keep its exact footprint while loading only near the visible scroll area.
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const [mapRequested, setMapRequested] = useState(false);
   const [roadData, setRoadData] = useState<GeoJSON.FeatureCollection<GeoJSON.LineString, RoadProperties> | undefined>(undefined);
   useEffect(() => {
-    measurePerf('tab2.fetchRoadGeojson', () => fetch('/data/carolinaBeachRoads.geojson?v=' + new Date().getTime())
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setRoadData(data); })
-      .catch(() => { /* file not yet generated — map shows notice */ }));
-  }, []);
+    if (loading || mapRequested || !mapContainerRef.current) return;
+    if (typeof IntersectionObserver === 'undefined') { setMapRequested(true); return; }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        setMapRequested(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: '300px' });
+    observer.observe(mapContainerRef.current);
+    return () => observer.disconnect();
+  }, [loading, mapRequested]);
+  useEffect(() => {
+    if (!mapRequested) return;
+    const controller = new AbortController();
+    const version = import.meta.env.VITE_APP_BUILD_ID || 'current';
+    void measurePerf('tab2.fetchRoadGeojson', () => fetch(`/data/carolinaBeachRoads.geojson?v=${encodeURIComponent(version)}`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : null)
+      .then(value => { if (value && !controller.signal.aborted) setRoadData(value); })
+      .catch(() => { /* The map retains its missing-elevation-data notice. */ }));
+    return () => controller.abort();
+  }, [mapRequested]);
 
   // Reuse the same forecast crossings as the event cards.
   const floodWindow = useMemo(() => {
@@ -562,6 +603,8 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         onJumpToTime={handleTimeChange}
                       >
                     <SurgeChart
+                      forecastDocument={weatherSelected && forecastCompatible ? outlook : null}
+                      focusTime={manualFocusTime || currentViewport?.focusTime}
                       embedded
                       showControls={false}
                       points={processedData?.deltaPoints || []}
@@ -571,7 +614,6 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                       now={processedData?.timeDomain.now}
                       forecastEndAt={processedData?.predictedPoints.at(-1)?.t}
                       viewport={currentViewport || processedData?.timeDomain}
-                      focusTime={currentViewport?.focusTime}
                       focusRatio={chartFocusRatio}
                       onViewportChange={handleSurgeViewportChange}
                       onResetToLive={resetToLive}
@@ -598,9 +640,9 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                       loading={loading}
                     />
                   </div>
-                    <div className="dashboard-map-card" data-tour-id="map">
-                      <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}>
-                        <InundationMap
+                    <div className="dashboard-map-card" data-tour-id="map" ref={mapContainerRef}>
+                      {mapRequested ? <React.Suspense fallback={mapPlaceholder}>
+                        <DeferredInundationMap
                           waterLevelFt={simulationLevel}
                           waterLevelUnavailable={!activeAtmo.isSimulated && activeAtmo.wl === null}
                           waterLevelLabel={activeAtmo.isSimulated ? 'Simulated Water Level' : activeAtmo.wl === null ? 'Water Level' : `${activeAtmo.isLive ? 'Live ' : ''}${activeAtmo.statusLabel} Water Level`}
@@ -612,7 +654,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                           imagery={processedData?.imagery}
                           loading={loading}
                         />
-                      </APIProvider>
+                      </React.Suspense> : mapPlaceholder}
                     </div>
 
                     <div className="dashboard-simulator-card" data-tour-id="simulator">

@@ -91,23 +91,38 @@ export function useChartData(config: AppConfiguration) {
     timestamp: number;
   } | null>(null);
   const fetchRevisionRef = useRef(0);
+  const backgroundTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const latestDataRef = useRef(dataState.data);
+  latestDataRef.current = dataState.data;
+  const chartReadyRef = useRef(false);
 
   // Main data fetching logic
-  const performFetch = useCallback(async (force = false) => {
-    const requestRevision = ++fetchRevisionRef.current;
+  const performFetch = useCallback(async (force = false, buffered = false, parentRevision?: number) => {
+    if (parentRevision !== undefined && parentRevision !== fetchRevisionRef.current) return null;
+    const requestRevision = parentRevision ?? ++fetchRevisionRef.current;
+    if (!buffered) clearTimeout(backgroundTimerRef.current);
     if (force) clearDataServiceCache();
     const { start, end, now } = timeDomain;
     const { timeRange, offset: configOffset } = config;
     const requestedDataSource = config.display.dataSource;
 
-    // Buffer range: +/- 14 days to allow smooth scrolling.
-    // We only refetch if we move outside this 28-day window or if we get close to the edges.
-    const fStart = new Date(start.getTime() - BUFFER_DAYS * 24 * 3600 * 1000);
-    const fEnd = new Date(end.getTime() + BUFFER_DAYS * 24 * 3600 * 1000);
+    // Paint the requested viewport and its residual/phase-alignment context first.
+    // The original full panning/forecast buffer is populated after that paint.
+    const expandedStart = new Date(start.getTime() - BUFFER_DAYS * 24 * 3600_000);
+    const expandedEnd = new Date(end.getTime() + BUFFER_DAYS * 24 * 3600_000);
+    const fStart = buffered ? expandedStart : new Date(Math.min(+start, +now - 8 * 3600_000));
+    // A recently persisted historical viewport still needs the current gauge
+    // anchor that its original buffer included. Do not turn it into a stale
+    // residual just because the first user-visible window ends before now.
+    const foregroundEnd = end < now && expandedEnd >= now ? now : end;
+    const fEnd = buffered ? expandedEnd : foregroundEnd;
     const cacheKey = dataCacheKey(stationId, fStart, fEnd, configOffset.mode, configOffset.value, requestedDataSource);
-    const cached = dataCache[cacheKey];
+    const fullCacheKey = dataCacheKey(stationId, expandedStart, expandedEnd, configOffset.mode, configOffset.value, requestedDataSource);
+    const fullCache = dataCache[fullCacheKey];
+    const cached = !buffered && fullCache && Date.now() - fullCache.timestamp < CACHE_TTL ? fullCache : dataCache[cacheKey];
 
     if (!force && cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+      fetchRangeRef.current = { start: cached === fullCache ? expandedStart : fStart, end: cached === fullCache ? expandedEnd : fEnd, stationId, dataSource: requestedDataSource, timestamp: cached.timestamp };
       markPerf('chartData.moduleCache.hit', {
         stationId,
         locationId,
@@ -139,19 +154,20 @@ export function useChartData(config: AppConfiguration) {
           start: start.toISOString(),
           end: end.toISOString(),
         });
-        return { data: dataState.data, fromCache: true };
+        return { data: latestDataRef.current, fromCache: true };
       }
     }
 
     try {
       const lookahead = timeRange.mode === 'relative' ? (timeRange.lookaheadH + 120) :
-        Math.max(1, Math.ceil((fEnd.getTime() - now.getTime()) / 3600_000));
+        Math.max(1, Math.ceil((expandedEnd.getTime() - now.getTime()) / 3600_000));
 
       const warnings: string[] = [];
       const fetchMetadata = {
         stationId,
         locationId,
         force,
+        buffered,
         requestedStart: start.toISOString(),
         requestedEnd: end.toISOString(),
         fetchStart: fStart.toISOString(),
@@ -159,14 +175,11 @@ export function useChartData(config: AppConfiguration) {
       };
 
       // 2. Fetch base data: Unified functions handle Firestore + Live fallback
-      const [unifiedObs, unifiedPred, floodEvents] = await measurePerf('chartData.fetchUnifiedBundle', () => Promise.all([
+      const [unifiedObs, unifiedPred] = await measurePerf('chartData.fetchUnifiedBundle', () => Promise.all([
         fetchUnifiedObservations(locationId, fStart, fEnd),
         fetchUnifiedPredictions(locationId, fStart, fEnd),
-        fetchFloodEvents(locationId, 50).catch(err => {
-          console.warn('Firestore fetchFloodEvents failed:', err);
-          return [];
-        }),
       ]), fetchMetadata);
+      const floodEvents = fetchRangeRef.current?.stationId === stationId ? latestDataRef.current.floodEvents || [] : [];
 
       // Process weather data using centralized logic
       const { wind: windData, precip: precipData } = extractWeatherData({
@@ -270,6 +283,25 @@ export function useChartData(config: AppConfiguration) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeDomain, locationId, stationId, config.display.dataSource, config.offset.mode, config.offset.value, config.timeRange.mode, config.timeRange.lookaheadH]);
 
+  const warmBackground = useCallback((revision: number) => {
+    clearTimeout(backgroundTimerRef.current);
+    backgroundTimerRef.current = setTimeout(() => {
+      if (revision !== fetchRevisionRef.current) return;
+      // Independent optional reads cannot hold the first chart hostage. Every
+      // completion uses the same revision guard as pull-to-refresh/settings.
+      void performFetch(false, true, revision).then(result => {
+        if (!result || revision !== fetchRevisionRef.current) return;
+        setDataState(previous => ({ loading: false, error: null, data: {
+          ...result.data, floodEvents: previous.data.floodEvents || result.data.floodEvents,
+        } }));
+      }).catch(() => { /* Retain the already usable foreground viewport. */ });
+      void fetchFloodEvents(locationId, 50).then(events => {
+        if (revision !== fetchRevisionRef.current) return;
+        setDataState(previous => ({ ...previous, data: { ...previous.data, floodEvents: events } }));
+      }).catch(() => { /* Historical comparisons are optional. */ });
+    }, 250);
+  }, [performFetch, locationId]);
+
   // Effect to manage the loading state and race conditions
   useEffect(() => {
     let active = true;
@@ -309,6 +341,7 @@ export function useChartData(config: AppConfiguration) {
           error: null,
           data: result.data,
         });
+        warmBackground(requestRevision);
       })
       .catch(error => {
         if (!active || requestRevision !== fetchRevisionRef.current) return;
@@ -322,8 +355,18 @@ export function useChartData(config: AppConfiguration) {
     // This stable request tracker is shared with pull-to-refresh, so cleanup
     // also invalidates manual reads when settings change or the hook unmounts.
     const requestTracker = fetchRevisionRef;
-    return () => { active = false; ++requestTracker.current; };
-  }, [performFetch, timeDomain, stationId, locationId, config.offset.mode, config.offset.value]);
+    return () => { active = false; ++requestTracker.current; clearTimeout(backgroundTimerRef.current); };
+  }, [performFetch, warmBackground, timeDomain, stationId, locationId, config.display.dataSource, config.offset.mode, config.offset.value]);
+
+  useEffect(() => {
+    if (chartReadyRef.current || dataState.loading || dataState.error ||
+        (Object.keys(dataState.data.observed).length < 2 && Object.keys(dataState.data.predicted).length < 2)) return;
+    chartReadyRef.current = true;
+    markPerf('dashboard.chart_ready');
+    // No data/user metadata crosses this milestone. Central startup telemetry
+    // listens separately and applies its own schema, sampling and budget.
+    window.dispatchEvent(new Event('floodi:chart-ready'));
+  }, [dataState]);
 
   const processedData = useMemo(() => {
     const data = dataState.data;
@@ -358,6 +401,7 @@ export function useChartData(config: AppConfiguration) {
       timeOffsetMins: data.timeOffsetMins,
       surgeForecastPoints, // For Tab2.tsx compatibility
       timeDomain,
+      loadedDomain: fetchRangeRef.current ? { start: fetchRangeRef.current.start, end: fetchRangeRef.current.end } : timeDomain,
       warnings: [...(data.warnings || []), ...(adjustedPoints.length ? ['Dashed total water level uses the existing residual persistence projection; its long-range accuracy is unvalidated.'] : ['Residual projection unavailable: observations or matching tide predictions are missing or stale.'])],
       imagery: data.imagery,
       floodEvents: data.floodEvents,
@@ -391,6 +435,7 @@ export function useChartData(config: AppConfiguration) {
         const result = await pending;
         if (result && requestRevision === fetchRevisionRef.current) {
           setDataState({ loading: false, error: null, data: result.data });
+          warmBackground(requestRevision);
         }
       } catch (error) {
         if (requestRevision === fetchRevisionRef.current) {

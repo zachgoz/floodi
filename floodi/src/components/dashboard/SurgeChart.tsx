@@ -1,6 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Point } from 'src/components/Tab2/types';
 import { liveViewport, surgeTrend } from 'src/utils/waterForecast';
+import { selectSurgeReadout } from 'src/utils/surgeReadout';
+import { ForecastFactors } from './ForecastFactors';
+import type { ForecastDocument } from '../../../functions/src/forecast/schema';
 import { ChartInfo } from './ChartInfo';
 import type { ResidualPatternAnalysis } from '../../../functions/src/forecast/pattern';
 import './ForecastPanels.css';
@@ -13,6 +16,7 @@ interface Props {
   experimentalForecast?: Point[];
   forecastLabel?: string;
   forecastDescription?: string;
+  forecastDocument?: ForecastDocument | null;
   comparisonLabel?: string;
   timezone?: 'local' | 'gmt';
   source?: string;
@@ -43,7 +47,7 @@ function samplesInWindow(points: Point[], domain: Viewport) {
   return valid.slice(Math.max(0, first - 1), end < 0 ? undefined : end + 1);
 }
 
-export function SurgeChart({ points, estimatedPoints = [], forecast = [], experimentalForecast = [], forecastLabel = 'Forecast', forecastDescription, comparisonLabel = 'Comparison', timezone = 'local', source,
+export function SurgeChart({ points, estimatedPoints = [], forecast = [], experimentalForecast = [], forecastLabel = 'Forecast', forecastDescription, forecastDocument, comparisonLabel = 'Comparison', timezone = 'local', source,
   now = new Date(), viewport, forecastEndAt, focusTime, focusRatio = 1, onViewportChange, onResetToLive, showTrendProjection, trendAvailable, onToggleTrendProjection, previewLabel = '1h Trend', previewDescription, patternAnalysis, embedded = false, showControls = true }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [width, setWidth] = useState(800);
@@ -92,6 +96,7 @@ export function SurgeChart({ points, estimatedPoints = [], forecast = [], experi
     ? Math.max(latest, +point.t) : latest, +domain.start);
   const forecastClipStart = Math.min(width - 20, Math.max(50, x(new Date(displayHandoff))));
   const current = surgeTrend(points, now);
+  const readout = selectSurgeReadout(points, estimatedPoints, forecast, focus, live);
   const select = (hours: number) => {
     change(liveViewport(new Date(+now - hours * 3600_000), now, now, focusRatio));
     setLocalLive(true);
@@ -199,8 +204,9 @@ export function SurgeChart({ points, estimatedPoints = [], forecast = [], experi
       <div className="forecast-panel-heading">
         <div><h2>Surge Trends</h2>{!embedded && <span className="chart-linked" title="Zoom and pan either chart to move both" aria-label="Time window linked to water level chart">↔</span>}</div>
         <div className="surge-readout">
-          <strong>{current.value === null ? 'Unavailable' : <>{`${current.value >= 0 ? '+' : ''}${current.value.toFixed(2)}`} <small>ft</small></>}</strong>
-          <span>{current.trend === 'Increasing' ? '↗ ' : current.trend === 'Decreasing' ? '↘ ' : '→ '}{current.trend}</span>
+          <strong>{!readout ? 'Unavailable' : <>{`${readout.value >= 0 ? '+' : ''}${readout.value.toFixed(2)}`} <small>ft</small></>}</strong>
+          <span>{readout ? `${readout.source} · ${time(readout.at)}` : time(focus)}</span>
+          {live && readout && readout.source !== 'Forecast' && <span className="surge-live-trend">{current.trend === 'Increasing' ? '↗ ' : current.trend === 'Decreasing' ? '↘ ' : '→ '}{current.trend}</span>}
         </div>
       </div>
       {showControls && <div className="surge-controls" role="group" aria-label="Shared chart time window">
@@ -234,7 +240,7 @@ export function SurgeChart({ points, estimatedPoints = [], forecast = [], experi
       </div>
       <svg ref={svgRef} viewBox={`0 0 ${width} 270`} role="img"
         data-domain-start={domain.start.toISOString()} data-domain-end={domain.end.toISOString()}
-        aria-label={`Historical anomaly chart. ${current.trend}. Positive anomalies above zero; negative anomalies below zero.`}
+        aria-label={`Anomaly chart. ${readout ? `${readout.source}: ${readout.value.toFixed(2)} feet at ${time(readout.at)}` : 'No value at selected time'}. Positive anomalies above zero; negative anomalies below zero.`}
         className="surge-svg" style={{ touchAction: 'pan-y' }}
         onPointerDown={e => {
           if (e.pointerType === 'touch') return;
@@ -279,10 +285,12 @@ export function SurgeChart({ points, estimatedPoints = [], forecast = [], experi
           {visibleEstimates.length > 1 && <polyline data-testid="estimated-residual" points={visibleEstimates.map(p => `${x(p.t)},${y(p.v)}`).join(' ')} fill="none" stroke="#a27956" strokeWidth="3" strokeDasharray="3 3" />}
           {visibleForecast.length > 1 && <polyline data-testid="residual-forecast" clipPath={`url(#surge-forecast-${id})`} points={visibleForecast.map(p => `${x(p.t)},${y(p.v)}`).join(' ')} fill="none" stroke="#637b86" strokeWidth="3" strokeDasharray="7 5" />}
           {visibleExperimental.length > 1 && <polyline data-testid="experimental-residual-forecast" clipPath={`url(#surge-forecast-${id})`} points={visibleExperimental.map(p => `${x(p.t)},${y(p.v)}`).join(' ')} fill="none" stroke="#8462bf" strokeWidth="3" strokeDasharray="7 5" />}
+          {readout && +readout.at === +focus && <circle data-testid="surge-selected-point" cx={x(focus)} cy={y(readout.value)} r="5" fill="var(--ion-color-primary, #0084b9)" stroke="var(--dash-card-bg, #fff)" strokeWidth="2" />}
           <line x1={x(focus)} x2={x(focus)} y1="24" y2="232" stroke="var(--ion-color-primary, #0084b9)" strokeWidth="2" />
         </g>
         {(width < 600 ? [0, 1] : [0, 0.5, 1]).map(f => <text key={f} x={50 + f * plotWidth} y="254" textAnchor={f === 0 ? 'start' : f === 1 ? 'end' : 'middle'} fill="currentColor" fontSize="12">{time(new Date(+domain.start + f * (+domain.end - +domain.start)))}</text>)}
       </svg>
+      {readout?.source === 'Forecast' && <ForecastFactors document={forecastDocument} at={readout.at} residual={readout.value} />}
       {!visible.length && !visibleForecast.length && <p className="forecast-empty">No data in this window</p>}
     </section>
   );

@@ -5,6 +5,7 @@
 import type { WeatherPoint } from './model';
 import type { Reference, WaterPoint } from './water';
 import { interpolate } from './water';
+import { AttributedWaterPoint, DriverControl, driverVector, emptyContributions, forecastWeatherContext, interpolateContributions, regressionContributions } from './attribution';
 
 const HOUR = 3600_000;
 const GAP = 30 * 60_000 + 10_000;
@@ -171,7 +172,7 @@ export function projectHistoricalResidual(summary: HistoricalPatternSummary, tid
   }
   return { points, errorFt };
 }
-export function projectHistoricalOutlook(model: HistoricalOutlookModel | null, historyInput: (WaterPoint & { estimated?: boolean })[], tideInput: WaterPoint[], pastWeatherInput: WeatherPoint[], futureWeatherInput: WeatherPoint[], times: Date[], issue: Date, reference: Reference, tideReference: Reference, options: { prefix: WaterPoint[] }): { points: WaterPoint[]; lower: WaterPoint[]; upper: WaterPoint[]; summary: HistoricalPatternSummary | null; weatherSupportedUntil: Date | null; validation: HistoricalOutlookValidation | null } {
+export function projectHistoricalOutlook(model: HistoricalOutlookModel | null, historyInput: (WaterPoint & { estimated?: boolean })[], tideInput: WaterPoint[], pastWeatherInput: WeatherPoint[], futureWeatherInput: WeatherPoint[], times: Date[], issue: Date, reference: Reference, tideReference: Reference, options: { prefix: WaterPoint[]; includeDrivers?: boolean }): { points: AttributedWaterPoint[]; lower: WaterPoint[]; upper: WaterPoint[]; summary: HistoricalPatternSummary | null; weatherSupportedUntil: Date | null; validation: HistoricalOutlookValidation | null } {
   const empty = { points: [], lower: [], upper: [], summary: null, weatherSupportedUntil: null, validation: null };
   if (!model || !validateHistoricalOutlookModel(model) || !model.validation.eligible || !matching(reference, tideReference) || !matching(model.reference, reference) || !matching(model.tideReference, tideReference) || Date.parse(model.trainedUntil) > +issue) return empty;
   const history = sortWater(historyInput.filter(p => +p.t <= +issue)), anchor = history.at(-1), tide = sortWater(tideInput), prefix = sortWater(options.prefix);
@@ -187,6 +188,12 @@ export function projectHistoricalOutlook(model: HistoricalOutlookModel | null, h
   // at zero so the first weather contribution ramps from the exact junction
   // instead of remaining zero and then jumping at the next whole hour.
   const weatherControls: WaterPoint[] = [{ t: junction, v: 0 }];
+  const weatherContextTimes = new Set<number>();
+  const weatherDriverControls: DriverControl[] = [{ t: junction, v: 0, contributionsFt: emptyContributions() }];
+  const historicalGroups = [3, 3], weatherGroups = [3, 3, 4, 4, 4, 4, 5, 5, 6, 6];
+  const initialTide = tideFeatures(tide, junction);
+  const initialHistoricalParts = options.includeDrivers && initialTide ? regressionContributions(model.historical, initialTide, historicalGroups) : null;
+  const initialWeatherParts = options.includeDrivers && model.weather && initialWeather && inDomain(model.weather, initialWeather) ? regressionContributions(model.weather, initialWeather, weatherGroups) : initialHistoricalParts;
   let weatherSupportedUntil: Date | null = null;
   if (model.weather && model.validation.weatherEligible && initialExpected !== null && future.length) {
     const until = +future.at(-1)!.t;
@@ -197,6 +204,7 @@ export function projectHistoricalOutlook(model: HistoricalOutlookModel | null, h
       const at = new Date(ms);
       const x = weatherFeatures(tide, weather, at), historicalAt = patternAt(summary, tide, at);
       let correction = 0;
+      let correctionParts = emptyContributions();
       if (x && historicalAt !== null && inDomain(model.weather, x)) {
         const elapsed = (ms - +junction) / HOUR, decay = Math.exp(-elapsed / model.anomalyDecayHours);
         const predicted = predict(model.weather, x) + (prefix.at(-1)!.v - initialExpected) * decay;
@@ -204,10 +212,39 @@ export function projectHistoricalOutlook(model: HistoricalOutlookModel | null, h
         const fade = Math.min(1, Math.max(0, (until - ms) / (24 * HOUR)));
         correction = (predicted - historicalValue) * (1 - Math.exp(-elapsed / model.transitionHours)) * fade;
         weatherSupportedUntil = at;
+        if (options.includeDrivers) weatherContextTimes.add(ms);
+        if (options.includeDrivers && initialWeatherParts && initialHistoricalParts) {
+          const historicalX = tideFeatures(tide, at)!;
+          const weatherParts = regressionContributions(model.weather, x, weatherGroups);
+          const historicalParts = regressionContributions(model.historical, historicalX, historicalGroups);
+          const weight = (1 - Math.exp(-elapsed / model.transitionHours)) * fade;
+          correctionParts = weatherParts.map((part, i) => (part - historicalParts[i] - (initialWeatherParts[i] - initialHistoricalParts[i]) * decay) * weight);
+        }
       }
       weatherControls.push({ t: at, v: correction });
+      if (options.includeDrivers) weatherDriverControls.push({ t: at, v: correction, contributionsFt: correctionParts });
     }
   }
-  const points = historical.points.map(point => ({ t: point.t, v: point.v + (+point.t <= +junction ? 0 : interpolate(weatherControls, point.t, HOUR) ?? 0) }));
+  const points: AttributedWaterPoint[] = historical.points.map(point => {
+    const v = point.v + (+point.t <= +junction ? 0 : interpolate(weatherControls, point.t, HOUR) ?? 0);
+    if (!options.includeDrivers || +point.t <= +junction || !initialHistoricalParts) return { t: point.t, v };
+    const x = tideFeatures(tide, point.t);
+    if (!x) return { t: point.t, v };
+    const decay = Math.exp(-(+point.t - +junction) / (model.anomalyDecayHours * HOUR));
+    const parts = regressionContributions(model.historical, x, historicalGroups).map((part, i) => part - initialHistoricalParts[i] * decay);
+    parts[0] += anchor.v * decay;
+    // Carry the exact near-term junction as recent water-pattern context. Do
+    // not describe its carried influence as a new future wind/rain forecast.
+    parts[2] += (prefix.at(-1)!.v - anchor.v) * decay;
+    const correction = interpolateContributions(weatherDriverControls, point.t, HOUR);
+    if (correction) correction.forEach((part, i) => { parts[i] += part; });
+    const supportedWeather = correction !== null && correction.some(part => Math.abs(part) > 1e-12);
+    const vector = driverVector(parts, v);
+    if (!vector) return { t: point.t, v };
+    const drivers: NonNullable<AttributedWaterPoint['drivers']> = { m: supportedWeather ? 'hw' : 'h', c: vector };
+    const context = supportedWeather && weatherContextTimes.has(+point.t) ? forecastWeatherContext(weather, point.t) : undefined;
+    if (context) drivers.w = context;
+    return { t: point.t, v, drivers };
+  });
   return { points, lower: points.map((point, i) => ({ t: point.t, v: point.v - historical.errorFt[i] })), upper: points.map((point, i) => ({ t: point.t, v: point.v + historical.errorFt[i] })), summary, weatherSupportedUntil, validation: model.validation };
 }

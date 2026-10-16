@@ -31,7 +31,6 @@ import { PrivacyPolicy } from 'src/pages/PrivacyPolicy';
 import { PrivateRoute, AdminRoute } from 'src/components/routing';
 import { UserRoleManager } from 'src/components/admin';
 import { SimpleAdminBootstrap } from 'src/components/admin/SimpleAdminBootstrap';
-import { useAuth } from 'src/contexts/AuthContext';
 import { markPerf } from 'src/lib/perfLogger';
 import { INTRO_STORAGE_KEY } from 'src/components/onboarding/IntroTourOverlay';
 import { trackScreenView } from 'src/lib/analytics';
@@ -86,7 +85,6 @@ setupIonicReact();
  * // Returning users are redirected to /tab2 (main FloodCast page)
  */
 const InitialRoute: React.FC = () => {
-  const { loading } = useAuth();
   React.useEffect(() => {
     markPerf('route.initial.mounted');
   }, []);
@@ -104,16 +102,8 @@ const InitialRoute: React.FC = () => {
 
   // Route based on intro and auth state
   if (!seen) return <Redirect to={'/intro'} />;
-  // While auth state is being determined, show a minimal spinner
-  if (loading) {
-    markPerf('route.initial.waitingForAuth');
-    return (
-      <div className="ion-padding ion-text-center">
-        <span className="sr-only">Loading…</span>
-      </div>
-    );
-  }
-  // After intro, everyone goes to main tab regardless of authentication
+  // The public dashboard can load while account/profile work continues.
+  // PrivateRoute and AdminRoute retain their own authorization guards.
   markPerf('route.initial.redirectTab2');
   return <Redirect to={'/tab2'} />;
 };

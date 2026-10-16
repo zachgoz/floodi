@@ -2,9 +2,11 @@ import { localSensorLevels, regionalGaugeLevels } from '../forecast/sensor';
 import fetch from 'node-fetch';
 import * as logger from 'firebase-functions/logger';
 
+export interface FimanFetchOptions { includeImagery?: boolean }
+
 const FIMAN_BASE = 'https://data.sunnydayflooding.com/services/data.php';
 
-export async function fetchFimanData(sensorId: string, start: Date, end: Date, offset: number = 0, preferRaw = false) {
+export async function fetchFimanData(sensorId: string, start: Date, end: Date, offset: number = 0, preferRaw = false, options: FimanFetchOptions = {}) {
   const timeStr = `${start.toISOString().split('.')[0]}Z/${end.toISOString().split('.')[0]}Z`;
   
   const params = new URLSearchParams({
@@ -25,10 +27,10 @@ export async function fetchFimanData(sensorId: string, start: Date, end: Date, o
   if (!res.ok) { const error = new Error(`FiMAN HTTP ${res.status}`) as Error & { status: number }; error.status = res.status; throw error; }
   
   const data = await res.json() as any;
-  return parseFimanPayload(data, sensorId, offset, preferRaw);
+  return parseFimanPayload(data, sensorId, offset, preferRaw, options);
 }
 
-export function parseFimanPayload(data: any, sensorId: string, offset = 0, preferRaw = false) {
+export function parseFimanPayload(data: any, sensorId: string, offset = 0, preferRaw = false, options: FimanFetchOptions = {}) {
   
   // Find the specific station feature (robust matching)
   const feature = (Array.isArray(data?.features) ? data.features : []).find((f: any) => {
@@ -48,6 +50,9 @@ export function parseFimanPayload(data: any, sensorId: string, offset = 0, prefe
   
   const waterLevels = preferRaw ? localSensorLevels(parameters, offset, true) : regionalGaugeLevels(parameters, offset);
   const imagery: Record<string, Record<string, string>> = {};
+  // Historical model fitting consumes water only. Expected absent historical
+  // camera arrays should not produce warnings or affect training availability.
+  if (options.includeImagery === false) return { waterLevels, imagery };
   const imgAliases = ['Camera', 'webcam_img_url', 'Webcam'];
 
   // Camera corruption must never reject valid water measurements.

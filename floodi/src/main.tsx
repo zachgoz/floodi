@@ -20,6 +20,8 @@ import App from './App';
 import { AuthProvider } from 'src/contexts/AuthContext';
 import { installPerfLogger, markPerf } from 'src/lib/perfLogger';
 import { installErrorReporting } from 'src/lib/errorReporting';
+import { StartupMarker } from 'src/components/StartupMarker';
+import { installStartupTelemetry } from 'src/lib/startupTelemetry';
 import { AppErrorBoundary } from 'src/components/AppErrorBoundary';
 
 /**
@@ -41,6 +43,7 @@ import { AppErrorBoundary } from 'src/components/AppErrorBoundary';
 const container = document.getElementById('root');
 
 installErrorReporting();
+installStartupTelemetry();
 installPerfLogger();
 markPerf('main.beforeCreateRoot');
 
@@ -53,6 +56,7 @@ markPerf('main.beforeRender');
 root.render(
   <React.StrictMode>
     <AppErrorBoundary>
+      <StartupMarker />
       <AuthProvider>
         <App />
       </AuthProvider>

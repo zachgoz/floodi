@@ -19,6 +19,9 @@ function currentForecast(value: unknown, locationId: string): value is ForecastD
 
 export function useFloodOutlook(locationId: string) {
   const [cached, setCached] = useState<ForecastDocument | null>(null);
+  useEffect(() => {
+    if (cached) window.dispatchEvent(new Event('floodi:outlook-ready'));
+  }, [cached]);
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const refresh = useCallback(() => refreshRef.current(), []);
 

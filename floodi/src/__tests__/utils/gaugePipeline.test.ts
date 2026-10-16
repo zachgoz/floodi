@@ -77,7 +77,7 @@ describe('regional gauge forecast pipeline', () => {
     const call = projectMock.mock.calls[0];
     expect(call[6]).toEqual(measuredAt);
     expect(call[5][0]).toEqual(now);
-    expect(call[9]).toEqual({ allowPointValidatedExperimental: true });
+    expect(call[9]).toEqual({ allowPointValidatedExperimental: true, includeDrivers: true });
     expect(document.points[0].residualFt).toBeCloseTo(history.at(-1)!.v + .002 * 41);
     expect(document.evidence.find(e => e.id === 'observation')?.text).toContain('41 minutes');
     expect(validateForecast(document)).toBe(true);

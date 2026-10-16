@@ -102,3 +102,29 @@ continue independently. No global errors are suppressed to hide Analytics failur
 The installed Firestore SDK already auto-detects long-polling when needed. A
 transient WebChannel error alone does not justify forcing a different transport
 for every user. No REST proxy or transport override was added.
+
+
+## Sampled dashboard startup timings
+
+Production builds sample 25% of page loads, capped at three timing reports per
+tab per UTC day. A separate `page_load` schema carries only the general dashboard
+route, deterministic build ID, `ready`/`partial`, script cache classification,
+and numeric milliseconds for shell/chart/outlook readiness, document TTFB and
+first contentful paint. Readiness is measured after the React commit plus two
+animation frames; it is an approximation of presented UI, not a Lighthouse or
+Core Web Vitals score. Chart readiness is the first committed useful chart data;
+background history/map work is excluded. A 30-second deadline or hidden page can
+produce a partial report. Missing timings remain absent, never zero.
+
+The application sends one best-effort report, online only, without retries,
+cookies or referrers. Only a numeric per-day counter is stored in sessionStorage;
+there is no telemetry visitor/session identifier. No raw performance entries,
+resource URLs, local debug metadata, UID or user agent are uploaded. Native apps
+use the same project-derived HTTPS collector as error reports.
+
+The existing bounded collector accepts this separate allowlisted schema and logs
+INFO records with `jsonPayload.event="frontend_performance"`. Performance has a
+10/minute global sublimit within the existing 50/minute total limit; exhausting
+its sublimit does not block subsequent errors. Timing events do not trigger crash
+alerts. Compare chartMs percentiles by buildId and cacheState, including partial
+counts; small samples and cached visits do not establish cold-start performance.

@@ -1,4 +1,7 @@
 import type { Validation } from "./model";
+import { FORECAST_DRIVER_METADATA, ForecastDrivers, validateForecastDrivers } from "./attribution";
+export { FORECAST_FACTOR_KEYS, FORECAST_FACTOR_INFO, FORECAST_DRIVER_METHODS, validateForecastDrivers } from "./attribution";
+export type { ForecastDrivers } from "./attribution";
 import { HistoricalOutlookValidation, HistoricalPatternSummary, validateHistoricalOutlookValidation, validateHistoricalPatternSummary } from "./historicalOutlook";
 export interface ForecastPoint {
   t: string;
@@ -7,6 +10,7 @@ export interface ForecastPoint {
   totalFt: number;
   lowerFt: number;
   upperFt: number;
+  drivers?: ForecastDrivers;
 }
 export interface Evidence {
   id: string;
@@ -74,6 +78,7 @@ export interface ForecastDocument {
   leadValidation?: LeadValidation[];
   extension?: ForecastExtension;
   tail?: ForecastTail;
+  driverInfo?: typeof FORECAST_DRIVER_METADATA;
 }
 const record = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
@@ -122,6 +127,11 @@ export function validateForecast(value: unknown): value is ForecastDocument {
     typeof value.trend !== "string"
   )
     return false;
+  if (value.driverInfo !== undefined) {
+    const info = value.driverInfo;
+    if (!record(info) || Object.keys(info).length !== 4 || info.version !== FORECAST_DRIVER_METADATA.version || info.basis !== FORECAST_DRIVER_METADATA.basis || info.interpretation !== FORECAST_DRIVER_METADATA.interpretation || !Array.isArray(info.factorOrder) || info.factorOrder.length !== FORECAST_DRIVER_METADATA.factorOrder.length || !info.factorOrder.every((key, i) => key === FORECAST_DRIVER_METADATA.factorOrder[i])) return false;
+  }
+  if (Array.isArray(value.points) && value.points.some(point => record(point) && point.drivers !== undefined) && value.driverInfo === undefined) return false;
   if (['observationAt', 'forecastOriginAt'].some(k => value[k] !== undefined && (!timestamp(value[k]) || Date.parse(String(value[k])) > Date.parse(String(value.generatedAt))))) return false;
   if (
     !Array.isArray(value.points) ||
@@ -137,6 +147,7 @@ export function validateForecast(value: unknown): value is ForecastDocument {
           1e-6 &&
         Number(p.lowerFt) <= Number(p.totalFt) &&
         Number(p.upperFt) >= Number(p.totalFt) &&
+        (p.drivers === undefined || validateForecastDrivers(p.drivers, Number(p.residualFt), p.t)) &&
         (i === 0 || Date.parse(String(arr[i - 1].t)) < Date.parse(p.t)),
     )
   )

@@ -4,7 +4,7 @@ export const CLIENT_ERROR_CODES = [
   'outlook_http_fallback', 'outlook_unavailable', 'outlook_timeout',
   'water_data_unavailable', 'water_data_fallback',
   'comment_write_failed', 'comment_read_failed', 'comment_subscription_failed',
-  'monitoring_probe',
+  'monitoring_probe', 'map_unavailable',
 ] as const;
 export type ClientErrorCode = typeof CLIENT_ERROR_CODES[number];
 export const CLIENT_ERROR_ROUTES = ['/', '/intro', '/login', '/register', '/reset-password', '/tab2', '/tab3', '/privacy', '/profile', '/admin/users', '/admin/bootstrap', 'other'] as const;
@@ -24,6 +24,7 @@ export const CLIENT_ERROR_MESSAGES: Record<ClientErrorCode, string> = {
   comment_read_failed: 'Saved comment could not be read',
   comment_subscription_failed: 'Comment updates are unavailable',
   monitoring_probe: 'Frontend error collection verification',
+  map_unavailable: 'Optional flood map unavailable',
 };
 export interface ClientErrorFrame { asset: string; line: number; column: number }
 export interface ClientErrorReport {
@@ -56,4 +57,31 @@ export function validateClientErrorReport(value: unknown): value is ClientErrorR
         Number.isInteger(f.line) && Number(f.line) > 0 && Number(f.line) < 10_000_000 &&
         Number.isInteger(f.column) && Number(f.column) > 0 && Number(f.column) < 10_000_000;
     });
+}
+
+export const CLIENT_PERFORMANCE_TIMINGS = ['shellMs', 'chartMs', 'outlookMs', 'ttfbMs', 'fcpMs'] as const;
+export interface ClientPerformanceReport {
+  version: 1;
+  code: 'page_load';
+  route: '/' | '/tab2';
+  buildId: string;
+  outcome: 'ready' | 'partial';
+  cacheState: 'cached' | 'network' | 'unknown';
+  timings: Partial<Record<typeof CLIENT_PERFORMANCE_TIMINGS[number], number>>;
+}
+export type ClientTelemetryReport = ClientErrorReport | ClientPerformanceReport;
+
+/** Timing reports are distinct from exceptions and cannot carry messages,
+ * identifiers, URLs, free-form stage names, or arbitrary numeric metadata. */
+export function validateClientPerformanceReport(value: unknown): value is ClientPerformanceReport {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const p = value as Record<string, unknown>;
+  if (!keysAllowed(p, ['version', 'code', 'route', 'buildId', 'outcome', 'cacheState', 'timings']) ||
+      p.version !== 1 || p.code !== 'page_load' || !oneOf(p.route, ['/', '/tab2']) ||
+      typeof p.buildId !== 'string' || !/^(?:[a-f0-9]{7,64}|unknown)$/.test(p.buildId) ||
+      !oneOf(p.outcome, ['ready', 'partial']) || !oneOf(p.cacheState, ['cached', 'network', 'unknown']) ||
+      !p.timings || typeof p.timings !== 'object' || Array.isArray(p.timings)) return false;
+  const timings = p.timings as Record<string, unknown>;
+  return Object.keys(timings).length > 0 && keysAllowed(timings, [...CLIENT_PERFORMANCE_TIMINGS]) &&
+    Object.values(timings).every(duration => typeof duration === 'number' && Number.isFinite(duration) && duration >= 0 && duration <= 300_000);
 }

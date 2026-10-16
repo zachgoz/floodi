@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDoc } from 'firebase/firestore';
 import { fetchObservedWaterLevels } from 'src/lib/noaa';
-import { clearDataServiceCache, extractWeatherData, fetchObservations, fetchUnifiedObservations } from 'src/lib/dataService';
+import { clearDataServiceCache, extractWeatherData, fetchObservations, fetchPredictions, fetchUnifiedObservations } from 'src/lib/dataService';
 import { reportClientError } from 'src/lib/errorReporting';
 
 vi.mock('src/lib/firebase', () => ({ db: {}, storage: {} }));
@@ -279,4 +279,27 @@ describe('fetchUnifiedObservations source freshness and recovery', () => {
       [at(-3)]: { windSpeed: 12, windDirection: Infinity, precip: null },
     } })).toEqual({ wind: { [at(-12)]: { speed: 0, dir: 0 } }, precip: { [at(-12)]: 0 } });
   });
+  it('never waits for adjacent-month archives outside the requested observations', async () => {
+    vi.mocked(getDoc).mockImplementation(reference => {
+      const path = String(reference);
+      if (path.endsWith('/2026-09') || path.endsWith('/2026-11')) return new Promise(() => {});
+      return Promise.resolve({ exists: () => path.endsWith('/2026-10'), data: () => ({ fiman: { [at(-12)]: 4.5 } }) }) as ReturnType<typeof getDoc>;
+    });
+    const result = await fetchObservations('carolina-beach', new Date(at(-60)), now);
+    expect(result.fiman[at(-12)]).toBe(4.5);
+    expect(vi.mocked(getDoc).mock.calls.map(([path]) => String(path))).not.toContain('locations/carolina-beach/observations/2026-09');
+    expect(vi.mocked(getDoc).mock.calls.map(([path]) => String(path))).not.toContain('locations/carolina-beach/observations/2026-11');
+  });
+
+  it('returns requested predictions without waiting for an unrelated future month', async () => {
+    vi.mocked(getDoc).mockImplementation(reference => {
+      const path = String(reference);
+      if (path.endsWith('/2026-11')) return new Promise(() => {});
+      return Promise.resolve({ exists: () => true, data: () => ({ data: { [at(60)]: 4.2 } }) }) as ReturnType<typeof getDoc>;
+    });
+    const result = await fetchPredictions('carolina-beach', now, new Date(at(120)));
+    expect(result.data[at(60)]).toBe(4.2);
+    expect(getDoc).toHaveBeenCalledTimes(1);
+  });
+
 });

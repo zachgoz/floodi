@@ -77,15 +77,9 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
     requestedMonths,
   };
   
-  // Proactive pre-fetch: Add previous and next month to the fetch list for seamless scrolling
-  const prevMonth = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - 1, 1));
-  const nextMonth = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 1));
-  
-  const allMonths = [...new Set([
-    prevMonth.toISOString().substring(0, 7),
-    ...requestedMonths,
-    nextMonth.toISOString().substring(0, 7)
-  ])];
+  // The chart warms a wider range after its first usable viewport. Adjacent
+  // month archives must not delay the requested observations.
+  const allMonths = requestedMonths;
 
   const now = new Date();
   const days = getDaysInRange(start, new Date(Math.min(+end, +now)));
@@ -307,14 +301,7 @@ export async function fetchPredictions(locationId: string, start: Date, end: Dat
     requestedMonths,
   };
   
-  // Pre-fetch: Add next month for future planning
-  const nextMonth = new Date(end);
-  nextMonth.setMonth(nextMonth.getMonth() + 1);
-  
-  const allMonths = [...new Set([
-    ...requestedMonths,
-    nextMonth.toISOString().substring(0, 7)
-  ])];
+  const allMonths = requestedMonths;
 
   const results = await measurePerf('dataService.fetchPredictions.prefetchMonths', () => prefetchMonths(locationId, allMonths, 'pred'), {
     ...metadata,

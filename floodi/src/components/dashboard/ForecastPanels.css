@@ -79,3 +79,18 @@
   .forecast-time-actions .forecast-return-live { margin-left:auto; }
   .surge-chart-embedded.forecast-panel { padding-top:16px; margin-top:16px; }
 }
+
+.surge-readout > span { display:block; }
+.surge-live-trend { color:var(--dash-subtitle-color, #667989); }
+.surge-factors { margin-top:4px; font-size:var(--dash-type-label, .75rem); }
+.surge-factor-preview { display:flex; flex-wrap:wrap; gap:6px; }
+.surge-factor-preview > span { padding:6px 9px; border-radius:8px; background:rgba(var(--ion-color-primary-rgb), .06); }
+.surge-factor-preview b { margin-left:5px; font-variant-numeric:tabular-nums; font-weight:600; }
+.surge-factors details { margin-top:4px; font-size:inherit; }
+.surge-factors summary { display:flex; flex-wrap:wrap; gap:4px 12px; min-height:44px; align-items:center; }
+.surge-factors summary > span { color:var(--dash-subtitle-color, #667989); font-weight:400; }
+.surge-factors dl { margin:0; max-width:480px; }
+.surge-factors dl > div { display:flex; justify-content:space-between; gap:12px; padding:5px 0; }
+.surge-factors dd { margin:0; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.surge-factors p { color:var(--dash-subtitle-color, #667989); max-width:620px; }
+@media (max-width:600px) { .surge-readout > span { max-width:185px; font-size:.6875rem; } }

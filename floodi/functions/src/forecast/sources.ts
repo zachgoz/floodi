@@ -102,7 +102,7 @@ export async function collectHistory(start: Date, end: Date) {
     const b = new Date(Math.min(ms + 7 * 24 * 3600_000, +end));
     try {
       const [sensor, tide] = await Promise.all([
-        fetchFimanData(SITE.retrievalPlatform, a, b, SITE.offsetFt),
+        fetchFimanData(SITE.retrievalPlatform, a, b, SITE.offsetFt, false, { includeImagery: false }),
         fetchNoaaPredictions(SITE.tideStation, new Date(+a - 2 * 3600_000), b),
       ]);
       Object.assign(observed, sensor.waterLevels);

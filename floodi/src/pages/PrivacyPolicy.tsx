@@ -106,6 +106,8 @@ export const PrivacyPolicy: React.FC = () => {
                 app version, a general page name, service status codes, and application script locations. They exclude comment text,
                 account identifiers, email addresses, credentials, full page URLs, and arbitrary error messages. A temporary counter in
                 browser session storage limits reporting; reports are not saved on your device for later upload.
+                A sample of dashboard visits also reports aggregate loading durations, app version, and whether the app script was cached.
+                These timing reports contain no visitor identifier or browsing history.
               </p>
               <p style={{ marginTop: '12px' }}>
                 Reports are processed using Google Cloud Logging under the project’s configured retention. Our hosting and cloud providers

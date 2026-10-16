@@ -6,6 +6,7 @@
 import { WeatherPoint } from './model';
 import { interpolate, Reference, WaterPoint } from './water';
 import { HistoricalOutlookModel, trainHistoricalOutlook } from './historicalOutlook';
+import { attachDrivers, AttributedWaterPoint, DriverControl, emptyContributions, forecastWeatherContext, regressionContributions } from './attribution';
 
 const HOUR = 3600_000;
 // FIMAN nominal half-hour reports can be a few seconds apart from the grid.
@@ -27,7 +28,7 @@ export const WEATHER_RESPONSE_FEATURES = [
   'rain6h', 'rain12h', 'rain24h', 'upcomingRain', 'astronomicalTideChange',
 ];
 export interface WeatherResponseOptions { maxObservationGapMs?: number; refitValidatedModel?: boolean }
-export interface WeatherProjectionOptions { allowPointValidatedExperimental?: boolean }
+export interface WeatherProjectionOptions { allowPointValidatedExperimental?: boolean; includeDrivers?: boolean }
 export interface ResidualObservation extends WaterPoint { estimated?: boolean }
 interface Regression { means: number[]; scales: number[]; coefficients: number[]; intercept: number; minimums?: number[]; maximums?: number[] }
 interface TrainingRow { issue: Date; target: Date; x: number[]; y: number; anchor: number }
@@ -478,25 +479,74 @@ export function trainWeatherResponse(
     limitations: ['Reanalysis future weather omits issued weather forecast error.', 'Overlapping hourly issue windows are descriptive, not independent confidence trials.', 'Nominal 30-minute observation gaps allow 10 seconds of timestamp jitter; longer outages remain unavailable.', 'Peak errors use complete 24-hour windows, all native measured totals and a six-minute grid; no filtering of measured spikes.', 'Regional tide phase and datum assumptions remain uncalibrated.', 'This screening gate does not establish operational accuracy or calibrated confidence.'],
   };
 }
+const WEATHER_GROUPS = WEATHER_RESPONSE_FEATURES.map(name => name === 'issueResidual' ? 2 : name === 'residualChange3h' ? 1 : name.includes('Wind') ? 4 : name.startsWith('pressure') ? 5 : name.toLowerCase().includes('rain') ? 6 : 3);
+const LONG_GROUPS = LONG_RANGE_FEATURES.map(name => name === 'residualChange3h' ? 1 : name.includes('Tide') ? 3 : 2);
+function projectionDrivers(points: WaterPoint[], models: { leadHours: number; model: Regression }[], history: WaterPoint[], tide: WaterPoint[], issue: Date, maxGap: number, weather?: { past: WeatherPoint[]; future: WeatherPoint[] }): AttributedWaterPoint[] {
+  const anchor = anchorAt(history, issue, maxGap);
+  if (!anchor || !points.length) return points;
+  const initial = emptyContributions(); initial[0] = anchor.v;
+  const controls: DriverControl[] = [{ t: issue, v: anchor.v, contributionsFt: initial }];
+  for (const item of models) {
+    const target = new Date(+issue + item.leadHours * HOUR);
+    const x = weather ? featureVector(issue, target, anchor, history, tide, weather.past, weather.future, maxGap, true) : shortFeatures(issue, target, anchor, history, tide, maxGap);
+    if (!x) return points;
+    const groups = weather ? WEATHER_GROUPS : WEATHER_RESPONSE_FEATURES.map((_, i) => [0, 1, WEATHER_RESPONSE_FEATURES.length - 1].includes(i) ? WEATHER_GROUPS[i] : 7);
+    const contributionsFt = regressionContributions(item.model, x, groups, anchor.v);
+    controls.push({ t: target, v: anchor.v + predict(item.model, x), contributionsFt });
+  }
+  const attributed = attachDrivers(points, controls, weather ? 'w' : 'r', weather ? 12 * HOUR : 3 * HOUR);
+  if (weather) {
+    const rows = sortedWeather([...weather.past.filter(row => +row.t <= +issue), ...weather.future.filter(row => +row.t > +issue)]);
+    for (const point of attributed) {
+      // Weather context repeats hourly; factors remain present at every point.
+      if (+point.t % HOUR !== 0) continue;
+      const context = forecastWeatherContext(rows, point.t);
+      if (point.drivers && context) point.drivers.w = context;
+    }
+  }
+  return attributed;
+}
 /** Three-day measured/tide response, independently screened at12/24/48/72 h.
  * The prefix is kept exact; adjacent learned models are evaluated against tide
  * at each timestamp so a supported repeating response is not a straight tail.
  */
-export function projectLongRangeResidual(model: WeatherResponseModel | null, historyInput: ResidualObservation[], tideInput: WaterPoint[], times: Date[], issue: Date, reference: Reference, tideReference: Reference, options: { prefix?: WaterPoint[] } = {}): WaterPoint[] {
+export function projectLongRangeResidual(model: WeatherResponseModel | null, historyInput: ResidualObservation[], tideInput: WaterPoint[], times: Date[], issue: Date, reference: Reference, tideReference: Reference, options: { prefix?: AttributedWaterPoint[]; includeDrivers?: boolean } = {}): AttributedWaterPoint[] {
   const long = model?.longRange;
   if (!model || !long?.eligible || !sameReference(reference, tideReference) || !sameReference(model.reference, reference) || !sameReference(model.tideReference, tideReference) || !Number.isFinite(+issue) || !Number.isFinite(+model.trainedUntil) || +model.trainedUntil > +issue || !Number.isFinite(model.maxObservationGapMs) || model.maxObservationGapMs <= 0 || model.maxObservationGapMs > WEATHER_OBSERVATION_MAX_GAP_MS || long.regressions.length !== LONG_RANGE_LEADS.length || long.regressions.some((r, i) => r.leadHours !== LONG_RANGE_LEADS[i] || !validRegression(r.model, LONG_RANGE_FEATURES.length))) return [];
   const history = sorted(historyInput.filter(p => +p.t <= +issue)), tide = sorted(tideInput);
-  const prefix = options.prefix ?? projectShortRangeResidual(model, history, tide, Array.from({ length: 61 }, (_, i) => new Date(+issue + i * 6 * 60_000)), issue, reference, tideReference);
-  return longProjection(long.regressions, history, tide, times, issue, model.maxObservationGapMs, prefix);
+  const prefix = options.prefix ?? projectShortRangeResidual(model, history, tide, Array.from({ length: 61 }, (_, i) => new Date(+issue + i * 6 * 60_000)), issue, reference, tideReference, { includeDrivers: options.includeDrivers });
+  const points = longProjection(long.regressions, history, tide, times, issue, model.maxObservationGapMs, prefix);
+  if (!options.includeDrivers || !points.length) return points;
+  const anchor = anchorAt(history, issue, model.maxObservationGapMs)!;
+  const junction = prefix.at(-1)!;
+  const selected = long.regressions.filter(item => item.leadHours > Math.ceil((+junction.t - +issue) / HOUR));
+  return points.map(point => {
+    if (+point.t <= +junction.t) {
+      const controls = prefix.filter(p => p.drivers).map(p => ({ ...p, contributionsFt: p.drivers!.c }));
+      const original = prefix.find(value => +value.t === +point.t);
+      return original?.drivers ? { ...point, drivers: original.drivers } : attachDrivers([point], controls, prefix.find(value => value.drivers)?.drivers?.m ?? 'r', HOUR)[0];
+    }
+    const x = longFeatures(issue, point.t, anchor, history, tide, model.maxObservationGapMs);
+    const nextIndex = selected.findIndex(item => +issue + item.leadHours * HOUR >= +point.t);
+    if (!x || nextIndex < 0) return point;
+    const next = selected[nextIndex], before = selected[nextIndex - 1];
+    const partsAt = (item: LongRegression) => item.method === 'steady-residual' ? [anchor.v, 0, 0, 0, 0, 0, 0, 0] : regressionContributions(item.model, x, LONG_GROUPS, anchor.v);
+    const beforeParts = before ? partsAt(before) : (junction as AttributedWaterPoint).drivers?.c;
+    if (!beforeParts) return point;
+    const controls = [{ t: before ? new Date(+issue + before.leadHours * HOUR) : junction.t, v: 0, contributionsFt: beforeParts }, { t: new Date(+issue + next.leadHours * HOUR), v: 0, contributionsFt: partsAt(next) }];
+    return attachDrivers([point], controls, 'l', 72 * HOUR)[0];
+  });
 }
 /** Learned six-hour fallback, independently screened against a steady residual.
  * Weather outside its training range cannot enter this predictor. No forecast
  * is returned for unsupported measured conditions, gaps, references or weights.
  */
-export function projectShortRangeResidual(model: WeatherResponseModel | null, historyInput: ResidualObservation[], tideInput: WaterPoint[], times: Date[], issue: Date, reference: Reference, tideReference: Reference): WaterPoint[] {
+export function projectShortRangeResidual(model: WeatherResponseModel | null, historyInput: ResidualObservation[], tideInput: WaterPoint[], times: Date[], issue: Date, reference: Reference, tideReference: Reference, options: { includeDrivers?: boolean } = {}): AttributedWaterPoint[] {
   const short = model?.shortRange;
   if (!model || !short?.eligible || !sameReference(reference, tideReference) || !sameReference(model.reference, reference) || !sameReference(model.tideReference, tideReference) || !Number.isFinite(+issue) || !Number.isFinite(+model.trainedUntil) || +model.trainedUntil > +issue || !Number.isFinite(model.maxObservationGapMs) || model.maxObservationGapMs <= 0 || model.maxObservationGapMs > WEATHER_OBSERVATION_MAX_GAP_MS || short.regressions.length !== SHORT_RANGE_LEADS.length || short.regressions.some((r, i) => r.leadHours !== SHORT_RANGE_LEADS[i] || !validRegression(r.model))) return [];
-  return shortProjection(short.regressions, sorted(historyInput.filter(p => p.t <= issue)), sorted(tideInput), times, issue, model.maxObservationGapMs);
+  const history = sorted(historyInput.filter(p => p.t <= issue)), tide = sorted(tideInput);
+  const points = shortProjection(short.regressions, history, tide, times, issue, model.maxObservationGapMs);
+  return options.includeDrivers ? projectionDrivers(points, short.regressions, history, tide, issue, model.maxObservationGapMs) : points;
 }
 /** Returns no curve for failing holdout, stale/missing data or mismatched refs.
  * historyWeather after issue is ignored; only futureWeather supplies upcoming inputs.
@@ -507,9 +557,11 @@ export function projectWeatherResidual(
   model: WeatherResponseModel | null, historyInput: ResidualObservation[], tideInput: WaterPoint[],
   historyWeather: WeatherPoint[], futureWeather: WeatherPoint[], times: Date[], issue: Date,
   reference: Reference, tideReference: Reference, options: WeatherProjectionOptions = {},
-): WaterPoint[] {
+): AttributedWaterPoint[] {
   const allowed = model?.validation.eligible || (options.allowPointValidatedExperimental === true && model?.validation.pointEligible);
   const adversePeak = model && model.validation.peakMaeFt !== null && model.validation.persistencePeakMaeFt !== null && model.validation.peakMaeFt > model.validation.persistencePeakMaeFt;
   if (!model || !allowed || adversePeak || !sameReference(reference, tideReference) || !sameReference(model.reference, reference) || !sameReference(model.tideReference, tideReference) || !Number.isFinite(+issue) || !Number.isFinite(+model.trainedUntil) || +model.trainedUntil > +issue || !Number.isFinite(model.maxObservationGapMs) || model.maxObservationGapMs <= 0 || model.maxObservationGapMs > WEATHER_OBSERVATION_MAX_GAP_MS || model.regressions.length !== WEATHER_RESPONSE_LEADS.length || model.regressions.some((r, i) => r.leadHours !== WEATHER_RESPONSE_LEADS[i] || !validRegression(r.model))) return [];
-  return projection(model.regressions, sorted(historyInput.filter(p => +p.t <= +issue)), sorted(tideInput), sortedWeather(historyWeather), sortedWeather(futureWeather), times, issue, model.maxObservationGapMs);
+  const history = sorted(historyInput.filter(p => +p.t <= +issue)), tide = sorted(tideInput), past = sortedWeather(historyWeather), future = sortedWeather(futureWeather);
+  const points = projection(model.regressions, history, tide, past, future, times, issue, model.maxObservationGapMs);
+  return options.includeDrivers ? projectionDrivers(points, model.regressions, history, tide, issue, model.maxObservationGapMs, { past, future }) : points;
 }

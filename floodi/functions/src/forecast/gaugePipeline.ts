@@ -1,3 +1,4 @@
+import { FORECAST_DRIVER_METADATA } from './attribution';
 import { WeatherPoint, Metrics, Validation } from './model';
 import { ForecastDocument } from './schema';
 import { SITE } from './sources';
@@ -8,7 +9,7 @@ import { floodWindows, interpolate, surgeTrend, WaterPoint } from './water';
 const HOUR = 3600_000;
 const ordered = <T extends { t: Date }>(points: T[]) => [...new Map(points.filter(p => Number.isFinite(+p.t)).map(p => [+p.t, p])).values()].sort((a, b) => +a.t - +b.t);
 export const GAUGE_FORECAST_MODEL_VERSION = 'gauge-weather-response-v6';
-export interface GaugeForecastOptions { model?: WeatherResponseModel | null }
+export interface GaugeForecastOptions { model?: WeatherResponseModel | null; includeDrivers?: boolean }
 type SerializedWeatherResponseModel = Omit<WeatherResponseModel, 'trainedUntil' | 'holdoutStarts' | 'testStart' | 'testEnd'> & { trainedUntil: string; holdoutStarts: string; testStart: string; testEnd: string };
 export interface GaugeModelCache {
   version: typeof GAUGE_FORECAST_MODEL_VERSION;
@@ -103,6 +104,7 @@ export function buildGaugeForecast(
   futureTide: WaterPoint[], futureWeather: WeatherPoint[], now: Date,
   options: GaugeForecastOptions = {},
 ): ForecastDocument {
+  const includeDrivers = options.includeDrivers !== false;
   const history = ordered(historyInput.filter(p => !p.estimated && p.t <= now && Number.isFinite(p.v)));
   const tides = ordered([...historicalTide, ...futureTide]);
   const weather = ordered([...historyWeather, ...futureWeather.filter(w => w.t <= now)]);
@@ -145,9 +147,9 @@ export function buildGaugeForecast(
   // or train on the display's estimated NOAA bridge. Do not issue new forecasts
   // from an observation over one hour old; cached issues retain their timestamp.
   const targets = futureTide.filter(p => p.t >= now && +p.t <= +anchor.t + 24 * HOUR);
-  let projected = projectWeatherResidual(model, history, tides, weather, futureWeather, [now, ...targets.map(p => p.t)], anchor.t, ref, ref, { allowPointValidatedExperimental: true });
+  let projected = projectWeatherResidual(model, history, tides, weather, futureWeather, [now, ...targets.map(p => p.t)], anchor.t, ref, ref, { allowPointValidatedExperimental: true, includeDrivers });
   if (!projected.length && model.shortRange?.eligible) {
-    projected = projectShortRangeResidual(model, history, tides, [now, ...targets.map(p => p.t)], anchor.t, ref, ref);
+    projected = projectShortRangeResidual(model, history, tides, [now, ...targets.map(p => p.t)], anchor.t, ref, ref, { includeDrivers });
     if (projected.length) {
       document.method = 'residual-response';
       leads = model.shortRange.leads;
@@ -165,7 +167,7 @@ export function buildGaugeForecast(
     const tide = interpolate(tides, p.t);
     if (tide === null) return [];
     const total = tide + p.v;
-    return [{ t: p.t.toISOString(), tideFt: tide, residualFt: p.v, totalFt: total, lowerFt: total - error, upperFt: total + error }];
+    return [{ t: p.t.toISOString(), tideFt: tide, residualFt: p.v, totalFt: total, lowerFt: total - error, upperFt: total + error, ...(p.drivers ? { drivers: p.drivers } : {}) }];
   });
   if (document.points.length < 10 || !Number.isFinite(error)) {
     document.points = [];
@@ -190,7 +192,7 @@ export function buildGaugeForecast(
   if (longRange && longPasses) {
     const junction = document.points.at(-1)!;
     const longTargets = futureTide.filter(point => point.t >= now && +point.t <= +anchor.t + 72 * HOUR);
-    const extended = projectLongRangeResidual(model, history, tides, [now, ...longTargets.map(point => point.t)], anchor.t, ref, ref, { prefix: projected });
+    const extended = projectLongRangeResidual(model, history, tides, [now, ...longTargets.map(point => point.t)], anchor.t, ref, ref, { prefix: projected, includeDrivers });
     const errorControls = [{ leadHours: (+new Date(junction.t) - +anchor.t) / HOUR, error }];
     for (const lead of longRange.leads) if (lead.leadHours > errorControls[0].leadHours) errorControls.push({ leadHours: lead.leadHours, error: Math.max(errorControls.at(-1)!.error, lead.absoluteError90Ft!) });
     const envelopeAt = (at: Date) => {
@@ -204,7 +206,7 @@ export function buildGaugeForecast(
       const tide = interpolate(tides, point.t);
       if (tide === null) return [];
       const total = tide + point.v, envelope = envelopeAt(point.t);
-      return [{ t: point.t.toISOString(), tideFt: tide, residualFt: point.v, totalFt: total, lowerFt: total - envelope, upperFt: total + envelope }];
+      return [{ t: point.t.toISOString(), tideFt: tide, residualFt: point.v, totalFt: total, lowerFt: total - envelope, upperFt: total + envelope, ...(point.drivers ? { drivers: point.drivers } : {}) }];
     });
     const supportedTail = tail.length && Date.parse(tail[0].t) - Date.parse(junction.t) <= 30 * 60_000 && tail.every((point, i) => i === 0 || Date.parse(point.t) - Date.parse(tail[i - 1].t) <= 30 * 60_000) && Date.parse(tail.at(-1)!.t) >= +anchor.t + 71 * HOUR;
     if (supportedTail) {
@@ -227,7 +229,7 @@ export function buildGaugeForecast(
       for (let time = Math.floor(Date.parse(junction.t) / step + 1) * step; time <= +end; time += step) tailTimes.push(new Date(time));
       if (tailTimes.at(-1)?.getTime() !== +end) tailTimes.push(end);
     }
-    const outlook = projectHistoricalOutlook(model.historicalOutlook, history, tides, weather, futureWeather, [...projected.map(point => point.t), ...tailTimes], anchor.t, ref, ref, { prefix: projected });
+    const outlook = projectHistoricalOutlook(model.historicalOutlook, history, tides, weather, futureWeather, [...projected.map(point => point.t), ...tailTimes], anchor.t, ref, ref, { prefix: projected, includeDrivers });
     if (outlook.summary && outlook.validation?.eligible) {
       const lower = new Map(outlook.lower.map(point => [+point.t, point.v]));
       const upper = new Map(outlook.upper.map(point => [+point.t, point.v]));
@@ -235,7 +237,7 @@ export function buildGaugeForecast(
         const tide = interpolate(tides, point.t), lo = lower.get(+point.t), hi = upper.get(+point.t);
         if (tide === null || !finite(point.v) || !finite(lo) || !finite(hi) || lo > point.v || hi < point.v) return [];
         const total = tide + point.v;
-        return [{ t: point.t.toISOString(), tideFt: tide, residualFt: point.v, totalFt: total, lowerFt: tide + Math.min(lo, point.v - error), upperFt: tide + Math.max(hi, point.v + error) }];
+        return [{ t: point.t.toISOString(), tideFt: tide, residualFt: point.v, totalFt: total, lowerFt: tide + Math.min(lo, point.v - error), upperFt: tide + Math.max(hi, point.v + error), ...(point.drivers ? { drivers: point.drivers } : {}) }];
       });
       const complete = candidate.length && end && Date.parse(candidate.at(-1)!.t) === +end && Date.parse(candidate[0].t) - Date.parse(junction.t) <= step && candidate.every((point, i) => i === 0 || Date.parse(point.t) - Date.parse(candidate[i - 1].t) <= step);
       if (complete) {
@@ -252,6 +254,7 @@ export function buildGaugeForecast(
       }
     }
   }
+  if (document.points.some(point => point.drivers)) document.driverInfo = { ...FORECAST_DRIVER_METADATA, factorOrder: [...FORECAST_DRIVER_METADATA.factorOrder] };
   document.status = 'available';
   const events = floodWindows(document.points.map(p => ({ t: new Date(p.t), v: p.totalFt })), SITE.thresholdFt);
   const last = document.points.at(-1)!;
