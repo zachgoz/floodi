@@ -17,8 +17,7 @@ import './PrivacyPolicy.css';
 /**
  * PrivacyPolicy Page Component
  *
- * Provides a legally compliant Privacy Policy for Google AdSense approval,
- * styled to fit the application's premium glassmorphic visual system.
+ * Describes the app's actual data processing and support options.
  */
 export const PrivacyPolicy: React.FC = () => {
   return (
@@ -36,7 +35,7 @@ export const PrivacyPolicy: React.FC = () => {
         <div className="privacy-container">
           <div className="privacy-header-section">
             <h1 className="privacy-title">Privacy Policy</h1>
-            <p className="privacy-subtitle">Last Updated: October 14, 2026</p>
+            <p className="privacy-subtitle">Last Updated: October 17, 2026</p>
           </div>
 
           <IonCard className="glass-card">
@@ -48,7 +47,7 @@ export const PrivacyPolicy: React.FC = () => {
                 At FloodCast, accessible from our website, one of our main priorities is the privacy of our visitors. 
                 This Privacy Policy document contains types of information that is collected and recorded by FloodCast 
                 and how we use it. If you have additional questions or require more information about our Privacy Policy, 
-                do not hesitate to contact us.
+                contact <a href="mailto:floodcastapp@gmail.com">floodcastapp@gmail.com</a>.
               </p>
             </IonCardContent>
           </IonCard>
@@ -118,11 +117,32 @@ export const PrivacyPolicy: React.FC = () => {
 
           <IonCard className="glass-card">
             <IonCardHeader>
-              <IonCardTitle>5. Consent</IonCardTitle>
+              <IonCardTitle>5. Accounts and flood alert preferences</IonCardTitle>
             </IonCardHeader>
             <IonCardContent>
               <p>
-                By using our website, you hereby consent to our Privacy Policy and agree to its terms.
+                If you set up flood alerts or join early access, we store your account email,
+                verification status, selected coverage, consent and notification preferences.
+                Preferences and alert history are private and processed by our server services.
+                Email verification and alert availability are shown in Alerts; creating an account
+                alone does not activate flood notifications. We do not collect payment or billing
+                details for early access.
+              </p>
+              <p style={{ marginTop: '12px' }}>
+                You can manage or pause notifications in Alerts. For account deletion, data access
+                or privacy questions, email <a href="mailto:floodcastapp@gmail.com">floodcastapp@gmail.com</a>.
+              </p>
+            </IonCardContent>
+          </IonCard>
+
+          <IonCard className="glass-card">
+            <IonCardHeader>
+              <IonCardTitle>6. Your choices</IonCardTitle>
+            </IonCardHeader>
+            <IonCardContent>
+              <p>
+                Flood alert consent is collected separately from account creation. You can use
+                the public forecast without subscribing to alerts. Advertising choices are linked above.
               </p>
             </IonCardContent>
           </IonCard>

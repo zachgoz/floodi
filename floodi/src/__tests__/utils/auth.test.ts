@@ -19,5 +19,8 @@ describe('getRedirectFromSearch', () => {
     const s = '?redirect=' + encodeURIComponent('/path/to?p=1#section');
     expect(getRedirectFromSearch(s, '/home')).toBe('/path/to?p=1#section');
   });
+  it.each(['/\\evil.example', '/\n/evil.example', '/\u0000evil'])('rejects ambiguous or control-character redirect %j', redirect => {
+    expect(getRedirectFromSearch(`?redirect=${encodeURIComponent(redirect)}`, '/alerts')).toBe('/alerts');
+  });
 });
 

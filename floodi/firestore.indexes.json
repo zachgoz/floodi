@@ -4,140 +4,291 @@
       "collectionGroup": "comments",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "stationId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "stationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "comments",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "authorUid", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "authorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "comments",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "timeRangeStart", "order": "ASCENDING" },
-        { "fieldPath": "timeRangeEnd", "order": "ASCENDING" }
+        {
+          "fieldPath": "timeRangeStart",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timeRangeEnd",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "comments",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "metadata.station.id", "order": "ASCENDING" },
-        { "fieldPath": "metadata.timeRange.startTime", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "metadata.station.id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "metadata.timeRange.startTime",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "comments",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "isDeleted", "order": "ASCENDING" },
-        { "fieldPath": "metadata.station.id", "order": "ASCENDING" },
-        { "fieldPath": "metadata.timeRange.startTime", "order": "ASCENDING" }
+        {
+          "fieldPath": "isDeleted",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "metadata.station.id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "metadata.timeRange.startTime",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "comments",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "metadata.station.id", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "metadata.station.id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "comments",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "metadata.timeRange.startTime", "order": "ASCENDING" },
-        { "fieldPath": "metadata.timeRange.endTime", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "metadata.timeRange.startTime",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "metadata.timeRange.endTime",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "comments",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "isDeleted", "order": "ASCENDING" },
-        { "fieldPath": "metadata.station.id", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "isDeleted",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "metadata.station.id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "comments",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "isDeleted", "order": "ASCENDING" },
-        { "fieldPath": "authorUid", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "isDeleted",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "authorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "comments",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "isDeleted", "order": "ASCENDING" },
-        { "fieldPath": "metadata.station.id", "order": "ASCENDING" },
-        { "fieldPath": "metadata.timeRange.startTime", "order": "ASCENDING" }
+        {
+          "fieldPath": "isDeleted",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "metadata.station.id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "metadata.timeRange.startTime",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "comments",
-        "queryScope": "COLLECTION",
-        "fields": [
-          { "fieldPath": "isDeleted", "order": "ASCENDING" },
-          { "fieldPath": "metadata.locationId", "order": "ASCENDING" },
-          { "fieldPath": "metadata.timeRange.startTime", "order": "ASCENDING" }
-        ]
-      },
-      {
-        "collectionGroup": "comments",
-        "queryScope": "COLLECTION",
-        "fields": [
-          { "fieldPath": "metadata.locationId", "order": "ASCENDING" },
-          { "fieldPath": "createdAt", "order": "DESCENDING" }
-        ]
-      },
-      {
-        "collectionGroup": "comments",
-        "queryScope": "COLLECTION",
-        "fields": [
-          { "fieldPath": "isDeleted", "order": "ASCENDING" },
-          { "fieldPath": "metadata.locationId", "order": "ASCENDING" },
-          { "fieldPath": "createdAt", "order": "DESCENDING" }
-        ]
-      },
-      {
-        "collectionGroup": "peaks",
-        "queryScope": "COLLECTION",
-        "fields": [
-          { "fieldPath": "type", "order": "ASCENDING" },
-          { "fieldPath": "v", "order": "ASCENDING" },
-          { "fieldPath": "t", "order": "DESCENDING" }
-        ]
-      },
-      {
-        "collectionGroup": "peaks",
-        "queryScope": "COLLECTION",
-        "fields": [
-          { "fieldPath": "source", "order": "ASCENDING" },
-          { "fieldPath": "t", "order": "ASCENDING" }
-        ]
-      },
-      {
-        "collectionGroup": "flood_events",
-        "queryScope": "COLLECTION",
-        "fields": [
-          { "fieldPath": "source", "order": "ASCENDING" },
-          { "fieldPath": "startTime", "order": "ASCENDING" }
-        ]
-      }
-    ],
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "isDeleted",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "metadata.locationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "metadata.timeRange.startTime",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "comments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "metadata.locationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "comments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "isDeleted",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "metadata.locationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "peaks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "v",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "t",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "peaks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "source",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "t",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "flood_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "source",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "citizen_alert_outbox",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "state",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nextAttemptAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "citizen_alert_outbox",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "state",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "leaseUntil",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
   "fieldOverrides": [
     {
       "collectionGroup": "users",
@@ -182,6 +333,26 @@
     {
       "collectionGroup": "predictions",
       "fieldPath": "weather",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "citizen_alert_outbox",
+      "fieldPath": "email",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "citizen_alert_outbox",
+      "fieldPath": "unsubscribeToken",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "citizen_alert_outbox",
+      "fieldPath": "text",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "citizen_alert_subscriptions",
+      "fieldPath": "email",
       "indexes": []
     }
   ]

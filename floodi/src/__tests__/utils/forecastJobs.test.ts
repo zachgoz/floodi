@@ -7,6 +7,8 @@ import { explainWithGemini } from '../../../functions/src/forecast/gemini';
 import { fetchFimanData } from '../../../functions/src/etl/fiman';
 import { fetchNoaaPredictions } from '../../../functions/src/etl/noaa';
 import { trainWeatherResponse, LONG_RANGE_FEATURES, LONG_RANGE_LEADS, WEATHER_RESPONSE_FEATURES, WEATHER_RESPONSE_LEADS, WeatherResponseModel } from '../../../functions/src/forecast/weatherResponse';
+import { publishNumericalForecast } from '../../../functions/src/forecast/publication';
+import type { Explanation, ForecastDocument } from '../../../functions/src/forecast/schema';
 
 const backend = vi.hoisted(() => {
   const records = new Map<string, unknown>();
@@ -15,6 +17,7 @@ const backend = vi.hoisted(() => {
   const save = vi.fn(async (_data: unknown, _options: unknown) => undefined);
   const file = vi.fn(() => ({ save }));
   const doc = vi.fn((path: string) => ({
+    path,
     get: vi.fn(async () => ({ exists: records.has(path), data: () => records.get(path) })),
     set: vi.fn(async (value: unknown) => { records.set(path, value); }),
     create: vi.fn(async (value: unknown) => {
@@ -22,7 +25,30 @@ const backend = vi.hoisted(() => {
       records.set(path, value);
     }),
   }));
-  const runTransaction = vi.fn(async (work: (transaction: { get: (ref: { get: () => Promise<unknown> }) => Promise<unknown>; set: (ref: { set: (value: unknown) => Promise<void> }, value: unknown) => void }) => unknown) => work({ get: ref => ref.get(), set: (ref, value) => { void ref.set(value); } }));
+  type Ref = ReturnType<typeof doc>;
+  type Operation = { ref: Ref; value: Record<string, unknown>; create?: boolean; merge?: boolean };
+  const runTransaction = vi.fn(async (work: (transaction: {
+    get: (ref: Ref) => ReturnType<Ref['get']>;
+    set: (ref: Ref, value: Record<string, unknown>, options?: { merge?: boolean }) => void;
+    create: (ref: Ref, value: Record<string, unknown>) => void;
+  }) => unknown) => {
+    const pending: Operation[] = [];
+    const result = await work({
+      get: ref => ref.get(),
+      set: (ref, value, options) => { pending.push({ ref, value, merge: options?.merge }); },
+      create: (ref, value) => { pending.push({ ref, value, create: true }); },
+    });
+    // Validate every precondition before applying ANY write, like Firestore.
+    for (const entry of pending) if (entry.create && records.has(entry.ref.path)) throw new Error('Immutable document already exists');
+    const committedAt = Date.now();
+    for (const entry of pending) {
+      const value = Object.fromEntries(Object.entries(entry.value).map(([key, value]) => [key,
+        value && typeof value === 'object' && 'methodName' in value && value.methodName === 'FieldValue.serverTimestamp' ? { toDate: () => new Date(committedAt), toMillis: () => committedAt } : value,
+      ]));
+      records.set(entry.ref.path, entry.merge ? { ...records.get(entry.ref.path) as object, ...value } : value);
+    }
+    return result;
+  });
   return { records, schedules, save, file, doc, runTransaction, logs };
 });
 vi.mock('../../../functions/node_modules/firebase-functions/lib/logger/index.js', () => Object.fromEntries(['info', 'warn', 'error'].map(level => [level, (_message: string, details: Record<string, unknown>) => backend.logs.push({ level, details })])));
@@ -249,7 +275,8 @@ describe('scheduled numerical forecast and private issued-input archive', () => 
     expect(backend.records.get('operationalHealth/generateFloodOutlook_carolina-beach')).toMatchObject({ status: 'failed', stage: 'sources', error: expect.objectContaining({ message: 'FiMAN transport timed out', code: 'ETIMEDOUT' }) });
   });
   it('keeps calculated forecasts available when explanation reservation storage is unavailable', async () => {
-    backend.runTransaction.mockRejectedValueOnce(new Error('State unavailable'));
+    const transaction = backend.runTransaction.getMockImplementation()!;
+    backend.runTransaction.mockImplementationOnce(transaction).mockRejectedValueOnce(new Error('State unavailable'));
     await runForecast();
     expect((backend.records.get(liveDoc) as { status: string }).status).toBe('available');
     expect(explainWithGemini).not.toHaveBeenCalled();
@@ -266,11 +293,99 @@ describe('scheduled numerical forecast and private issued-input archive', () => 
   });
 });
 
+describe('atomic numerical publication independent of optional explanations', () => {
+  const publicationPath = `forecast_publications/carolina-beach/issues/${initialNow.toISOString()}`;
+  const archivePath = `forecast_archive/carolina-beach/issues/${initialNow.toISOString()}`;
+  const inputPath = `forecast_input_archive/carolina-beach/issues/${initialNow.toISOString()}`;
+
+  it('makes numerical evidence available while Gemini is pending and cannot roll back a newer issue', async () => {
+    let release!: (value: { headline: 'Flood outlook'; evidenceIds: string[] }) => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    vi.mocked(explainWithGemini).mockImplementationOnce(() => {
+      entered();
+      return new Promise<Explanation>(resolve => { release = resolve; });
+    });
+    const first = runForecast();
+    await started;
+    const archive = backend.records.get(archivePath) as ForecastDocument;
+    expect(archive.explanationSource).toBe('fallback');
+    expect(backend.records.get(liveDoc)).toEqual(archive);
+    const marker = backend.records.get(publicationPath) as { publishedAt: { toDate: () => Date }; archivePath: string; inputPath: string };
+    expect(marker.publishedAt.toDate()).toEqual(initialNow);
+    expect(marker.archivePath).toBe(archivePath);
+    expect(marker.inputPath).toBe(inputPath);
+
+    vi.setSystemTime(new Date(+initialNow + 10 * 60_000));
+    await runForecast();
+    expect(marker.publishedAt.toDate()).toEqual(initialNow);
+    const newer = backend.records.get(liveDoc);
+    release({ headline: 'Flood outlook', evidenceIds: ['availability'] });
+    await first;
+    expect(backend.records.get(liveDoc)).toBe(newer);
+    expect(backend.records.get(archivePath)).toBe(archive);
+    expect(backend.records.get(`forecast_explanations/carolina-beach/issues/${initialNow.toISOString()}`)).toMatchObject({ explanationSource: 'gemini-3.8-flash' });
+  });
+
+  it('updates only public explanation fields and leaves the numerical archive unchanged', async () => {
+    await runForecast();
+    const archive = backend.records.get(archivePath) as ForecastDocument;
+    const current = backend.records.get(liveDoc) as ForecastDocument;
+    expect(archive.explanationSource).toBe('fallback');
+    expect(current.explanationSource).toBe('gemini-3.8-flash');
+    expect({ ...current, explanation: archive.explanation, explanationSource: archive.explanationSource }).toEqual(archive);
+  });
+
+  it('reports fallback health if Gemini succeeds but explanation storage fails', async () => {
+    const transaction = backend.runTransaction.getMockImplementation()!;
+    backend.runTransaction.mockImplementationOnce(transaction).mockImplementationOnce(transaction).mockRejectedValueOnce(new Error('Explanation storage unavailable'));
+    await runForecast();
+    expect(backend.records.get(liveDoc)).toMatchObject({ status: 'available', explanationSource: 'fallback' });
+    expect(backend.records.get('operationalHealth/generateFloodOutlook_carolina-beach')).toMatchObject({ status: 'partial', explanationSource: 'fallback' });
+  });
+
+  it('leaves current and readiness absent when immutable archive creation conflicts', async () => {
+    backend.records.set(archivePath, { existing: true });
+    await expect(runForecast()).rejects.toThrow('Immutable document');
+    expect(backend.records.has(liveDoc)).toBe(false);
+    expect(backend.records.has(publicationPath)).toBe(false);
+    expect(backend.records.get(archivePath)).toEqual({ existing: true });
+    expect(explainWithGemini).not.toHaveBeenCalled();
+  });
+
+  it('treats repeated publication and late older issues as no-ops', async () => {
+    await runForecast();
+    const archive = backend.records.get(archivePath) as ForecastDocument;
+    const db = { doc: backend.doc, runTransaction: backend.runTransaction } as unknown as FirebaseFirestore.Firestore;
+    const marker = backend.records.get(publicationPath);
+    expect(await publishNumericalForecast(db, archive, { inputPath, modelPath: null })).toBe(false);
+    expect(backend.records.get(publicationPath)).toBe(marker);
+    vi.setSystemTime(new Date(+initialNow + 10 * 60_000));
+    await runForecast();
+    const newer = backend.records.get(liveDoc);
+    backend.records.delete(publicationPath);
+    expect(await publishNumericalForecast(db, archive, { inputPath, modelPath: null })).toBe(false);
+    expect(backend.records.get(liveDoc)).toBe(newer);
+    expect(backend.records.has(publicationPath)).toBe(false);
+  });
+
+  it('checks current inside publication before a failing concurrent issue could replace it', async () => {
+    await runForecast();
+    const current = backend.records.get(liveDoc) as ForecastDocument;
+    vi.setSystemTime(new Date(+initialNow + 10 * 60_000));
+    const unavailable: ForecastDocument = { ...current, generatedAt: new Date().toISOString(), status: 'unavailable', points: [], extension: undefined, tail: undefined };
+    const db = { doc: backend.doc, runTransaction: backend.runTransaction } as unknown as FirebaseFirestore.Firestore;
+    expect(await publishNumericalForecast(db, unavailable, { inputPath: null, modelPath: null })).toBe(false);
+    expect(backend.records.get(liveDoc)).toBe(current);
+    expect(backend.records.has(`forecast_publications/carolina-beach/issues/${unavailable.generatedAt}`)).toBe(false);
+  });
+});
+
 describe('public cached outlook reads', () => {
-  const readOutlook = floodOutlook as unknown as (request: { method: string }, response: ReturnType<typeof mockResponse>) => Promise<void>;
+  const readOutlook = floodOutlook as unknown as (request: { method: string; get: (header: string) => string | undefined }, response: ReturnType<typeof mockResponse>) => Promise<void>;
   function mockResponse() {
-    const res = { set: vi.fn(), status: vi.fn(), json: vi.fn() };
-    res.set.mockReturnValue(res); res.status.mockReturnValue(res);
+    const res = { set: vi.fn(), status: vi.fn(), json: vi.fn(), send: vi.fn(), vary: vi.fn(), type: vi.fn(), removeHeader: vi.fn() };
+    res.set.mockReturnValue(res); res.status.mockReturnValue(res); res.type.mockReturnValue(res);
     return res;
   }
   it('returns a current cached issue without invoking inference or exceeding its expiry in HTTP caching', async () => {
@@ -279,8 +394,10 @@ describe('public cached outlook reads', () => {
     vi.clearAllMocks();
     vi.setSystemTime(new Date(Date.parse(document.expiresAt) - 30_000));
     const res = mockResponse();
-    await readOutlook({ method: 'GET' }, res);
-    expect(res.json).toHaveBeenCalledWith(document);
+    await readOutlook({ method: 'GET', get: () => undefined }, res);
+    expect(JSON.parse(res.send.mock.calls[0][0])).toEqual(document);
+    expect(res.vary).toHaveBeenCalledWith('Accept-Encoding');
+    expect(res.type).toHaveBeenCalledWith('application/json');
     expect(res.set).toHaveBeenLastCalledWith('Cache-Control', 'public, max-age=30, s-maxage=30');
     expect(fetchFimanData).not.toHaveBeenCalled();
     expect(explainWithGemini).not.toHaveBeenCalled();
@@ -294,7 +411,7 @@ describe('public cached outlook reads', () => {
     if (failure === 'wrong-phase') document.phaseMinutes = 0;
     if (failure === 'wrong-threshold') document.thresholdFt = 7;
     const res = mockResponse();
-    await readOutlook({ method: 'GET' }, res);
+    await readOutlook({ method: 'GET', get: () => undefined }, res);
     expect(res.status).toHaveBeenCalledWith(503);
     expect(res.set).toHaveBeenLastCalledWith('Cache-Control', 'no-store');
     expect(res.json).toHaveBeenCalledWith({ error: 'Current evaluated outlook unavailable' });

@@ -13,9 +13,9 @@ import { NextTideInfo } from 'src/utils/tideExtrema';
 
 interface AtmosphericOverlayProps {
   nextTideInfo?: NextTideInfo;
-  precipitationAccumulation: number; // in inches
-  windSpeed: number; // in mph
-  windDirection: number; // in degrees (0 = North)
+  precipitationAccumulation: number | null; // in inches
+  windSpeed: number | null; // in mph
+  windDirection: number | null; // in degrees (0 = North)
   targetTime?: Date;
   isLive?: boolean;
   observedWaterLevel?: number; // in ft
@@ -78,7 +78,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
 
   // Format time for the modal
   const localTime = targetTime 
-    ? targetTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
+    ? targetTime.toLocaleTimeString([], { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', hour12: true })
     : 'Now';
 
   return (
@@ -93,7 +93,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
         role="button"
         tabIndex={loading ? -1 : 0}
         aria-disabled={loading}
-        aria-label="View detailed water level insights"
+        title="View water level details"
       >
         {/* Tidal Group: Predicted + Surge = Final */}
         <div className="tidal-group">
@@ -175,7 +175,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
           onKeyDown={handleInsightKeyDown}
           role="button"
           tabIndex={0}
-          aria-label="View detailed tide insights"
+          title="View detailed tide insights"
         >
           <div className="metric-details" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div className="metric-value-row">

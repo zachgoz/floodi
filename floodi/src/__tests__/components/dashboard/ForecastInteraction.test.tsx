@@ -214,9 +214,9 @@ describe("forecast chart behavior", () => {
     const before = container.querySelectorAll("svg text");
     const left = before[3]?.textContent;
     const right = before[5]?.textContent;
-    fireEvent.click(screen.getByRole("button", { name: "Return to Live" }));
+    fireEvent.click(screen.getByRole("button", { name: /Return to Live$/ }));
     expect(
-      screen.queryByRole("button", { name: "Return to Live" }),
+      screen.queryByRole("button", { name: /Return to Live$/ }),
     ).not.toBeInTheDocument();
     expect(left).not.toBe(right);
   });
@@ -299,19 +299,39 @@ function mockChartSize(svg: SVGSVGElement) {
 }
 
 describe('linked forecast and residual charts', () => {
+  it.each(['tide', 'surge'])('keeps both charts aligned and preserves zoom after keyboard panning the %s chart and returning live', async plot => {
+    const { container } = render(<LinkedCharts />);
+    fireEvent.click(screen.getByRole('button', { name: /12 hours$/ }));
+    await waitFor(() => expect(+new Date(chartDomains(container)[0].end!) - +new Date(chartDomains(container)[0].start!)).toBe(12 * 3600_000));
+    const before = chartDomains(container)[0];
+    const target = plot === 'tide' ? container.querySelector('.chart-viewer')! : container.querySelector('.surge-svg')!;
+    fireEvent.keyDown(target, { key: 'ArrowLeft' });
+    await waitFor(() => {
+      const domains = chartDomains(container);
+      expect(domains[0]).toEqual(domains[1]);
+      expect(+new Date(domains[0].start!)).toBe(+new Date(before.start!) - 3 * 3600_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Return to Live$/ }));
+    await waitFor(() => {
+      const domains = chartDomains(container);
+      expect(domains[0]).toEqual(domains[1]);
+      expect(+new Date(domains[0].end!) - +new Date(domains[0].start!)).toBe(12 * 3600_000);
+      expect(+new Date(domains[0].start!) + 4 * 3600_000).toBe(+now);
+    });
+  });
   it('groups the two plots in one card with one shared toolbar', () => {
     render(<LinkedCharts />);
     const card = screen.getByRole('region', {name:'Water level and surge forecast'});
     expect(card.querySelectorAll('svg[data-domain-start]')).toHaveLength(2);
     expect(screen.getAllByRole('group',{name:'Shared chart time window'})).toHaveLength(1);
-    expect(screen.getAllByRole('button',{name:'12 hours'})).toHaveLength(1);
-    expect(screen.getAllByRole('button',{name:'Return to Live'})).toHaveLength(1);
+    expect(screen.getAllByRole('button',{name:/12 hours$/})).toHaveLength(1);
+    expect(screen.getAllByRole('button',{name:/Return to Live$/})).toHaveLength(1);
   });
   it('offers three future days while retaining the configured position of live time', () => {
     const onViewportChange = vi.fn();
     render(<ForecastTimeControls viewport={{start:p(-36 * 60,0).t,end:p(48 * 60,0).t}}
       now={now} focusRatio={36 / 84} isLive onViewportChange={onViewportChange} onReturnToLive={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', {name:'Next 3 days'}));
+    fireEvent.click(screen.getByRole('button', {name:/Next 3 days$/}));
     const [start, end] = onViewportChange.mock.calls[0];
     expect(+end - +now).toBe(72 * 3600_000);
     expect(+now - +start).toBe(54 * 3600_000);
@@ -319,7 +339,7 @@ describe('linked forecast and residual charts', () => {
   });
   it('defines the seven-day control as seven future days rather than total chart width', async () => {
     const {container} = render(<LinkedCharts />);
-    fireEvent.click(screen.getByRole('button',{name:'Next 7 days'}));
+    fireEvent.click(screen.getByRole('button',{name:/Next 7 days$/}));
     await waitFor(() => {
       const domains = chartDomains(container);
       expect(domains[0]).toEqual(domains[1]);
@@ -329,25 +349,25 @@ describe('linked forecast and residual charts', () => {
   it.each([16, 31])('shows the entire actual %i-day NOAA endpoint without resetting the live ratio', async days => {
     const forecastEndAt = p(days * 24 * 60,0).t;
     const {container} = render(<LinkedCharts forecastEndAt={forecastEndAt} />);
-    fireEvent.click(screen.getByRole('button',{name:'Full forecast'}));
+    fireEvent.click(screen.getByRole('button',{name:/Full forecast$/}));
     await waitFor(() => {
       const domains = chartDomains(container);
       expect(domains[0]).toEqual(domains[1]);
       expect(domains[0].end).toBe(forecastEndAt.toISOString());
       expect(+new Date(domains[0].start!) + (+new Date(domains[0].end!) - +new Date(domains[0].start!)) / 3).toBe(+now);
     });
-    expect(screen.getByRole('button',{name:'Full forecast'})).toHaveAttribute('aria-pressed','true');
+    expect(screen.getByRole('button',{name:/Full forecast$/})).toHaveAttribute('aria-pressed','true');
   });
   it.each([undefined, p(-60,0).t, new Date('invalid')])('disables the full forecast preset when the future endpoint is unavailable: %s', forecastEndAt => {
     render(<LinkedCharts forecastEndAt={forecastEndAt} />);
-    expect(screen.getByRole('button',{name:'Full forecast'})).toBeDisabled();
+    expect(screen.getByRole('button',{name:/Full forecast$/})).toBeDisabled();
   });
   it('keeps the full NOAA range during surge panning, wheel zoom and return to live', async () => {
     const forecastEndAt = p(31 * 24 * 60,0).t;
     const {container} = render(<LinkedCharts forecastEndAt={forecastEndAt} />);
     const [tide, surge] = [...container.querySelectorAll<SVGSVGElement>('svg[data-domain-start]')];
     mockChartSize(tide); mockChartSize(surge);
-    fireEvent.click(screen.getByRole('button',{name:'Full forecast'}));
+    fireEvent.click(screen.getByRole('button',{name:/Full forecast$/}));
     await waitFor(() => expect(chartDomains(container)[0].end).toBe(forecastEndAt.toISOString()));
     const original = chartDomains(container)[0];
     const span = +new Date(original.end!) - +new Date(original.start!);
@@ -360,7 +380,7 @@ describe('linked forecast and residual charts', () => {
       expect(domains[0].start).not.toBe(original.start);
       expect(+new Date(domains[0].end!) - +new Date(domains[0].start!)).toBe(span);
     });
-    fireEvent.click(screen.getByRole('button',{name:'Return to Live'}));
+    fireEvent.click(screen.getByRole('button',{name:/Return to Live$/}));
     await waitFor(() => expect(chartDomains(container)[0].end).toBe(forecastEndAt.toISOString()));
     fireEvent.wheel(surge, {ctrlKey:true,deltaY:-80,clientX:300});
     await waitFor(() => {
@@ -369,7 +389,7 @@ describe('linked forecast and residual charts', () => {
       expect(+new Date(domains[0].end!) - +new Date(domains[0].start!)).toBeGreaterThan(7 * 24 * 3600_000);
       expect(+new Date(domains[0].end!) - +new Date(domains[0].start!)).toBeLessThan(span);
     });
-    fireEvent.click(screen.getByRole('button',{name:'Full forecast'}));
+    fireEvent.click(screen.getByRole('button',{name:/Full forecast$/}));
     await waitFor(() => expect(chartDomains(container)[0].end).toBe(forecastEndAt.toISOString()));
     fireEvent.click(screen.getByRole('button',{name:'Zoom in both charts'}));
     fireEvent.click(screen.getByRole('button',{name:'Zoom out both charts'}));
@@ -377,7 +397,7 @@ describe('linked forecast and residual charts', () => {
   });
   it('does not move the selected viewport when more buffered NOAA predictions arrive', async () => {
     const {container, rerender} = render(<LinkedCharts forecastEndAt={p(16 * 24 * 60,0).t} />);
-    fireEvent.click(screen.getByRole('button',{name:'Full forecast'}));
+    fireEvent.click(screen.getByRole('button',{name:/Full forecast$/}));
     await waitFor(() => expect(chartDomains(container)[0].end).toBe(p(16 * 24 * 60,0).t.toISOString()));
     const selected = chartDomains(container)[0];
     rerender(<LinkedCharts forecastEndAt={p(31 * 24 * 60,0).t} />);
@@ -388,18 +408,18 @@ describe('linked forecast and residual charts', () => {
     const {container} = render(<LinkedCharts />);
     const surge = container.querySelectorAll<SVGSVGElement>('svg[data-domain-start]')[1];
     mockChartSize(surge);
-    fireEvent.click(screen.getByRole('button',{name:'Next 3 days'}));
+    fireEvent.click(screen.getByRole('button',{name:/Next 3 days$/}));
     await waitFor(() => {
       const domains = chartDomains(container);
       expect(domains[0]).toEqual(domains[1]);
       expect(+new Date(domains[0].end!) - +now).toBe(72 * 3600_000);
     });
-    expect(screen.getByRole('button',{name:'Next 3 days'})).toHaveAttribute('aria-pressed','true');
+    expect(screen.getByRole('button',{name:/Next 3 days$/})).toHaveAttribute('aria-pressed','true');
     const original = chartDomains(container)[0];
     const span = +new Date(original.end!) - +new Date(original.start!);
     fireEvent.wheel(surge,{deltaX:-100});
     await waitFor(() => expect(chartDomains(container)[0].start).not.toBe(original.start));
-    fireEvent.click(screen.getByRole('button',{name:'Return to Live'}));
+    fireEvent.click(screen.getByRole('button',{name:/Return to Live$/}));
     await waitFor(() => {
       const domains = chartDomains(container);
       expect(domains[0]).toEqual(domains[1]);
@@ -414,7 +434,7 @@ describe('linked forecast and residual charts', () => {
     try {
       const surge = container.querySelectorAll<SVGSVGElement>('svg[data-domain-start]')[1];
       mockChartSize(surge);
-      fireEvent.click(screen.getByRole('button', { name: 'Next 3 days' }));
+      fireEvent.click(screen.getByRole('button', { name: /Next 3 days$/ }));
       act(() => vi.advanceTimersByTime(50));
       const live = chartDomains(container)[0];
       expect(chartDomains(container)[1]).toEqual(live);
@@ -423,7 +443,7 @@ describe('linked forecast and residual charts', () => {
       expect(chartDomains(container)[0].start).not.toBe(live.start);
       // Return before the tide chart's 50 ms notification can acknowledge the
       // pan. Returning to its last emitted range must still update the parent.
-      fireEvent.click(screen.getByRole('button', { name: 'Return to Live' }));
+      fireEvent.click(screen.getByRole('button', { name: /Return to Live$/ }));
       act(() => vi.advanceTimersByTime(50));
       expect(chartDomains(container)[0]).toEqual(live);
       expect(chartDomains(container)[1]).toEqual(live);
@@ -440,7 +460,7 @@ describe('linked forecast and residual charts', () => {
     const [tide, surge] = [...container.querySelectorAll<SVGSVGElement>('svg[data-domain-start]')];
     mockChartSize(tide); mockChartSize(surge);
     const assertLinked = async () => waitFor(() => expect(chartDomains(container)[0]).toEqual(chartDomains(container)[1]));
-    fireEvent.click(screen.getByRole('button', { name: '12 hours' }));
+    fireEvent.click(screen.getByRole('button', { name: /12 hours$/ }));
     await assertLinked();
     expect(+new Date(chartDomains(container)[0].end!) - +new Date(chartDomains(container)[0].start!)).toBe(12 * 3600_000);
     fireEvent.click(screen.getByRole('button',{name:'Zoom in both charts'}));
@@ -459,7 +479,7 @@ describe('linked forecast and residual charts', () => {
     const zoomSpan = +new Date(chartDomains(container)[0].end!) - +new Date(chartDomains(container)[0].start!);
     fireEvent.wheel(surge, { deltaX: -400 });
     await assertLinked();
-    fireEvent.click(screen.getByRole('button', { name: 'Return to Live' }));
+    fireEvent.click(screen.getByRole('button', { name: /Return to Live$/ }));
     await assertLinked();
     await waitFor(() => expect(+new Date(chartDomains(container)[0].start!) + zoomSpan / 3).toBeCloseTo(+now, 0));
     expect(+new Date(chartDomains(container)[0].end!) - +new Date(chartDomains(container)[0].start!)).toBe(zoomSpan);

@@ -15,12 +15,13 @@ import {
   getFloodSeverityLabel,
   type FloodThresholds,
 } from 'src/utils/floodSeverity';
+import { eventWindow } from 'src/utils/waterForecast';
 
 interface HydrologicalInsightContentProps {
   nextTideInfo?: NextTideInfo;
-  precipitationAccumulation: number;
-  windSpeed: number;
-  windDirection: number;
+  precipitationAccumulation: number | null;
+  windSpeed: number | null;
+  windDirection: number | null;
   targetTime?: Date;
   isLive?: boolean;
   observedWaterLevel?: number;
@@ -127,15 +128,13 @@ export const HydrologicalInsightContent: React.FC<HydrologicalInsightContentProp
           </div>
         </div>
 
-        {(windSpeed > 0 || (precipitationAccumulation !== undefined && precipitationAccumulation > 0.005)) && (
-          <div className="insight-observation-section">
+        <div className="insight-observation-section">
             <AtmosphereMetrics
               precipitationAccumulation={precipitationAccumulation}
               windSpeed={windSpeed}
               windDirection={windDirection}
             />
-          </div>
-        )}
+        </div>
       </div>
 
       <div className="datum-insight-grid">
@@ -165,7 +164,7 @@ export const HydrologicalInsightContent: React.FC<HydrologicalInsightContentProp
           <div className="insight-row">
             <span className="insight-label">Approx. Flooding Time:</span>
             <span className="insight-value insight-time-value">
-              {formatWindowTime(floodStartTime)} - {formatWindowTime(floodEndTime)}
+              {eventWindow(floodStartTime, floodEndTime)}
               {floodDuration ? ` (${floodDuration})` : ''}
             </span>
           </div>

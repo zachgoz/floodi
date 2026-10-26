@@ -212,7 +212,7 @@ export const InundationMap: React.FC<InundationMapProps> = ({
             <span style="font-size: 0.8em; color: #888;">ID: ${f.properties.segmentId || f.properties.osmId}</span><br/>
             <span class="flood-tooltip-status">${label}</span><br/>
             Road elev: ${f.properties.maxElevation.toFixed(2)} ft MLLW<br/>
-            Depth: <strong>${depth.toFixed(2)} ft</strong>
+            Estimated depth: <strong>${depth.toFixed(2)} ft</strong>
           </div>`,
       };
     }
@@ -306,7 +306,7 @@ export const InundationMap: React.FC<InundationMapProps> = ({
 
       {pinnedRoad && !waterLevelUnavailable && (
         <div className="pinned-road-modal" style={{ left: pinnedRoad.x, top: pinnedRoad.y }}>
-          <button className="pinned-road-close" onClick={() => setPinnedRoad(null)}>×</button>
+          <button aria-label="Close road estimate" className="pinned-road-close" onClick={() => setPinnedRoad(null)}>×</button>
           <strong>{pinnedRoad.feature.properties.name || pinnedRoad.feature.properties.highway}</strong>
           <span style={{ fontSize: '0.8em', color: '#888' }}>
             ID: {pinnedRoad.feature.properties.segmentId || pinnedRoad.feature.properties.osmId}
@@ -317,12 +317,13 @@ export const InundationMap: React.FC<InundationMapProps> = ({
           </span>
           <br/>
           Road elev: {pinnedRoad.feature.properties.maxElevation.toFixed(2)} ft MLLW<br/>
-          Depth: <strong>{(waterLevelFt - pinnedRoad.feature.properties.maxElevation).toFixed(2)} ft</strong>
+          Estimated depth: <strong>{Math.max(0, waterLevelFt - pinnedRoad.feature.properties.maxElevation).toFixed(2)} ft</strong>
         </div>
       )}
 
       {/* FIMAN-style legend */}
       <div className="flood-legend">
+        <div className="flood-legend-row"><strong>Estimated road impacts</strong></div>
         <div className="flood-legend-row"><span className="swatch swatch-mild" />Mild (≤ 0.5 ft)</div>
         <div className="flood-legend-row"><span className="swatch swatch-moderate" />Moderate (≤ 1.5 ft)</div>
         <div className="flood-legend-row"><span className="swatch swatch-major" />Major (&gt; 1.5 ft)</div>
@@ -341,7 +342,7 @@ export const InundationMap: React.FC<InundationMapProps> = ({
         </span>
         {floodedCount > 0 && !loading && !waterLevelUnavailable && (
           <span className="inundation-level-flooded">
-            {floodedCount} roads flooded
+            {floodedCount} roads with estimated impacts
           </span>
         )}
         {loading && (
@@ -355,7 +356,7 @@ export const InundationMap: React.FC<InundationMapProps> = ({
       {!roadData && (
         <div className="no-road-data-notice">
           <p>Road elevation data not loaded.</p>
-          <code>node scripts/generateRoadElevations.mjs</code>
+          <p>Try refreshing the page. <a href="mailto:floodcastapp@gmail.com">Contact support</a> if the map stays unavailable.</p>
         </div>
       )}
     </div>

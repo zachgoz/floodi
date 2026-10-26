@@ -1,4 +1,6 @@
 import { LOCATIONS } from 'src/constants/locations';
+import { AlertInvitation } from 'src/components/alerts/AlertInvitation';
+import { CurrentConditions } from 'src/components/dashboard/CurrentConditions';
 import { interpolate } from 'src/utils/waterForecast';
 import { projectResidualPattern } from '../../functions/src/forecast/pattern';
 import { alignForecastComparison } from 'src/utils/forecastComparison';
@@ -20,7 +22,7 @@ import {
   IonButton,
   IonIcon,
 } from '@ionic/react';
-import { settingsOutline } from 'ionicons/icons';
+import { settingsOutline, notificationsOutline, personCircleOutline } from 'ionicons/icons';
 import { SettingsModal } from 'src/components/Tab2/SettingsModal';
 import { TimeSettingsModal } from 'src/components/Tab2/TimeSettingsModal';
 import { useSettingsStorage } from 'src/components/Tab2/hooks/useSettingsStorage';
@@ -420,6 +422,8 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
         <IonToolbar>
           <IonTitle>FloodCast</IonTitle>
           <IonButtons slot="end">
+            <IonButton routerLink="/alerts" aria-label="Flood alerts"><IonIcon icon={notificationsOutline} aria-hidden="true" /></IonButton>
+            <IonButton routerLink="/profile" aria-label="Your account"><IonIcon icon={personCircleOutline} aria-hidden="true" /></IonButton>
             <IonButton
               aria-label="Open settings"
               onClick={() => setShowSettings(true)}
@@ -429,6 +433,10 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
             </IonButton>
           </IonButtons>
         </IonToolbar>
+        <CurrentConditions location={`${LOCATIONS[config.locationId]?.name || config.location.name}, ${config.location.state}`}
+          points={processedData?.observedPoints || []} thresholdFt={LOCATIONS[config.locationId]?.thresholds.minor ?? 5.6}
+          customView={config.offset.mode === 'manual' || config.display.dataSource === 'noaa' || Object.entries(config.thresholds).some(([key, value]) => value !== LOCATIONS[config.locationId]?.thresholds[key as keyof typeof config.thresholds])}
+          onSettings={() => setShowSettings(true)} />
       </IonHeader>
 
       <IonContent className="floodcast-content">
@@ -460,8 +468,10 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                       streetCalibration={LOCATIONS[config.locationId]?.streetCalibration}
                       forecastHorizon={weatherSelected ? selectedForecast.horizonEnd : null}
                       upperForecastPoints={selectedBounds.upper}
+                      planningOutlookStart={weatherSelected && outlook?.tail ? new Date(outlook.tail.startsAt) : null}
                     />
                   </div>
+                  <div className="dashboard-alert-invitation"><AlertInvitation /></div>
                 </div>
               )}
 
@@ -471,7 +481,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                   <div className="chart-error-state">
                     <div className="chart-error-icon">⚠</div>
                     <h3 className="chart-error-title">Unable to Load Data</h3>
-                    <p className="chart-error-message">NOAA API request failed. This can happen when the time range extends into the future or is invalid.</p>
+                    <p className="chart-error-message">Water-level data could not be loaded. Check your connection or try again; the latest observation time is shown above.</p>
                     <button
                       className="chart-error-details-toggle"
                       onClick={() => setShowErrorDetails(v => !v)}
@@ -532,8 +542,8 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                           <div data-tour-id="live-readout">
                             {activeAtmo.wl === null && !loading ? <p>Water level unavailable for this time.</p> : <AtmosphericOverlay
                               nextTideInfo={nextTideInfo ?? undefined}
-                              precipitationAccumulation={activeAtmo.precip ?? 0}
-                              windSpeed={activeAtmo.wind?.speed ?? 0}
+                              precipitationAccumulation={activeAtmo.precip}
+                              windSpeed={activeAtmo.wind?.speed ?? null}
                               windDirection={activeAtmo.wind?.dir ?? Number.NaN}
                               observedWaterLevel={activeAtmo.wl ?? 0}
                               isLive={activeAtmo.isLive}
@@ -626,7 +636,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                     />
                       </HydrographChart>
                     </div>
-                    <FloodOutlook outlook={outlook} selection={selectedForecast} showComparison={showSteadyComparison} floodExpected={hasUpcomingFlooding(selectedForecast.totalPoints, config.thresholds.minor, processedData?.timeDomain.now || new Date())} floodPossible={hasUpcomingFlooding(selectedBounds.upper, config.thresholds.minor, processedData?.timeDomain.now || new Date())} onToggle={() => setShowSteadyComparison(v => !v)} />
+                    <FloodOutlook outlook={outlook} selection={selectedForecast} thresholdFt={config.thresholds.minor} now={processedData?.timeDomain.now || new Date()} showComparison={showSteadyComparison} floodExpected={hasUpcomingFlooding(selectedForecast.totalPoints, config.thresholds.minor, processedData?.timeDomain.now || new Date())} floodPossible={hasUpcomingFlooding(selectedBounds.upper, config.thresholds.minor, processedData?.timeDomain.now || new Date())} onToggle={() => setShowSteadyComparison(v => !v)} />
                   <div className="dashboard-webcam-card" data-tour-id="webcam">
                     <WebcamFeedCard
                       cameraId={selectedCameraId}
@@ -679,7 +689,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                     </div>
                     
                     {/* Bottom ad unit. Replace the slot ID with your actual AdSense ad unit slot ID */}
-                    <AdSenseUnit slot="dashboard-bottom" />
+                    <AdSenseUnit slot={import.meta.env.VITE_ADSENSE_DASHBOARD_SLOT || ''} />
                   </>
                 ) : null}
               </div>

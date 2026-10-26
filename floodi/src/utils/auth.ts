@@ -50,7 +50,8 @@ export const getRedirectFromSearch = (search: string, fallback = '/'): string =>
     const next = usp.get('redirect') || '';
     // Allow only internal paths beginning with a single '/'
     // Reject protocol-relative (e.g., '//example.com') and absolute URLs (http/https)
-    if (/^\/(?!\/)/.test(next)) return next;
+    const ambiguous = [...next].some(character => character === '\\' || character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
+    if (/^\/(?!\/)/.test(next) && !ambiguous) return next;
     return fallback;
   } catch {
     return fallback;

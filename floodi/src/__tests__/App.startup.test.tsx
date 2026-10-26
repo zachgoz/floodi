@@ -39,9 +39,11 @@ describe('public dashboard startup', () => {
     expect(screen.queryByText('Account loading')).not.toBeInTheDocument();
   });
 
-  it('preserves first-visit onboarding', () => {
+  it('shows the forecast immediately on a first visit while keeping the tour optional', () => {
     render(<App />);
-    expect(screen.getByText('Intro ready')).toBeInTheDocument();
+    expect(screen.getByText('Dashboard ready')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/tab2');
+    expect(screen.queryByText('Intro ready')).not.toBeInTheDocument();
   });
 
   it.each(['/profile', '/admin/users', '/admin/bootstrap'])('keeps account authorization gates active for %s', path => {

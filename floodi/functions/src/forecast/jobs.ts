@@ -11,6 +11,8 @@ import { fetchFimanData } from "../etl/fiman";
 import { fetchNoaaPredictions } from "../etl/noaa";
 import { residuals } from "./water";
 import { trainWeatherResponse } from "./weatherResponse";
+import { publishForecastExplanation, publishNumericalForecast } from './publication';
+import { encodeJsonResponse } from '../utils/jsonResponse';
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 const plainJson = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -92,6 +94,8 @@ export const generateFloodOutlook = onSchedule(
     let stage = 'model';
     let numericalError: unknown;
     let degraded = false;
+    let inputPath: string | null = null;
+    let modelPath: string | null = null;
     try {
       const modelSnapshot = await db.doc(`forecast_models/${SITE.id}`).get();
       const modelCache = modelSnapshot.data();
@@ -157,7 +161,9 @@ export const generateFloodOutlook = onSchedule(
       });
       if (Buffer.byteLength(JSON.stringify(snapshot), 'utf8') > 512_000) throw new Error("Forecast input snapshot exceeds the private archive size limit");
       stage = 'archive';
-      await db.doc(`forecast_input_archive/${SITE.id}/issues/${issuedAt.toISOString()}`).create(snapshot);
+      inputPath = `forecast_input_archive/${SITE.id}/issues/${issuedAt.toISOString()}`;
+      modelPath = typeof modelCache?.archivePath === 'string' ? modelCache.archivePath : null;
+      await db.doc(inputPath).create(snapshot);
       if (document.status === "available" && isCurrentOutlook(cachedDocument, issuedAt) &&
           cachedDocument.explanationSource === 'gemini-3.8-flash' &&
           Date.parse(cachedDocument.generatedAt) >= +issuedAt - 65 * 60_000 &&
@@ -168,25 +174,6 @@ export const generateFloodOutlook = onSchedule(
         // selection binds it to this issue's freshly calculated evidence text.
         document.explanation = cachedDocument.explanation;
         document.explanationSource = 'gemini-3.8-flash';
-      }
-      if (document.status === "available") try {
-        const stateRef = db.doc(`forecast_explanation_state/${SITE.id}`);
-        const reserved = await db.runTransaction(async transaction => {
-          const state = await transaction.get(stateRef);
-          if (!explanationIsDue(state.data()?.lastAttemptAt, issuedAt)) return false;
-          transaction.set(stateRef, { lastAttemptAt: issuedAt.toISOString(), forecastIssue: document.generatedAt });
-          return true;
-        });
-        if (reserved) try {
-          document.explanation = await explainWithGemini(document);
-          document.explanationSource = "gemini-3.8-flash";
-        } catch (error) {
-          degraded = true;
-          logger.warn('Gemini explanation unavailable; calculated forecast remains intact', { event: 'gemini_explanation_failed', provider: 'vertex', model: 'gemini-3.8-flash', error: safeError(error) });
-        }
-      } catch (error) {
-        degraded = true;
-        logger.warn('Explanation scheduling unavailable', { event: 'gemini_schedule_failed', error: safeError(error) });
       }
     } catch (error) {
       numericalError = error;
@@ -205,13 +192,39 @@ export const generateFloodOutlook = onSchedule(
       throw new Error('Numerical update failed; existing outlook retained until its original expiry');
     }
     try {
-    await ref.set(plainJson(document));
-    await db
-      .doc(`forecast_archive/${SITE.id}/issues/${document.generatedAt}`)
-      .create(plainJson(document));
+      const published = await publishNumericalForecast(db, document, { inputPath: document.status === 'unavailable' ? null : inputPath, modelPath: document.status === 'unavailable' ? null : modelPath });
+      if (!published) {
+        // A newer concurrent issue or an idempotent retry already won. Never
+        // renew its expiry or emit a second readiness marker.
+        await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, { attemptedAt: now.toISOString(), status: 'partial', stage: 'publish', skippedIssue: document.generatedAt, reason: 'Current publication retained' });
+        return;
+      }
     } catch (error) {
       await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, { attemptedAt: now.toISOString(), status: 'failed', stage: 'publish', error: safeError(error) });
       throw error;
+    }
+    // Numeric availability is now committed independently of optional AI work.
+    // The immutable archive/marker cannot be changed by a slow or failed reply.
+    if (document.status === 'available') try {
+      const issuedAt = new Date(document.generatedAt);
+      const stateRef = db.doc(`forecast_explanation_state/${SITE.id}`);
+      const reserved = await db.runTransaction(async transaction => {
+        const state = await transaction.get(stateRef);
+        if (!explanationIsDue(state.data()?.lastAttemptAt, issuedAt)) return false;
+        transaction.set(stateRef, { lastAttemptAt: issuedAt.toISOString(), forecastIssue: document.generatedAt });
+        return true;
+      });
+      if (reserved) try {
+        const explained: ForecastDocument = { ...document, explanation: await explainWithGemini(document), explanationSource: 'gemini-3.8-flash' };
+        await publishForecastExplanation(db, explained);
+        document = explained;
+      } catch (error) {
+        degraded = true;
+        logger.warn('Gemini explanation unavailable; calculated forecast remains intact', { event: 'gemini_explanation_failed', provider: 'vertex', model: 'gemini-3.8-flash', error: safeError(error) });
+      }
+    } catch (error) {
+      degraded = true;
+      logger.warn('Explanation scheduling unavailable', { event: 'gemini_schedule_failed', error: safeError(error) });
     }
     await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, { attemptedAt: now.toISOString(), status: document.status === 'unavailable' ? 'failed' : degraded ? 'partial' : 'ok', stage, numericalGeneratedAt: document.generatedAt, observationAt: document.observationAt, explanationSource: document.explanationSource, ...(numericalError ? { error: safeError(numericalError) } : {}) });
     if (document.status === 'unavailable') throw new Error('No current numerical outlook could be generated');
@@ -221,11 +234,15 @@ export const generateFloodOutlook = onSchedule(
 export const floodOutlook = onRequest(
   { cors: true, maxInstances: 5 },
   async (req, res) => {
+    // Error responses must never inherit a cached success policy. Vary also
+    // keeps CDN/browser caches from serving compressed bytes to other clients.
+    res.set("Cache-Control", "no-store");
+    res.vary('Accept-Encoding');
     if (req.method !== "GET") {
+      res.set('Allow', 'GET');
       res.status(405).json({ error: "Method not allowed" });
       return;
     }
-    res.set("Cache-Control", "no-store");
     try {
       const snap = await db.doc(`locations/${SITE.id}/outlook/current`).get();
       const data = snap.data();
@@ -238,10 +255,15 @@ export const floodOutlook = onRequest(
           .json({ error: "Current evaluated outlook unavailable" });
         return;
       }
+      const encoded = await encodeJsonResponse(data, req.get('Accept-Encoding'));
+      if (encoded.notAcceptable) { res.status(406).send(); return; }
       const remaining = Math.floor((Date.parse(data.expiresAt) - Date.now()) / 1000);
       if (remaining > 0) res.set("Cache-Control", `public, max-age=${Math.min(60, remaining)}, s-maxage=${Math.min(300, remaining)}`);
-      res.json(data);
+      if (encoded.contentEncoding) res.set('Content-Encoding', encoded.contentEncoding);
+      res.type('application/json').send(encoded.body);
     } catch (error) {
+      res.set('Cache-Control', 'no-store');
+      res.removeHeader('Content-Encoding');
       logger.error('Cached outlook read failed', { event: 'forecast_read_failed', error: safeError(error) });
       res.status(503).json({ error: "Outlook unavailable" });
     }

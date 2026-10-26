@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createClientErrorHandler, createClientErrorQuota, clientErrorAllowedOrigins, CLIENT_ERROR_QUOTA_PATH } = require('../lib/clientErrors');
-const { validateClientErrorReport, validateClientPerformanceReport } = require('../lib/telemetry/schema');
+const { validateClientErrorReport, validateClientPerformanceReport, validateClientWebVitalsReport } = require('../lib/telemetry/schema');
 const origin = 'https://floodcastwebapp.web.app';
 const report = () => ({ version: 1, code: 'runtime_error', route: '/tab2', buildId: 'abc1234', provider: 'app', errorType: 'TypeError', frames: [{ asset: '/assets/index-abc123.js', line: 2, column: 38 }] });
 function request(patch = {}) {
@@ -28,6 +28,28 @@ test('accepts one schema-validated report without retaining request headers or i
   assert.equal(res.headers['Cache-Control'], 'no-store');
   assert.equal(res.headers['Access-Control-Allow-Origin'], origin);
   assert.doesNotMatch(JSON.stringify(logs), /192\.0\.2|private|secret|Cookie/);
+});
+
+test('Web Vitals accepts only bounded aggregate scalars, using performance quota rather than error allowance', async () => {
+  const vitals = { version: 1, code: 'web_vitals', route: '/tab2', buildId: 'abc1234', scope: 'first-foreground', metrics: { lcpMs: 3500, cls: .1 } };
+  assert.equal(validateClientWebVitalsReport(vitals), true);
+  let performance;
+  const { handler, logs } = setup({ consume: async (_now, value) => { performance = value; return true; } });
+  const accepted = response();
+  await handler(request({ body: vitals }), accepted);
+  assert.equal(accepted.code, 204);
+  assert.equal(performance, true);
+  assert.deepEqual(logs, [vitals]);
+  for (const body of [
+    { ...vitals, entries: ['private DOM'] }, { ...vitals, navigationId: 'secret' },
+    { ...vitals, metrics: { lcpMs: Infinity } }, { ...vitals, metrics: { cls: 101 } },
+    { ...vitals, metrics: { inpMs: -1 } }, { ...vitals, metrics: { target: 'private form input' } },
+    { ...vitals, metrics: {} }, { ...vitals, scope: 'user-session' },
+  ]) {
+    const rejected = response(); await handler(request({ body }), rejected);
+    assert.equal(rejected.code, 400);
+  }
+  assert.equal(logs.length, 1);
 });
 
 test('rejects unknown/private fields, arbitrary messages, routes, asset URLs and query strings', async () => {

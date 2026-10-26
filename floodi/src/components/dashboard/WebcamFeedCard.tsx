@@ -17,6 +17,7 @@ import {
 import { WEBCAMS } from '../../constants/webcams';
 import './WebcamFeedCard.css';
 import { trackWebcamChange, trackWebcamTimeShift } from 'src/lib/analytics';
+import { formatWebcamCaptureTime, webcamFrameStatus } from './webcamFreshness';
 
 interface WebcamFeedCardProps {
   locationName: string;
@@ -71,6 +72,11 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
   const [apiFailed, setApiFailed] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [isImageLoading, setIsImageLoading] = useState(true);
+  const [clock, setClock] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const MAX_ATTEMPTS = FALLBACK_OFFSETS_MINUTES.length;
 
@@ -116,6 +122,7 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
 
     return { imageUrl: url, finalImageDate: date, foundInApi: found };
   }, [imagery, targetTime, cameraId, apiFailed, attemptIdx]);
+  const frameStatus = webcamFrameStatus(finalImageDate, clock, isLive);
 
   const handleError = () => {
     if (foundInApi) {
@@ -158,6 +165,7 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
                 <IonSkeletonText animated style={{ width: '150px', height: '24px', borderRadius: '4px', margin: '0 8px' }} />
               ) : (
                 <IonSelect
+                  aria-label="Webcam location"
                   value={cameraId}
                   interface="popover"
                   className="camera-selector"
@@ -182,13 +190,12 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
             {loading ? (
               <IonSkeletonText animated style={{ width: '80px', height: '24px', borderRadius: '12px' }} />
             ) : (
-              <div className={`webcam-status-pill ${isLive ? 'live' : 'history'}`}>
-                <span className="pulse-dot"></span>
-                {hasError ? 'OFFLINE' : isLive ? 'LIVE' : 'HISTORICAL'}
+              <div className={`webcam-status-pill ${frameStatus.stale ? 'stale' : 'history'}`} role="status">
+                {hasError ? 'Image unavailable' : isFuture ? 'Future time' : isImageLoading ? 'Loading image' : frameStatus.label}
               </div>
             )}
             {onClose && !loading && (
-              <IonButton fill="clear" color="light" onClick={onClose} className="webcam-close-btn">
+              <IonButton fill="clear" color="light" onClick={onClose} className="webcam-close-btn" aria-label="Close webcam">
                 <span style={{ fontSize: '20px' }}>×</span>
               </IonButton>
             )}
@@ -219,7 +226,7 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
               ) : !hasError ? (
                 <img
                   src={imageUrl}
-                  alt={`Webcam feed from ${locationName}`}
+                  alt={`${locationName}, captured ${formatWebcamCaptureTime(finalImageDate)}`}
                   className={`webcam-image ${isImageLoading ? 'loading' : 'loaded'}`}
                   onLoad={handleLoad}
                   onError={handleError}
@@ -260,13 +267,13 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
                     </IonButton>
                   )}
 
-                  <div className="webcam-timestamp-badge">
+                  {!hasError && !isImageLoading && <div className="webcam-timestamp-badge">
                     <span className="timestamp-text">
-                      {finalImageDate.toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                      {formatWebcamCaptureTime(finalImageDate)}
                       <span className="separator">•</span>
-                      {finalImageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {frameStatus.age}
                     </span>
-                  </div>
+                  </div>}
                 </>
               )}
             </>

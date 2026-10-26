@@ -20,7 +20,7 @@ function database(initial = {}) {
     doc: path => {
       const ref = {
         path,
-        get: async () => { reads.push(path); return { ref, exists: rows.has(path), data: () => structuredClone(rows.get(path)) }; },
+        get: async () => { reads.push(path); return { ref, exists: rows.has(path), updateTime: { seconds: 1791977400, nanoseconds: 123, toDate: () => new Date('2026-10-14T11:30:00Z'), isEqual: other => other.seconds === 1791977400 && other.nanoseconds === 123 }, data: () => structuredClone(rows.get(path)) }; },
         set: async (data, options) => { writes.push({ path, data, options }); rows.set(path, options?.merge ? merge(rows.get(path) || {}, data) : data); },
       };
       return ref;
@@ -146,4 +146,55 @@ test('raw URL refresh cannot downgrade separately archived image references', as
   assert.equal(rows.get(path).persistedImagery[t].Camera, 'storage://saved.jpg');
   const result = await readObservationRange(db, 'carolina-beach', new Date('2026-10-14T00:00:00Z'), now, { now });
   assert.equal(result.imagery[t].Camera, 'storage://saved.jpg');
+});
+
+test('coverage certification verifies all archived sources and writes metadata only, including empty archival days', async () => {
+  const legacy = { noaa: { [t]: 3 }, fiman: { [t]: 4 }, weather: { [t]: { precip: 0, windSpeed: 5 } }, imagery: { Camera: { [t]: 'old.jpg' } }, lastUpdated: now.toISOString() };
+  const daily = { noaa: { [t]: 3.1 }, fiman: { [t]: 4.5 }, weather: { [t]: { precip: 0, windSpeed: 6 } }, persistedImagery: { [t]: { Camera: 'storage://saved.jpg' } } };
+  const { db, rows, writes } = database({ [root + '2026-10']: legacy, [root + '2026-10-14']: daily });
+  const options = { locationId: 'carolina-beach', from: '2026-10', to: '2026-10', now, coverageOnly: true };
+  const dry = await migrateObservationBuckets(db, options);
+  assert.equal(dry.coverageMarkersReady, 31);
+  assert.equal(dry.coverageMarkersWritten, 0);
+  assert.equal(writes.length, 0);
+  const applied = await migrateObservationBuckets(db, { ...options, apply: true });
+  assert.equal(applied.coverageMarkersWritten, 31);
+  assert.equal(applied.daysWritten, 0);
+  assert.deepEqual(rows.get(root + '2026-10'), legacy);
+  const stored = rows.get(root + '2026-10-14');
+  assert.deepEqual(Object.fromEntries(Object.entries(stored).filter(([key]) => key !== 'legacyCoverage')), daily);
+  assert.equal(stored.legacyCoverage.archiveFrozen, true);
+  assert.ok(writes.every(({ data, path }) => path !== root + '2026-10' && Object.keys(data).length === 1 && data.legacyCoverage));
+  assert.equal((await migrateObservationBuckets(db, { ...options, apply: true })).coverageMarkersWritten, 0);
+  await writeObservationBuckets(db, 'carolina-beach', { fiman: { [t]: 4.6 } }, { now });
+  assert.deepEqual(rows.get(root + '2026-10-14').legacyCoverage, stored.legacyCoverage);
+});
+
+test('coverage certification fails closed for a partial source, invalid reading, camera or weather field', async () => {
+  const legacy = { noaa: { [t]: 3 }, fiman: { [t]: 4 }, weather: { [t]: { precip: 0, windSpeed: 5 } }, imagery: { [t]: { Camera: 'old.jpg' } }, lastUpdated: now.toISOString() };
+  for (const partial of [
+    { ...legacy, noaa: {} }, { ...legacy, fiman: { [t]: NaN } },
+    { ...legacy, weather: { [t]: { windSpeed: 5 } } }, { ...legacy, imagery: {} },
+  ]) {
+    const { db, writes } = database({ [root + '2026-10']: legacy, [root + '2026-10-14']: partial });
+    await assert.rejects(migrateObservationBuckets(db, { locationId: 'carolina-beach', from: '2026-10', to: '2026-10', now, apply: true, coverageOnly: true }), /incomplete/);
+    assert.equal(writes.length, 0);
+  }
+  const archivedLegacy = { imagery: { [t]: { Camera: 'storage://saved.jpg' } }, lastUpdated: now.toISOString() };
+  const rawOnly = database({ [root + '2026-10']: archivedLegacy, [root + '2026-10-14']: { imagery: { [t]: { Camera: 'https://camera/current.jpg' } } } });
+  await assert.rejects(migrateObservationBuckets(rawOnly.db, { locationId: 'carolina-beach', from: '2026-10', to: '2026-10', now, apply: true, coverageOnly: true }), /incomplete/);
+  assert.equal(rawOnly.writes.length, 0);
+});
+
+test('coverage certification rejects changed monthly snapshots, including submillisecond writes, and future observation provenance', async () => {
+  for (const changedStamp of [{ seconds: 1791977401, nanoseconds: 123 }, { seconds: 1791977400, nanoseconds: 124 }]) {
+    const { db, writes } = database({ [root + '2026-10']: {} });
+    const transaction = db.runTransaction;
+    db.runTransaction = callback => transaction(tx => callback({ ...tx, get: async ref => { const snapshot = await tx.get(ref); if (ref.path === root + '2026-10') snapshot.updateTime = { ...changedStamp, toDate: () => new Date('2026-10-14T11:30:00Z') }; return snapshot; } }));
+    await assert.rejects(migrateObservationBuckets(db, { locationId: 'carolina-beach', from: '2026-10', to: '2026-10', now, apply: true, coverageOnly: true }), /changed/);
+    assert.equal(writes.length, 0);
+  }
+  const future = database({ [root + '2026-10']: { fiman: { '2026-10-14T13:00:00Z': 9 }, lastUpdated: now.toISOString() } });
+  await assert.rejects(migrateObservationBuckets(future.db, { locationId: 'carolina-beach', from: '2026-10', to: '2026-10', now, apply: true, coverageOnly: true }), /future observation/);
+  assert.equal(future.writes.length, 0);
 });

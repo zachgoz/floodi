@@ -33,6 +33,7 @@ import { useSimilarFloodEvents } from './useSimilarFloodEvents';
 import { ChartInfo } from './ChartInfo';
 import './NextFloodingEventsCard.css';
 import { floodWindows, inundation, eventDate, eventWindow, LOCAL_ZONE, type StreetCalibration } from 'src/utils/waterForecast';
+import { nearestEventWeather } from './eventWeather';
 
 interface UpcomingFloodEvent {
   id: string;
@@ -58,6 +59,8 @@ interface NextFloodingEventsCardProps {
   streetCalibration?: StreetCalibration;
   forecastHorizon?: Date | null;
   upperForecastPoints?: Point[];
+  /** Start of the historical-pattern tail supplied by the actual forecast method. */
+  planningOutlookStart?: Date | null;
 }
 
 const MAX_EVENTS = 5;
@@ -93,13 +96,6 @@ function floodWindowLabel(event: UpcomingFloodEvent, now: Date): string {
   return `${status} · Until ${end}`;
 }
 
-function nearestPoint<T extends { t: Date }>(points: T[], time: Date): T | null {
-  if (points.length === 0) return null;
-  return points.reduce((best, point) => (
-    Math.abs(point.t.getTime() - time.getTime()) < Math.abs(best.t.getTime() - time.getTime()) ? point : best
-  ));
-}
-
 function buildUpcomingFloodEvents(
   points: Point[],
   thresholds: AppConfiguration['thresholds'],
@@ -129,6 +125,7 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
   streetCalibration,
   forecastHorizon,
   upperForecastPoints = [],
+  planningOutlookStart,
 }) => {
   const [selectedEvent, setSelectedEvent] = useState<UpcomingFloodEvent | null>(null);
   const [showAllEvents, setShowAllEvents] = useState(false);
@@ -147,8 +144,8 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
   const floodPossible = useMemo(() => buildUpcomingFloodEvents(upperForecastPoints, thresholds, now).length > 0, [upperForecastPoints, thresholds, now]);
   const hiddenEventCount = Math.max(0, upcomingEvents.length - visibleEvents.length);
   const similarEvents = useSimilarFloodEvents(floodEvents, selectedEvent?.peakValue ?? null, now);
-  const selectedWind = selectedEvent ? nearestPoint(windPoints, selectedEvent.peakTime) : null;
-  const selectedPrecip = selectedEvent ? nearestPoint(precipPoints, selectedEvent.peakTime) : null;
+  const selectedWind = selectedEvent ? nearestEventWeather(windPoints, selectedEvent.peakTime) : null;
+  const selectedPrecip = selectedEvent ? nearestEventWeather(precipPoints, selectedEvent.peakTime) : null;
   const hasStreetCalibration = inundation(0, thresholds.minor, 'MLLW', streetCalibration).label === 'Max Street Inundation';
   const selectedColor = getFloodSeverityColor(selectedEvent?.thresholdType ?? null);
 
@@ -167,20 +164,27 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
           {upperForecastPoints.length > 1 && <p>Flooding is possible when the historical error bound crosses flood stage, even if the central forecast remains lower. These bounds are not a calibrated probability; recorded backtests include missed events.</p>}
         </ChartInfo>
       </IonCardHeader>
-      <IonCardContent className="next-flood-content">
+      <IonCardContent className="next-flood-content" aria-busy={loading}>
         {forecastHorizon && !loading && <p className="forecast-caption">Forecast through {formatDateTime(forecastHorizon)} ET</p>}
         {loading ? (
-          <IonList className="next-flood-list" lines="none">
+          <div className="next-flood-loading">
+          <p className="next-flood-loading-status" role="status">Loading flooding forecast…</p>
+          <p className="forecast-caption" aria-hidden="true"><IonSkeletonText animated style={{ width: '65%', height: '1em' }} /></p>
+          <IonList className="next-flood-list" lines="none" aria-hidden="true">
             {[1, 2].map((i) => (
               <IonItem key={i} className="next-flood-item skeleton">
                 <IonLabel className="next-flood-event-label">
                   <h3><IonSkeletonText animated style={{ width: '60%' }} /></h3>
-                  <p><IonSkeletonText animated style={{ width: '80%' }} /></p>
-                  <p><IonSkeletonText animated style={{ width: '40%' }} /></p>
+                  <p className="event-flood-window"><IonSkeletonText animated style={{ width: '80%', height: '1em' }} /></p>
+                  <div className="event-level-metrics">
+                    {[1, 2].map(metric => <div key={metric}><IonSkeletonText animated style={{ width: '100%', height: '3em' }} /></div>)}
+                  </div>
                 </IonLabel>
               </IonItem>
             ))}
           </IonList>
+          <div className="next-flood-loading-footer" aria-hidden="true" />
+          </div>
         ) : upcomingEvents.length > 0 ? (
 
           <>
@@ -204,9 +208,10 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
                         </IonBadge>
                       </div>
                       <p className="event-flood-window">{floodWindowLabel(event, now)}</p>
+                      {planningOutlookStart && event.peakTime >= planningOutlookStart && <span className="event-outlook-label">Planning outlook</span>}
                       <div className="event-level-metrics">
                         <div><span>Peak Water Level</span><strong>{event.peakValue.toFixed(2)} <small>ft</small></strong></div>
-                        <div><span>Max Street Flooding{!hasStreetCalibration && <sup aria-label="Estimated">*</sup>}</span><strong>{inundation(event.peakValue, thresholds.minor, 'MLLW', streetCalibration).inches.toFixed(1)} <small>in</small></strong></div>
+                        <div><span>Max Street Flooding</span><strong>{inundation(event.peakValue, thresholds.minor, 'MLLW', streetCalibration).inches.toFixed(1)} <small>in</small><small className="event-estimate-label" aria-label="Estimated">Estimated</small></strong></div>
                       </div>
                     </IonLabel>
                   </IonItem>
@@ -255,7 +260,7 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
               </div>
             </IonTitle>
             <IonButtons slot="end">
-              <IonButton onClick={() => setSelectedEvent(null)}>
+              <IonButton onClick={() => setSelectedEvent(null)} aria-label="Close flood insight">
                 <IonIcon icon={closeOutline} />
               </IonButton>
             </IonButtons>
@@ -264,9 +269,9 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
         <IonContent className="ion-padding">
           {selectedEvent && (
             <HydrologicalInsightContent
-              precipitationAccumulation={selectedPrecip?.value ?? 0}
-              windSpeed={selectedWind?.speed ?? 0}
-              windDirection={selectedWind?.dir ?? 0}
+              precipitationAccumulation={selectedPrecip?.value ?? null}
+              windSpeed={selectedWind?.speed ?? null}
+              windDirection={selectedWind?.dir ?? null}
               targetTime={selectedEvent.peakTime}
               isLive={false}
               observedWaterLevel={selectedEvent.peakValue}
@@ -285,6 +290,9 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
               statusLabel="Predicted"
               onClose={() => setSelectedEvent(null)}
             >
+              <IonButton expand="block" fill="outline" routerLink="/alerts" onClick={() => setSelectedEvent(null)}>
+                Get flood alert updates
+              </IonButton>
               <div className="similar-events-section">
                 <div className="similar-events-header">
                   <IonIcon icon={timeOutline} />

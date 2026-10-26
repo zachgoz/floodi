@@ -38,16 +38,18 @@ export function ForecastTimeControls({ viewport, now, focusRatio, forecastEndAt,
         { hours: 48, label: '48h', accessible: '48 hours' }, { hours: threeDayHours, label: '3d', accessible: 'Next 3 days' },
         { hours: sevenDayHours, label: '7d', accessible: 'Next 7 days' },
         { hours: fullHours, label: 'All', accessible: 'Full forecast' }].map(({ hours, label, accessible }) => <button type="button" key={accessible}
-        aria-label={accessible}
+        aria-label={`${label} — ${accessible}`}
         disabled={!Number.isFinite(hours) || hours <= 0}
         aria-pressed={Math.abs(span / 3600_000 - hours) < .01}
         onClick={() => select(hours)}>{label}</button>)}
     </div>
     <div className="forecast-time-actions">
+      <button type="button" aria-label="Previous time window on both charts" onClick={() => onViewportChange(new Date(+viewport.start - span / 4), new Date(+viewport.end - span / 4))}>←</button>
+      <button type="button" aria-label="Next time window on both charts" onClick={() => onViewportChange(new Date(+viewport.start + span / 4), new Date(+viewport.end + span / 4))}>→</button>
       <button type="button" aria-label="Zoom out both charts" onClick={() => zoom(2)}>−</button>
       <button type="button" aria-label="Zoom in both charts" onClick={() => zoom(.5)}>+</button>
-      <button type="button" className="forecast-return-live" aria-label="Return to Live" disabled={isLive} onClick={onReturnToLive}>
-        <span aria-hidden="true">↺</span> {isLive ? 'Live' : 'Return to Live'}
+      <button type="button" className="forecast-return-live" aria-label="Live — Return to Live" disabled={isLive} onClick={onReturnToLive}>
+        <span aria-hidden="true">↺</span> Live
       </button>
     </div>
   </div>;

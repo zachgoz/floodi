@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { IonButton, IonIcon } from '@ionic/react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { IonIcon } from '@ionic/react';
 import {
   analyticsOutline,
   calendarOutline,
@@ -30,35 +30,35 @@ const tourSteps: TourStep[] = [
     label: 'Live Readout',
     targetId: 'live-readout',
     title: 'Start with the current flood signal',
-    summary: 'This readout combines the selected water level, surge, wind, rain, flood category, road depth, timing, and source details.',
+    summary: 'Check the observed water level and flood status. The timestamp shows when the sensor last reported.',
   },
   {
     icon: analyticsOutline,
     label: 'Hydrograph',
     targetId: 'hydrograph',
     title: 'Use the chart as the time control',
-    summary: 'The hydrograph shows observed, NOAA predicted, and FloodCast-adjusted water levels. Pan or tap the chart to move the whole dashboard through time.',
+    summary: 'Compare observed water levels, NOAA tides and the FloodCast forecast. Pan or zoom either chart to move both through time.',
   },
   {
     icon: calendarOutline,
     label: 'Events',
     targetId: 'events',
     title: 'Jump to the next flooding windows',
-    summary: 'Upcoming events summarize threshold crossings, peak timing, duration, and severity so you can inspect likely problem periods quickly.',
+    summary: 'See expected flooding windows and peak water levels. Longer-range events are marked as planning outlooks.',
   },
   {
     icon: cameraOutline,
     label: 'Webcams',
     targetId: 'webcam',
     title: 'Verify conditions visually',
-    summary: 'Webcam imagery stays synced to the selected time when imagery is available, helping compare the forecast to street-level evidence.',
+    summary: 'Compare available camera images with the selected time. Check the capture time: an image can be older than the chart.',
   },
   {
     icon: mapOutline,
     label: 'Map',
     targetId: 'map',
-    title: 'Connect water levels to roads',
-    summary: 'The inundation map translates the selected water level into local road impact using road elevation and flood depth coloring.',
+    title: 'Explore estimated local impacts',
+    summary: 'The map estimates how water levels may affect nearby streets. It does not confirm road conditions or safe routes.',
   },
   {
     icon: speedometerOutline,
@@ -72,7 +72,7 @@ const tourSteps: TourStep[] = [
     label: 'Controls',
     targetId: 'settings',
     title: 'Tune FloodCast for your view',
-    summary: 'Settings control location, thresholds, offsets, time range, theme, chart mode, and whether comments appear on the chart.',
+    summary: 'Choose your theme and chart preferences. Analysis controls customize this device’s charts and do not change flood alert criteria.',
   },
 ];
 
@@ -111,7 +111,7 @@ function isVisibleTourTarget(element: HTMLElement): boolean {
 function getTourTarget(targetId: string, root?: HTMLElement | null): HTMLElement | null {
   const searchRoot: ParentNode = root ?? document;
   const targets = Array.from(searchRoot.querySelectorAll<HTMLElement>(`[data-tour-id="${targetId}"]`));
-  return targets.find(isVisibleTourTarget) ?? targets[0] ?? null;
+  return targets.find(isVisibleTourTarget) ?? null;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -135,6 +135,7 @@ function getScrollParent(element: HTMLElement): HTMLElement | Window {
 }
 
 async function scrollTargetToTop(target: HTMLElement) {
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const ionContent = target.closest('ion-content') as IonContentElement | null;
   if (ionContent?.getScrollElement && ionContent.scrollToPoint) {
     const scrollElement = await ionContent.getScrollElement();
@@ -142,7 +143,7 @@ async function scrollTargetToTop(target: HTMLElement) {
     const contentRect = ionContent.getBoundingClientRect();
     const targetTop = scrollElement.scrollTop + targetRect.top - contentRect.top - TOP_SCROLL_OFFSET;
 
-    await ionContent.scrollToPoint(0, Math.max(0, targetTop), 320);
+    await ionContent.scrollToPoint(0, Math.max(0, targetTop), reducedMotion ? 0 : 320);
     return;
   }
 
@@ -152,7 +153,7 @@ async function scrollTargetToTop(target: HTMLElement) {
   if (scrollParent === window) {
     window.scrollTo({
       top: window.scrollY + targetRect.top - TOP_SCROLL_OFFSET,
-      behavior: 'smooth',
+      behavior: reducedMotion ? 'auto' : 'smooth',
     });
     return;
   }
@@ -161,15 +162,79 @@ async function scrollTargetToTop(target: HTMLElement) {
   const parentRect = parent.getBoundingClientRect();
   parent.scrollTo({
     top: parent.scrollTop + targetRect.top - parentRect.top - TOP_SCROLL_OFFSET,
-    behavior: 'smooth',
+    behavior: reducedMotion ? 'auto' : 'smooth',
   });
 }
 
 export const IntroTourOverlay: React.FC<IntroTourOverlayProps> = ({ onFinish, targetRoot }) => {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [closed, setClosed] = useState(false);
+  const [pageHidden, setPageHidden] = useState(false);
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const activeStep = tourSteps[activeIndex];
   const isLastStep = activeIndex === tourSteps.length - 1;
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const finishRef = useRef(onFinish);
+  useEffect(() => { finishRef.current = onFinish; }, [onFinish]);
+  const handleFinish = useCallback(() => {
+    try { localStorage.setItem(INTRO_STORAGE_KEY, '1'); } catch { /* Storage is optional. */ }
+    setClosed(true);
+    finishRef.current();
+  }, []);
+
+  useEffect(() => {
+    if (closed || pageHidden || dialogRef.current?.closest('.ion-page-hidden')) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeRef.current?.focus({ preventScroll: true });
+    const trapFocus = (event: KeyboardEvent) => {
+      if (dialogRef.current?.closest('.ion-page-hidden')) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); handleFinish(); return; }
+      if (event.key !== 'Tab') return;
+      const buttons = Array.from(dialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+      const first = buttons[0], last = buttons.at(-1);
+      if (!first || !last) return;
+      const outside = !dialogRef.current?.contains(document.activeElement);
+      if (outside || event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); (event.shiftKey ? last : first).focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    const containFocus = (event: FocusEvent) => {
+      if (dialogRef.current?.closest('.ion-page-hidden')) return;
+      if (event.target instanceof Node && !dialogRef.current?.contains(event.target)) closeRef.current?.focus({ preventScroll: true });
+    };
+    document.addEventListener('keydown', trapFocus, true);
+    document.addEventListener('focusin', containFocus);
+    return () => {
+      document.removeEventListener('keydown', trapFocus, true);
+      document.removeEventListener('focusin', containFocus);
+      if (previousFocus?.isConnected && !previousFocus.closest('.ion-page-hidden')) previousFocus.focus({ preventScroll: true });
+    };
+  }, [closed, pageHidden, handleFinish]);
+
+  // Ionic may retain a hidden route rather than unmounting it. A replay must
+  // reopen the tour, while a hidden cached page must never trap focus.
+  useEffect(() => {
+    const page = targetRoot?.current;
+    if (!page) return;
+    let wasHidden = page.classList.contains('ion-page-hidden');
+    setPageHidden(wasHidden);
+    const observer = new MutationObserver(() => {
+      const hidden = page.classList.contains('ion-page-hidden');
+      setPageHidden(hidden);
+      if (wasHidden && !hidden) {
+        setActiveIndex(0);
+        setTargetRect(null);
+        setClosed(false);
+        closeRef.current?.focus({ preventScroll: true });
+      }
+      wasHidden = hidden;
+    });
+    observer.observe(page, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, [targetRoot]);
 
   const updateTargetRect = useCallback(() => {
     const target = getTourTarget(activeStep.targetId, targetRoot?.current);
@@ -188,6 +253,7 @@ export const IntroTourOverlay: React.FC<IntroTourOverlayProps> = ({ onFinish, ta
   }, [activeStep.targetId, targetRoot]);
 
   useEffect(() => {
+    if (closed || pageHidden) return;
     const target = getTourTarget(activeStep.targetId, targetRoot?.current);
     if (target) {
       void scrollTargetToTop(target).then(updateTargetRect);
@@ -205,9 +271,10 @@ export const IntroTourOverlay: React.FC<IntroTourOverlayProps> = ({ onFinish, ta
       window.clearInterval(retryTimer);
       observer.disconnect();
     };
-  }, [activeStep.targetId, targetRoot, updateTargetRect]);
+  }, [activeStep.targetId, closed, pageHidden, targetRoot, updateTargetRect]);
 
   useEffect(() => {
+    if (closed || pageHidden) return;
     window.addEventListener('resize', updateTargetRect);
     document.addEventListener('scroll', updateTargetRect, true);
 
@@ -215,7 +282,7 @@ export const IntroTourOverlay: React.FC<IntroTourOverlayProps> = ({ onFinish, ta
       window.removeEventListener('resize', updateTargetRect);
       document.removeEventListener('scroll', updateTargetRect, true);
     };
-  }, [updateTargetRect]);
+  }, [closed, pageHidden, updateTargetRect]);
 
   const spotlightStyle = useMemo<React.CSSProperties>(() => {
     if (!targetRect) return {};
@@ -265,7 +332,7 @@ export const IntroTourOverlay: React.FC<IntroTourOverlayProps> = ({ onFinish, ta
   }, [targetRect]);
 
   const cardStyle = useMemo<React.CSSProperties>(() => {
-    if (!targetRect) return {};
+    if (!targetRect) return { width: 'min(390px, calc(100vw - 28px))', bottom: '18px', left: 'max(14px, calc(50vw - 195px))' };
 
     const cardWidth = Math.min(390, window.innerWidth - 28);
     const cardHeightEstimate = window.innerWidth < 680 ? 356 : 340;
@@ -308,16 +375,6 @@ export const IntroTourOverlay: React.FC<IntroTourOverlayProps> = ({ onFinish, ta
     };
   }, [targetRect]);
 
-  const handleFinish = () => {
-    try {
-      localStorage.setItem(INTRO_STORAGE_KEY, '1');
-    } catch {
-      // App remains usable if storage is unavailable.
-    }
-
-    onFinish();
-  };
-
   const handleNext = () => {
     if (isLastStep) {
       handleFinish();
@@ -331,31 +388,33 @@ export const IntroTourOverlay: React.FC<IntroTourOverlayProps> = ({ onFinish, ta
     setActiveIndex(index => Math.max(index - 1, 0));
   };
 
-  if (!targetRect || !maskStyles) {
-    return null;
-  }
+  if (closed || pageHidden) return null;
 
   return (
-    <div className="intro-tour-overlay" role="dialog" aria-modal="true" aria-label="FloodCast dashboard intro">
-      <div className="intro-tour-mask" style={maskStyles.top} />
-      <div className="intro-tour-mask" style={maskStyles.right} />
-      <div className="intro-tour-mask" style={maskStyles.bottom} />
-      <div className="intro-tour-mask" style={maskStyles.left} />
-      <div className="intro-tour-spotlight" style={spotlightStyle} />
+    <div ref={dialogRef} className="intro-tour-overlay" role="dialog" aria-modal="true" aria-labelledby="intro-tour-title" aria-describedby="intro-tour-summary">
+      {maskStyles ? <>
+        <div className="intro-tour-mask" style={maskStyles.top} aria-hidden="true" />
+        <div className="intro-tour-mask" style={maskStyles.right} aria-hidden="true" />
+        <div className="intro-tour-mask" style={maskStyles.bottom} aria-hidden="true" />
+        <div className="intro-tour-mask" style={maskStyles.left} aria-hidden="true" />
+        <div className="intro-tour-spotlight" style={spotlightStyle} aria-hidden="true" />
+      </> : <div className="intro-tour-mask intro-tour-mask-full" aria-hidden="true" />}
 
-      <section className="intro-tour-card" style={cardStyle} aria-live="polite">
+      <section className="intro-tour-card" style={cardStyle}>
         <div className="intro-tour-card-header">
           <div className="intro-tour-step-icon">
-            <IonIcon icon={activeStep.icon} />
+            <IonIcon icon={activeStep.icon} aria-hidden="true" />
           </div>
-          <button type="button" className="intro-tour-close" onClick={handleFinish} aria-label="Close intro">
-            <IonIcon icon={closeOutline} />
+          <button ref={closeRef} type="button" className="intro-tour-close" onClick={handleFinish} aria-label="Close intro">
+            <IonIcon icon={closeOutline} aria-hidden="true" />
           </button>
         </div>
 
-        <p className="intro-tour-eyebrow">Component {activeIndex + 1} of {tourSteps.length}</p>
-        <h2>{activeStep.title}</h2>
-        <p>{activeStep.summary}</p>
+        <div aria-live="polite" aria-atomic="true">
+          <p className="intro-tour-eyebrow">Step {activeIndex + 1} of {tourSteps.length}</p>
+          <h2 id="intro-tour-title">{activeStep.title}</h2>
+          <p id="intro-tour-summary">{activeStep.summary}</p>
+        </div>
 
         <nav className="intro-tour-step-list" aria-label="Intro sections">
           {tourSteps.map((step, index) => (
@@ -371,20 +430,19 @@ export const IntroTourOverlay: React.FC<IntroTourOverlayProps> = ({ onFinish, ta
         </nav>
 
         <div className="intro-tour-actions">
-          <IonButton
-            fill="outline"
-            size="small"
+          <button
+            type="button"
             onClick={handleBack}
             disabled={activeIndex === 0}
             className="intro-tour-back"
           >
-            <IonIcon icon={chevronBackOutline} slot="start" />
+            <IonIcon icon={chevronBackOutline} aria-hidden="true" />
             Back
-          </IonButton>
-          <IonButton size="small" onClick={handleNext} className="intro-tour-next">
+          </button>
+          <button type="button" onClick={handleNext} className="intro-tour-next">
             {isLastStep ? 'Start using FloodCast' : 'Next'}
-            <IonIcon icon={chevronForwardOutline} slot="end" />
-          </IonButton>
+            <IonIcon icon={chevronForwardOutline} aria-hidden="true" />
+          </button>
         </div>
       </section>
     </div>

@@ -6,7 +6,8 @@
 import { WeatherPoint } from './model';
 import { interpolate, Reference, WaterPoint } from './water';
 import { HistoricalOutlookModel, trainHistoricalOutlook } from './historicalOutlook';
-import { attachDrivers, AttributedWaterPoint, DriverControl, emptyContributions, forecastWeatherContext, regressionContributions } from './attribution';
+import { fitRecentTideResponse } from './recentTidePattern';
+import { attachDrivers, AttributedWaterPoint, DriverControl, driverVector, emptyContributions, forecastWeatherContext, interpolateContributions, regressionContributions } from './attribution';
 
 const HOUR = 3600_000;
 // FIMAN nominal half-hour reports can be a few seconds apart from the grid.
@@ -248,20 +249,70 @@ function longProjection(models: LongRegression[], history: WaterPoint[], tide: W
   }
   return output;
 }
+interface TideShapeControl extends WaterPoint { tideChange: number; tideCoefficient: number; tideMinimum: number; tideMaximum: number }
+function tideControl(model: Regression, tideChange: number, recentCoefficient: number) {
+  const index = WEATHER_RESPONSE_FEATURES.length - 1;
+  const bounded = model.minimums !== undefined && model.maximums !== undefined;
+  const learned = model.coefficients[index] / model.scales[index];
+  // The historical model can lag a changing local residual cycle. Introduce
+  // curvature only where the recent measured level response supports its sign,
+  // and cap that correction by both fitted magnitudes. This never replaces the
+  // original control levels or extrapolates the recent fit's historical drift.
+  const tideCoefficient = learned * recentCoefficient > 0
+    ? Math.sign(learned) * Math.min(Math.abs(learned), Math.abs(recentCoefficient)) : 0;
+  return {
+    tideChange, tideCoefficient,
+    tideMinimum: bounded ? model.minimums![index] - 3 * model.scales[index] : -Infinity,
+    tideMaximum: bounded ? model.maximums![index] + 3 * model.scales[index] : Infinity,
+  };
+}
+/** Keep each learned lead prediction exact while retaining its target-tide
+ * term between leads. Interpolating the complete residual from 12h to 24h
+ * otherwise removes almost a whole semidiurnal peak/valley. No new tide or
+ * weather effect is added: this evaluates the already fitted tide term at
+ * the requested timestamp instead of interpolating that term's endpoints.
+ * A lead model's feature can have a narrow range (especially near a full
+ * tidal cycle), so each term stays inside that model's existing domain.
+ */
+function tideShapeCorrection(controls: TideShapeControl[], tide: WaterPoint[], issueTide: number, at: Date, maxGap: number): number | null {
+  const exact = controls.find(control => +control.t === +at);
+  if (exact) return 0;
+  const next = controls.findIndex(control => +control.t > +at);
+  if (next <= 0) return null;
+  const before = controls[next - 1], after = controls[next];
+  if (+after.t - +before.t > maxGap) return null;
+  const astronomical = interpolate(tide, at);
+  if (astronomical === null) return null;
+  const fraction = (+at - +before.t) / (+after.t - +before.t);
+  const change = astronomical - issueTide;
+  const boundedTerm = (control: TideShapeControl) => control.tideCoefficient * Math.max(control.tideMinimum, Math.min(control.tideMaximum, change));
+  const beforeBounded = boundedTerm(before), afterBounded = boundedTerm(after);
+  const beforeTerm = before.tideCoefficient * before.tideChange, afterTerm = after.tideCoefficient * after.tideChange;
+  return beforeBounded + fraction * (afterBounded - beforeBounded) - (beforeTerm + fraction * (afterTerm - beforeTerm));
+}
+function tideAwareProjection(controls: TideShapeControl[], tide: WaterPoint[], times: Date[], issue: Date, horizonHours: number, maxGap: number) {
+  const issueTide = interpolate(tide, issue);
+  if (issueTide === null) return [];
+  return [...new Map(times.filter(t => Number.isFinite(+t) && +t >= +issue && +t <= +issue + horizonHours * HOUR).map(t => [+t, t])).values()].sort((a, b) => +a - +b).flatMap(t => {
+    const linear = interpolate(controls, t, maxGap), correction = tideShapeCorrection(controls, tide, issueTide, t, maxGap);
+    if (linear === null || correction === null) return [];
+    const v = linear + correction;
+    return Number.isFinite(v) ? [{ t, v }] : [];
+  });
+}
 function shortProjection(models: { leadHours: number; model: Regression }[], history: WaterPoint[], tide: WaterPoint[], times: Date[], issue: Date, maxGap: number) {
   const anchor = anchorAt(history, issue, maxGap);
   if (!anchor) return [];
-  const controls: WaterPoint[] = [{ t: issue, v: anchor.v }];
+  const tideIndex = WEATHER_RESPONSE_FEATURES.length - 1;
+  const recentCoefficient = fitRecentTideResponse(history, tide, issue)?.tideLevelCoefficient ?? 0;
+  const controls: TideShapeControl[] = [{ t: issue, v: anchor.v, ...tideControl(models[0].model, 0, recentCoefficient) }];
   for (const item of models) {
     const target = new Date(+issue + item.leadHours * HOUR);
     const x = shortFeatures(issue, target, anchor, history, tide, maxGap);
     if (!x || !withinTrainingDomain(item.model, x)) return [];
-    controls.push({ t: target, v: anchor.v + predict(item.model, x) });
+    controls.push({ t: target, v: anchor.v + predict(item.model, x), ...tideControl(item.model, x[tideIndex], recentCoefficient) });
   }
-  return [...new Map(times.filter(t => Number.isFinite(+t) && +t >= +issue && +t <= +issue + 6 * HOUR).map(t => [+t, t])).values()].sort((a, b) => +a - +b).flatMap(t => {
-    const v = interpolate(controls, t, 3 * HOUR);
-    return v === null || !Number.isFinite(v) ? [] : [{ t, v }];
-  });
+  return tideAwareProjection(controls, tide, times, issue, 6, 3 * HOUR);
 }
 function projection(
   models: { leadHours: number; model: Regression }[], history: WaterPoint[], tide: WaterPoint[],
@@ -269,17 +320,16 @@ function projection(
 ) {
   const anchor = anchorAt(history, issue, maxGap);
   if (!anchor) return [];
-  const controls: WaterPoint[] = [{ t: issue, v: anchor.v }];
+  const tideIndex = WEATHER_RESPONSE_FEATURES.length - 1;
+  const recentCoefficient = fitRecentTideResponse(history, tide, issue)?.tideLevelCoefficient ?? 0;
+  const controls: TideShapeControl[] = [{ t: issue, v: anchor.v, ...tideControl(models[0].model, 0, recentCoefficient) }];
   for (const item of models) {
     const target = new Date(+issue + item.leadHours * HOUR);
     const x = featureVector(issue, target, anchor, history, tide, historyWeather, futureWeather, maxGap, true);
     if (!x || !withinTrainingDomain(item.model, x)) return [];
-    controls.push({ t: target, v: anchor.v + predict(item.model, x) });
+    controls.push({ t: target, v: anchor.v + predict(item.model, x), ...tideControl(item.model, x[tideIndex], recentCoefficient) });
   }
-  return [...new Map(times.filter(t => Number.isFinite(+t) && +t >= +issue && +t <= +issue + 24 * HOUR).map(t => [+t, t])).values()].sort((a, b) => +a - +b).flatMap(t => {
-    const v = interpolate(controls, t, 12 * HOUR);
-    return v !== null && Number.isFinite(v) ? [{ t, v }] : [];
-  });
+  return tideAwareProjection(controls, tide, times, issue, 24, 12 * HOUR);
 }
 /** Purged chronological 70/30 split: a training target cannot enter holdout.
  * Ridge coefficients are never selected by testing alternative penalties.
@@ -484,17 +534,28 @@ const LONG_GROUPS = LONG_RANGE_FEATURES.map(name => name === 'residualChange3h' 
 function projectionDrivers(points: WaterPoint[], models: { leadHours: number; model: Regression }[], history: WaterPoint[], tide: WaterPoint[], issue: Date, maxGap: number, weather?: { past: WeatherPoint[]; future: WeatherPoint[] }): AttributedWaterPoint[] {
   const anchor = anchorAt(history, issue, maxGap);
   if (!anchor || !points.length) return points;
+  const issueTide = interpolate(tide, issue), tideIndex = WEATHER_RESPONSE_FEATURES.length - 1;
+  if (issueTide === null) return points;
+  const recentCoefficient = fitRecentTideResponse(history, tide, issue)?.tideLevelCoefficient ?? 0;
   const initial = emptyContributions(); initial[0] = anchor.v;
-  const controls: DriverControl[] = [{ t: issue, v: anchor.v, contributionsFt: initial }];
+  const controls: (DriverControl & TideShapeControl)[] = [{ t: issue, v: anchor.v, contributionsFt: initial, ...tideControl(models[0].model, 0, recentCoefficient) }];
   for (const item of models) {
     const target = new Date(+issue + item.leadHours * HOUR);
     const x = weather ? featureVector(issue, target, anchor, history, tide, weather.past, weather.future, maxGap, true) : shortFeatures(issue, target, anchor, history, tide, maxGap);
     if (!x) return points;
     const groups = weather ? WEATHER_GROUPS : WEATHER_RESPONSE_FEATURES.map((_, i) => [0, 1, WEATHER_RESPONSE_FEATURES.length - 1].includes(i) ? WEATHER_GROUPS[i] : 7);
     const contributionsFt = regressionContributions(item.model, x, groups, anchor.v);
-    controls.push({ t: target, v: anchor.v + predict(item.model, x), contributionsFt });
+    controls.push({ t: target, v: anchor.v + predict(item.model, x), contributionsFt, ...tideControl(item.model, x[tideIndex], recentCoefficient) });
   }
-  const attributed = attachDrivers(points, controls, weather ? 'w' : 'r', weather ? 12 * HOUR : 3 * HOUR);
+  const attributed: AttributedWaterPoint[] = points.map(point => {
+    const maxControlGap = weather ? 12 * HOUR : 3 * HOUR;
+    const parts = interpolateContributions(controls, point.t, maxControlGap);
+    const correction = tideShapeCorrection(controls, tide, issueTide, point.t, maxControlGap);
+    if (!parts || correction === null) return point;
+    parts[3] += correction;
+    const vector = driverVector(parts, point.v);
+    return vector ? { ...point, drivers: { m: weather ? 'w' : 'r', c: vector } } : point;
+  });
   if (weather) {
     const rows = sortedWeather([...weather.past.filter(row => +row.t <= +issue), ...weather.future.filter(row => +row.t > +issue)]);
     for (const point of attributed) {

@@ -13,6 +13,10 @@
     "trailingSlash": false,
     "rewrites": [
       {
+        "source": "/api/alerts",
+        "function": "citizenAlerts"
+      },
+      {
         "source": "/api/outlook",
         "function": "floodOutlook"
       },

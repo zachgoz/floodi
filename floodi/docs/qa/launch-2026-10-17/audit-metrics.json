@@ -1,0 +1,287 @@
+{
+  "date": "2026-10-17",
+  "timezone": "America/New_York",
+  "site": "https://floodcastwebapp.web.app",
+  "scope": "Read-only public browser review and local source review. No accounts created, emails sent, payments taken, app code changed or deployment performed.",
+  "cold_mobile": {
+    "conditions": {
+      "viewport": "390x844",
+      "devicePixelRatio": 3,
+      "touch": true,
+      "network": "DevTools Slow 4G",
+      "cpuSlowdown": 4,
+      "storage": "fresh isolated browser context",
+      "navigation": "/tab2?perf=1",
+      "repetitions": 1
+    },
+    "ttfbMs": 223,
+    "fcpMs": 5524,
+    "lcpMs": 5523,
+    "cls": 0.1032,
+    "chartReadyMsFromNavigation": 10744.6,
+    "mainScript": {
+      "decodedBytes": 1874332,
+      "transferBytes": 360405
+    },
+    "outlook": {
+      "bodyBytes": 626088,
+      "transferBytes": 626388,
+      "requestDurationMs": 6862.7,
+      "points": 2164,
+      "serializedPointsBytes": 612642,
+      "contentEncoding": null
+    },
+    "traceWindowThirdPartyTransfer": {
+      "firebaseApproxMB": 5.7,
+      "googleAdsApproxKB": 226.5,
+      "googleTagManagerApproxKB": 162.3
+    },
+    "limits": [
+      "One synthetic lab run, not real-user percentile data.",
+      "Firestore transfers include initial loading and deferred buffer work; long-lived Listen requests are not equivalent to render-blocking chains.",
+      "No representative interaction-to-next-paint measurement.",
+      "Layout shift identified hydrograph-container movement; the tool lists animation candidates but does not prove each animation caused the shift."
+    ],
+    "initialChartDataWorkMs": 5075.8
+  },
+  "browser_checks": {
+    "mobileWidthsPx": [
+      320,
+      390
+    ],
+    "horizontalOverflowObserved": false,
+    "timeSettingsButtonHeightPxAt320": 18,
+    "sharedToolbarHeightPxAt320": 106,
+    "robotsTxt": {
+      "httpStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "returnsAppHtml": true
+    },
+    "metaDescription": null
+  },
+  "lighthouse": {
+    "dashboard": {
+      "url": "https://floodcastwebapp.web.app/tab2?perf=1",
+      "fetchTime": "2026-10-17T21:21:17.387Z",
+      "mode": "snapshot",
+      "device": "mobile",
+      "categories": {
+        "accessibility": 0.88,
+        "best-practices": 1,
+        "seo": 0.67
+      },
+      "failedAudits": [
+        {
+          "id": "aria-prohibited-attr",
+          "title": "Elements use prohibited ARIA attributes",
+          "nodes": [
+            {
+              "selector": "div.chart-viewer-layout > div.chart-viewer > svg > polyline",
+              "nodeLabel": "Observed water level",
+              "explanation": "Fix all of the following:\n  aria-label attribute cannot be used on a polyline with no valid role attribute."
+            },
+            {
+              "selector": "div.chart-viewer-layout > div.chart-viewer > svg > polyline",
+              "nodeLabel": "Estimated localized water level",
+              "explanation": "Fix all of the following:\n  aria-label attribute cannot be used on a polyline with no valid role attribute."
+            },
+            {
+              "selector": "div.chart-viewer-layout > div.chart-viewer > svg > polyline",
+              "nodeLabel": "Astronomical tide prediction",
+              "explanation": "Fix all of the following:\n  aria-label attribute cannot be used on a polyline with no valid role attribute."
+            },
+            {
+              "selector": "div.chart-viewer-layout > div.chart-viewer > svg > polyline",
+              "nodeLabel": "Forecast total water level",
+              "explanation": "Fix all of the following:\n  aria-label attribute cannot be used on a polyline with no valid role attribute."
+            }
+          ]
+        },
+        {
+          "id": "color-contrast",
+          "title": "Background and foreground colors do not have a sufficient contrast ratio.",
+          "nodes": [
+            {
+              "selector": "div.dashboard-next-events > ion-card.next-flood-card > ion-card-content.next-flood-content > p.forecast-caption",
+              "nodeLabel": "Forecast through Nov 2, 5:18 PM ET",
+              "explanation": "Fix any of the following:\n  Element has insufficient color contrast of 3.74 (foreground color: #83838e, background color: #ffffff, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            },
+            {
+              "selector": "div.hydrograph-header > div.title-group > div.hydrograph-subtitle > button.viewing-time-pill",
+              "nodeLabel": "Oct 17, 5:20 PM",
+              "explanation": "Fix any of the following:\n  Element has insufficient color contrast of 1.78 (foreground color: #2dd36f, background color: #e7f8ef, font size: 9.0pt (12px), font weight: bold). Expected contrast ratio of 4.5:1"
+            },
+            {
+              "selector": "section.hydrograph-container > div.chart-legend-row > div.chart-legend > span",
+              "nodeLabel": "Observed",
+              "explanation": "Fix any of the following:\n  Element has insufficient color contrast of 3.7 (foreground color: #82828d, background color: #fcfcfd, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            },
+            {
+              "selector": "section.hydrograph-container > div.chart-legend-row > div.chart-legend > span",
+              "nodeLabel": "Estimated",
+              "explanation": "Fix any of the following:\n  Element has insufficient color contrast of 3.7 (foreground color: #82828d, background color: #fcfcfd, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            },
+            {
+              "selector": "section.hydrograph-container > div.chart-legend-row > div.chart-legend > span",
+              "nodeLabel": "Tide",
+              "explanation": "Fix any of the following:\n  Element has insufficient color contrast of 3.7 (foreground color: #82828d, background color: #fcfcfd, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            },
+            {
+              "selector": "section.hydrograph-container > div.chart-legend-row > div.chart-legend > span",
+              "nodeLabel": "Extended outlook",
+              "explanation": "Fix any of the following:\n  Element has insufficient color contrast of 3.7 (foreground color: #82828d, background color: #fcfcfd, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ]
+        },
+        {
+          "id": "label-content-name-mismatch",
+          "title": "Elements with visible text labels do not have matching accessible names.",
+          "nodes": [
+            {
+              "selector": "div.hydrograph-header > div.title-group > div.hydrograph-subtitle > button.viewing-time-pill",
+              "nodeLabel": "Oct 17, 5:20 PM",
+              "explanation": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
+            },
+            {
+              "selector": "div.hydrograph-header > div > div.atmospheric-sentinel > div.sentinel-metrics",
+              "nodeLabel": "3.02\nft\nEstimated\nWater Level",
+              "explanation": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
+            },
+            {
+              "selector": "div.hydrograph-header > div > div.atmospheric-sentinel > div.next-tide-badge",
+              "nodeLabel": "\u25bc Low\nin 3h 10m\n-0.97 ft",
+              "explanation": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
+            },
+            {
+              "selector": "section.hydrograph-container > div.forecast-time-controls > div.forecast-time-presets > button",
+              "nodeLabel": "12h",
+              "explanation": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
+            },
+            {
+              "selector": "section.hydrograph-container > div.forecast-time-controls > div.forecast-time-presets > button",
+              "nodeLabel": "24h",
+              "explanation": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
+            },
+            {
+              "selector": "section.hydrograph-container > div.forecast-time-controls > div.forecast-time-presets > button",
+              "nodeLabel": "48h",
+              "explanation": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
+            },
+            {
+              "selector": "section.hydrograph-container > div.forecast-time-controls > div.forecast-time-presets > button",
+              "nodeLabel": "3d",
+              "explanation": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
+            },
+            {
+              "selector": "section.hydrograph-container > div.forecast-time-controls > div.forecast-time-presets > button",
+              "nodeLabel": "7d",
+              "explanation": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
+            },
+            {
+              "selector": "section.hydrograph-container > div.forecast-time-controls > div.forecast-time-presets > button",
+              "nodeLabel": "All",
+              "explanation": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
+            }
+          ]
+        },
+        {
+          "id": "meta-viewport",
+          "title": "`[user-scalable=\"no\"]` is used in the `<meta name=\"viewport\">` element or the `[maximum-scale]` attribute is less than 5.",
+          "nodes": [
+            {
+              "selector": "head > meta",
+              "nodeLabel": "head > meta",
+              "explanation": "Fix any of the following:\n  user-scalable=no on <meta> tag disables zooming on mobile devices"
+            }
+          ]
+        },
+        {
+          "id": "meta-description",
+          "title": "Document does not have a meta description",
+          "nodes": []
+        },
+        {
+          "id": "robots-txt",
+          "title": "robots.txt is not valid",
+          "nodes": []
+        }
+      ]
+    },
+    "registration": {
+      "url": "https://floodcastwebapp.web.app/register",
+      "fetchTime": "2026-10-17T21:23:10.871Z",
+      "mode": "snapshot",
+      "device": "mobile",
+      "categories": {
+        "accessibility": 0.85,
+        "best-practices": 1,
+        "seo": 0.6
+      },
+      "failedAudits": [
+        {
+          "id": "color-contrast",
+          "title": "Background and foreground colors do not have a sufficient contrast ratio.",
+          "nodes": [
+            {
+              "selector": "button.button-native > span.button-inner",
+              "nodeLabel": "button.button-native > span.button-inner",
+              "explanation": "Fix any of the following:\n  Element has insufficient color contrast of 4.46 (foreground color: #0077b6, background color: #f4f5f8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            },
+            {
+              "selector": "div.ion-page > ion-content.ion-padding > div.ion-text-center > a",
+              "nodeLabel": "Sign in",
+              "explanation": "Fix any of the following:\n  Element has insufficient color contrast of 4.46 (foreground color: #0077b6, background color: #f4f5f8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ]
+        },
+        {
+          "id": "label",
+          "title": "Form elements do not have associated labels",
+          "nodes": [
+            {
+              "selector": "ion-input.sc-ion-input-ios-h > label.input-wrapper > div.native-wrapper > input#ion-input-0",
+              "nodeLabel": "ion-input.sc-ion-input-ios-h > label.input-wrapper > div.native-wrapper > input#ion-input-0",
+              "explanation": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element has an empty placeholder attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            },
+            {
+              "selector": "ion-input.sc-ion-input-ios-h > label.input-wrapper > div.native-wrapper > input#ion-input-1",
+              "nodeLabel": "ion-input.sc-ion-input-ios-h > label.input-wrapper > div.native-wrapper > input#ion-input-1",
+              "explanation": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element has an empty placeholder attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            },
+            {
+              "selector": "ion-input.sc-ion-input-ios-h > label.input-wrapper > div.native-wrapper > input#ion-input-2",
+              "nodeLabel": "ion-input.sc-ion-input-ios-h > label.input-wrapper > div.native-wrapper > input#ion-input-2",
+              "explanation": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element has an empty placeholder attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            },
+            {
+              "selector": "ion-input.sc-ion-input-ios-h > label.input-wrapper > div.native-wrapper > input#ion-input-3",
+              "nodeLabel": "ion-input.sc-ion-input-ios-h > label.input-wrapper > div.native-wrapper > input#ion-input-3",
+              "explanation": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element has an empty placeholder attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            }
+          ]
+        },
+        {
+          "id": "meta-viewport",
+          "title": "`[user-scalable=\"no\"]` is used in the `<meta name=\"viewport\">` element or the `[maximum-scale]` attribute is less than 5.",
+          "nodes": [
+            {
+              "selector": "head > meta",
+              "nodeLabel": "head > meta",
+              "explanation": "Fix any of the following:\n  user-scalable=no on <meta> tag disables zooming on mobile devices"
+            }
+          ]
+        },
+        {
+          "id": "meta-description",
+          "title": "Document does not have a meta description",
+          "nodes": []
+        },
+        {
+          "id": "robots-txt",
+          "title": "robots.txt is not valid",
+          "nodes": []
+        }
+      ]
+    }
+  }
+}

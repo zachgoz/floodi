@@ -70,9 +70,9 @@ export const WaterLevelMetric: React.FC<WaterLevelMetricProps> = ({
 );
 
 interface AtmosphereMetricsProps {
-  precipitationAccumulation: number;
-  windSpeed: number;
-  windDirection: number;
+  precipitationAccumulation: number | null;
+  windSpeed: number | null;
+  windDirection: number | null;
   arrowLen?: number;
   loading?: boolean;
 }
@@ -84,12 +84,14 @@ export const AtmosphereMetrics: React.FC<AtmosphereMetricsProps> = ({
   arrowLen = 10,
   loading = false,
 }) => {
-  const hasWind = windSpeed > 0 || loading;
-  const hasDirection = Number.isFinite(windDirection);
-  const hasPrecip = (precipitationAccumulation !== undefined && precipitationAccumulation > 0.005) || loading;
-  const arrowColor = windColor(windSpeed);
+  const windKnown = typeof windSpeed === 'number' && Number.isFinite(windSpeed) && windSpeed >= 0;
+  const precipKnown = typeof precipitationAccumulation === 'number' && Number.isFinite(precipitationAccumulation) && precipitationAccumulation >= 0;
+  const hasWind = windKnown || loading;
+  const hasDirection = typeof windDirection === 'number' && Number.isFinite(windDirection);
+  const hasPrecip = precipKnown || loading;
+  const arrowColor = windColor(windKnown ? windSpeed : 0);
 
-  if (!hasWind && !hasPrecip) return null;
+  if (!hasWind && !hasPrecip) return <div className="weather-unavailable">Weather unavailable</div>;
 
   return (
     <div className="sentinel-metrics atmo-metrics meteo-group">
@@ -105,7 +107,7 @@ export const AtmosphereMetrics: React.FC<AtmosphereMetricsProps> = ({
                 viewBox="-9 -9 18 18"
                 className="wind-arrow-svg"
               >
-                <g transform={`rotate(${windDirection + 180})`}>
+                <g transform={`rotate(${(windDirection ?? 0) + 180})`}>
                   <line
                     x1={0} y1={arrowLen / 2}
                     x2={0} y2={-arrowLen / 2}
@@ -127,9 +129,9 @@ export const AtmosphereMetrics: React.FC<AtmosphereMetricsProps> = ({
                 <IonSkeletonText animated style={{ width: '30px', height: '18px', borderRadius: '4px' }} />
               ) : (
                 <>
-                  <span className="metric-value">{windSpeed.toFixed(0)}</span>
+                  <span className="metric-value">{windSpeed?.toFixed(0)}</span>
                   <span className="metric-unit">mph</span>
-                  <span className="metric-dir">{hasDirection ? degToCompass(windDirection) : '—'}</span>
+                  <span className="metric-dir">{hasDirection ? degToCompass(windDirection ?? 0) : '—'}</span>
                 </>
               )}
             </div>
@@ -138,6 +140,8 @@ export const AtmosphereMetrics: React.FC<AtmosphereMetricsProps> = ({
         </div>
       )}
 
+      {!hasWind && <span className="weather-unavailable">Wind unavailable</span>}
+      {!hasPrecip && <span className="weather-unavailable">Rain unavailable</span>}
       {hasWind && hasPrecip && (
         <div className="metric-divider" />
       )}
@@ -157,7 +161,7 @@ export const AtmosphereMetrics: React.FC<AtmosphereMetricsProps> = ({
                 <IonSkeletonText animated style={{ width: '40px', height: '18px', borderRadius: '4px' }} />
               ) : (
                 <>
-                  <span className="metric-value">{precipitationAccumulation.toFixed(2)}</span>
+                  <span className="metric-value">{precipitationAccumulation?.toFixed(2)}</span>
                   <span className="metric-unit">in</span>
                 </>
               )}

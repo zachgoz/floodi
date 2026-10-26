@@ -189,6 +189,13 @@ const Profile: React.FC = () => {
           </IonToolbar>
         </IonHeader>
         <IonContent className="ion-padding">
+          <IonCard>
+            <IonCardHeader><IonCardTitle>Flood alerts</IonCardTitle></IonCardHeader>
+            <IonCardContent>
+              <p>See alert availability and set up updates for Carolina Beach.</p>
+              <IonButton expand="block" routerLink="/alerts">Manage flood alerts</IonButton>
+            </IonCardContent>
+          </IonCard>
           <IonList>
             <IonItem lines="none">
               <IonAvatar slot="start">
@@ -218,6 +225,13 @@ const Profile: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding">
+        <IonCard>
+          <IonCardHeader><IonCardTitle>Flood alerts</IonCardTitle></IonCardHeader>
+          <IonCardContent>
+            <p>View your coverage, email verification and alert preferences.</p>
+            <IonButton expand="block" routerLink="/alerts">Manage flood alerts</IonButton>
+          </IonCardContent>
+        </IonCard>
         {/* Personal Profile Section */}
         <IonCard>
           <IonCardHeader>
@@ -232,7 +246,7 @@ const Profile: React.FC = () => {
                   </IonAvatar>
                   <IonLabel>
                     <h2>{user?.displayName || 'Unnamed User'}{' '}
-                      {!!userProfile?.role && (
+                      {(perms.isAdmin() || perms.isModerator()) && !!userProfile?.role && (
                         <IonBadge color={
                           userProfile.role === UserRole.Admin ? 'danger' :
                           userProfile.role === UserRole.Moderator ? 'warning' :
@@ -244,12 +258,10 @@ const Profile: React.FC = () => {
                   </IonLabel>
                 </IonItem>
                 <IonItem>
-                  <IonLabel position="stacked">Display Name</IonLabel>
-                  <IonInput value={displayName} onIonChange={(e) => setDisplayName(e.detail.value || '')} />
+                  <IonInput label="Display Name" labelPlacement="stacked" autocomplete="nickname" value={displayName} onIonChange={(e) => setDisplayName(e.detail.value || '')} />
                 </IonItem>
                 <IonItem>
-                  <IonLabel position="stacked">Avatar URL</IonLabel>
-                  <IonInput value={photoURL} onIonChange={(e) => setPhotoURL(e.detail.value || '')} />
+                  <IonInput label="Avatar URL (optional)" labelPlacement="stacked" type="url" autocomplete="url" value={photoURL} onIonChange={(e) => setPhotoURL(e.detail.value || '')} />
                 </IonItem>
                 <IonItem lines="full">
                   <IonNote color="medium">Account created: {created || '—'}</IonNote>
@@ -277,7 +289,7 @@ const Profile: React.FC = () => {
         </IonCard>
 
         {/* Role Information Section */}
-        <IonCard>
+        {(perms.isAdmin() || perms.isModerator()) && <IonCard>
           <IonCardHeader>
             <IonCardTitle>Role & Permissions</IonCardTitle>
           </IonCardHeader>
@@ -311,15 +323,8 @@ const Profile: React.FC = () => {
                 </div>
               </IonAccordion>
             </IonAccordionGroup>
-            {!perms.isAdmin() && (
-              <div className="ion-padding-top">
-                <IonButton expand="block" fill="outline" onClick={() => setSuccessMsg('Role upgrade request sent')}>
-                  Request Role Upgrade
-                </IonButton>
-              </div>
-            )}
           </IonCardContent>
-        </IonCard>
+        </IonCard>}
 
         {/* Admin Controls Section */}
         {perms.isAdmin() && (

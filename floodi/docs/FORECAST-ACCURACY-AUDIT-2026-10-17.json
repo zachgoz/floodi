@@ -1,0 +1,191 @@
+{
+  "version": 1,
+  "auditDate": "2026-10-17",
+  "readOnlyProductionAudit": true,
+  "credentialSource": "user-authorized-firebase-cli",
+  "location": "Carolina Beach",
+  "sensorReference": "30046",
+  "datum": "MLLW",
+  "units": "ft",
+  "thresholdFt": 5.6,
+  "verificationVersion": "prospective-v1",
+  "referenceVersion": "cb-reference-v1-3e5e8fdf9b0b",
+  "firstNumericalArchive": "2026-10-12T01:29:00.892Z",
+  "firstNumericalArchiveEastern": "2026-10-11 9:29 PM EDT",
+  "originDaysUTC": [
+    "2026-10-12",
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16"
+  ],
+  "hourlyOrigins": 120,
+  "hourlyOriginOutcomes": {
+    "no-published-issue": 2,
+    "issue-unavailable": 24,
+    "scored": 94
+  },
+  "publicationBasis": "legacy-create-time",
+  "pairedPointErrors": [
+    {
+      "decisionOriginLeadHours": 1,
+      "pairedTargets": 94,
+      "archivedForecastMaeFt": 0.11348560761248334,
+      "tideOnlyMaeFt": 0.5856358606450552,
+      "persistenceMaeFt": 0.1064815906532898
+    },
+    {
+      "decisionOriginLeadHours": 3,
+      "pairedTargets": 94,
+      "archivedForecastMaeFt": 0.18552153798016,
+      "tideOnlyMaeFt": 0.594079917079158,
+      "persistenceMaeFt": 0.19145179991982178
+    },
+    {
+      "decisionOriginLeadHours": 6,
+      "pairedTargets": 94,
+      "archivedForecastMaeFt": 0.16906301087398107,
+      "tideOnlyMaeFt": 0.6012651316646206,
+      "persistenceMaeFt": 0.22447159676557965
+    },
+    {
+      "decisionOriginLeadHours": 12,
+      "pairedTargets": 94,
+      "archivedForecastMaeFt": 0.14583176087573835,
+      "tideOnlyMaeFt": 0.5860399468249886,
+      "persistenceMaeFt": 0.20289669427937473
+    },
+    {
+      "decisionOriginLeadHours": 24,
+      "pairedTargets": 83,
+      "archivedForecastMaeFt": 0.15387394583203812,
+      "tideOnlyMaeFt": 0.5385933126235042,
+      "persistenceMaeFt": 0.22570866283077243
+    },
+    {
+      "decisionOriginLeadHours": 48,
+      "pairedTargets": 59,
+      "archivedForecastMaeFt": 0.14880162047319806,
+      "tideOnlyMaeFt": 0.541071524203572,
+      "persistenceMaeFt": 0.2770977386344777
+    },
+    {
+      "decisionOriginLeadHours": 72,
+      "pairedTargets": 35,
+      "archivedForecastMaeFt": 0.14223178572457523,
+      "tideOnlyMaeFt": 0.6338543396417486,
+      "persistenceMaeFt": 0.24559805013444916
+    }
+  ],
+  "fixedMidnightEventCohorts": [
+    {
+      "originDayUTC": "2026-10-12",
+      "originAt": "2026-10-12T00:00:00.000Z",
+      "method": "served",
+      "status": "excluded",
+      "exclusion": "no-published-issue",
+      "observedNewEventIds": [],
+      "hitEventIds": [],
+      "missedEventIds": [],
+      "unmatchedPredictedEventIds": [],
+      "underwayEventIds": []
+    },
+    {
+      "originDayUTC": "2026-10-13",
+      "originAt": "2026-10-13T00:00:00.000Z",
+      "method": "served",
+      "status": "excluded",
+      "exclusion": "issue-unavailable",
+      "observedNewEventIds": [],
+      "hitEventIds": [],
+      "missedEventIds": [],
+      "unmatchedPredictedEventIds": [],
+      "underwayEventIds": []
+    },
+    {
+      "originDayUTC": "2026-10-14",
+      "originAt": "2026-10-14T00:00:00.000Z",
+      "method": "served",
+      "status": "scored",
+      "exclusion": null,
+      "observedNewEventIds": [],
+      "hitEventIds": [],
+      "missedEventIds": [],
+      "unmatchedPredictedEventIds": [
+        "2026-10-14T14:50:06.711Z"
+      ],
+      "underwayEventIds": []
+    },
+    {
+      "originDayUTC": "2026-10-15",
+      "originAt": "2026-10-15T00:00:00.000Z",
+      "method": "served",
+      "status": "scored",
+      "exclusion": null,
+      "observedNewEventIds": [],
+      "hitEventIds": [],
+      "missedEventIds": [],
+      "unmatchedPredictedEventIds": [],
+      "underwayEventIds": []
+    },
+    {
+      "originDayUTC": "2026-10-16",
+      "originAt": "2026-10-16T00:00:00.000Z",
+      "method": "served",
+      "status": "scored",
+      "exclusion": null,
+      "observedNewEventIds": [],
+      "hitEventIds": [],
+      "missedEventIds": [],
+      "unmatchedPredictedEventIds": [],
+      "underwayEventIds": []
+    }
+  ],
+  "limitations": [
+    "Small evolving-model sample, with dependent hourly origins; no statistical significance, annual reliability or alert-readiness claim.",
+    "Lead cohorts differ because not every later target has matured or has observed support. Lower errors at longer leads do not establish that long-range forecasts are better.",
+    "Forecasts are frozen archived backend total-water levels, not reconstructed historical dashboard selections, client overrides or delivered alerts.",
+    "All sampled issues predate atomic publication metadata. Creation times are conservative availability bounds.",
+    "Observed gauge values follow the configured ingestion reference; historic per-row sensor/calibration provenance is not independently established.",
+    "October 12 raw observation spikes and a near-threshold conversion-equality artifact require source/QC review before using those fragments as physical flood-event truth.",
+    "Hourly interval-overlap hits repeat the same event. They cannot be treated as independent floods or successful advance notifications.",
+    "Missing future observation documents are expected; unsupported or future targets remain excluded."
+  ],
+  "dataSnapshots": [
+    {
+      "originDayUTC": "2026-10-12",
+      "evaluatedAt": "2026-10-17T13:11:57.979Z",
+      "archiveCandidates": 135,
+      "selectedIssues": 22,
+      "archiveReadTruncated": false
+    },
+    {
+      "originDayUTC": "2026-10-13",
+      "evaluatedAt": "2026-10-17T13:11:58.765Z",
+      "archiveCandidates": 279,
+      "selectedIssues": 24,
+      "archiveReadTruncated": false
+    },
+    {
+      "originDayUTC": "2026-10-14",
+      "evaluatedAt": "2026-10-17T13:13:05.207Z",
+      "archiveCandidates": 288,
+      "selectedIssues": 24,
+      "archiveReadTruncated": false
+    },
+    {
+      "originDayUTC": "2026-10-15",
+      "evaluatedAt": "2026-10-17T13:13:31.578Z",
+      "archiveCandidates": 288,
+      "selectedIssues": 24,
+      "archiveReadTruncated": false
+    },
+    {
+      "originDayUTC": "2026-10-16",
+      "evaluatedAt": "2026-10-17T13:14:01.891Z",
+      "archiveCandidates": 288,
+      "selectedIssues": 24,
+      "archiveReadTruncated": false
+    }
+  ]
+}

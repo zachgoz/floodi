@@ -77,19 +77,20 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
     requestedMonths,
   };
   
-  // The chart warms a wider range after its first usable viewport. Adjacent
-  // month archives must not delay the requested observations.
-  const allMonths = requestedMonths;
-
   const now = new Date();
   const days = getDaysInRange(start, new Date(Math.min(+end, +now)));
-  // Legacy months remain readable while daily buckets replace unbounded month
-  // writes. Fetch only days in the requested range, and use the same TTL cache.
-  const ids = [...allMonths, ...days];
-  const results = await measurePerf('dataService.fetchObservations.prefetchMonths', () => prefetchMonths(locationId, ids, 'obs'), {
+  // An existing day can contain only one source or a partial ingestion window.
+  // Only trusted copy-verification metadata proves that its legacy history,
+  // weather and image leaves are all represented. Otherwise retain the fallback.
+  const daily = await prefetchMonths(locationId, days, 'obs') as (ObservationBucket | null)[];
+  const fallbackMonths = [...new Set(days.filter((day, index) => !hasVerifiedLegacyCoverage(daily[index], day, now)).map(day => day.slice(0, 7)))];
+  const legacy = await measurePerf('dataService.fetchObservations.prefetchMonths', () => prefetchMonths(locationId, fallbackMonths, 'obs'), {
     ...metadata,
-    allMonths,
+    fallbackMonths,
   });
+  // Merge legacy first so valid daily corrections always take precedence.
+  const ids = [...fallbackMonths, ...days];
+  const results = [...legacy, ...daily];
 
   const merged: { 
     noaa: Record<string, number>; 
@@ -108,7 +109,6 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
   // The others remain in bucketCache for future quick access
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i];
-    if (id.length === 7 && !requestedMonths.includes(id)) continue;
     
     const bucket = (await results[i]) as ObservationBucket | null;
     if (!bucket) continue;
@@ -116,7 +116,7 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
     for (const source of ['noaa', 'fiman'] as const) {
       for (const [t, value] of Object.entries(bucket[source] || {})) {
         const ms = observationTimestamp(t);
-        if (Number.isFinite(ms) && ms <= +now && Number.isFinite(value)) merged[source][new Date(ms).toISOString()] = value;
+        if (Number.isFinite(ms) && ms >= +start && ms <= +end && ms <= +now && Number.isFinite(value)) merged[source][new Date(ms).toISOString()] = value;
       }
     }
     // Both timestamp->camera and camera->timestamp occurred in legacy data.
@@ -127,7 +127,7 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
         for (const [key, url] of Object.entries(entries)) {
           const ms = Number.isFinite(outerMs) ? outerMs : observationTimestamp(key);
           const camera = Number.isFinite(outerMs) ? key : outer;
-          if (!Number.isFinite(ms) || ms > +now || typeof url !== 'string') continue;
+          if (!Number.isFinite(ms) || ms < +start || ms > +end || ms > +now || typeof url !== 'string') continue;
           const target = url.startsWith('storage://') ? archivedImagery : merged.imagery;
           if (source === 'persistedImagery' && target !== archivedImagery) continue;
           (target[camera] ||= {})[new Date(ms).toISOString()] = url;
@@ -138,7 +138,7 @@ export async function fetchObservations(locationId: string, start: Date, end: Da
     const weatherCutoff = id.length === 7 ? (Number.isFinite(updated) ? Math.min(+now, updated) : 0) : +now;
     for (const [t, weather] of Object.entries(bucket.weather || {})) {
       const ms = observationTimestamp(t);
-      if (!Number.isFinite(ms) || ms > weatherCutoff || !weather || typeof weather !== 'object' || Array.isArray(weather)) continue;
+      if (!Number.isFinite(ms) || ms < +start || ms > +end || ms > weatherCutoff || !weather || typeof weather !== 'object' || Array.isArray(weather)) continue;
       const canonical = new Date(ms).toISOString();
       merged.weather[canonical] = { ...merged.weather[canonical], ...weather };
     }
@@ -387,6 +387,14 @@ export async function findLastSimilarLevel(locationId: string, targetLevel: numb
 }
 
 // Helpers
+function hasVerifiedLegacyCoverage(bucket: ObservationBucket | null, day: string, now: Date): boolean {
+  const coverage = bucket?.legacyCoverage;
+  if (!coverage || coverage.version !== 1 || coverage.archiveFrozen !== true || coverage.sourceMonth !== day.slice(0, 7)) return false;
+  const source = observationTimestamp(coverage.sourceUpdateTime);
+  const verified = observationTimestamp(coverage.verifiedAt);
+  return Number.isFinite(source) && Number.isFinite(verified) && source <= verified && verified <= +now;
+}
+
 function observationTimestamp(value: string): number {
   return /(Z|[+-]\d\d:\d\d)$/i.test(value) ? Date.parse(value) : NaN;
 }

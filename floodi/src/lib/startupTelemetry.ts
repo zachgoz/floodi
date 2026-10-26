@@ -1,4 +1,5 @@
 import { validateClientPerformanceReport, type ClientPerformanceReport } from '../../functions/src/telemetry/schema';
+import { installWebVitalsTelemetry } from './webVitalsTelemetry';
 
 type Timings = ClientPerformanceReport['timings'];
 type Options = {
@@ -63,7 +64,7 @@ export function createStartupTelemetry(options: Options) {
       signal: controller.signal, body: JSON.stringify(report),
     })).catch(() => {}).finally(() => clearTimeout(timer));
   };
-  return { mark, flush, ready: () => timings.chartMs !== undefined && timings.outlookMs !== undefined };
+  return { mark, flush, sampled, ready: () => timings.chartMs !== undefined && timings.outlookMs !== undefined };
 }
 
 let installed = false;
@@ -95,6 +96,10 @@ export function installStartupTelemetry(): () => void {
       };
     },
   });
+  const removeWebVitals = installWebVitalsTelemetry({
+    enabled: reporter.sampled, route: window.location.pathname, buildId: import.meta.env.VITE_APP_BUILD_ID ?? 'unknown',
+    online: () => navigator.onLine !== false, epoch: Date.now, send: (...args) => fetch(...args), endpoint, storage,
+  });
   // These are UI readiness events, not network completion marks. Two frames
   // allow the committed chart to paint before recording its ready time.
   const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -115,6 +120,7 @@ export function installStartupTelemetry(): () => void {
   window.addEventListener('pagehide', reporter.flush);
   return () => {
     installed = false;
+    removeWebVitals();
     for (const timer of timers) clearTimeout(timer);
     window.removeEventListener('floodi:shell-ready', shell);
     window.removeEventListener('floodi:chart-ready', chart);

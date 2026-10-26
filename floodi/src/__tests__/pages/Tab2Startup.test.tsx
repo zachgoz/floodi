@@ -23,6 +23,7 @@ vi.mock('src/components/Tab2/SettingsModal', () => ({ SettingsModal: () => null 
 vi.mock('src/components/Tab2/TimeSettingsModal', () => ({ TimeSettingsModal: () => null }));
 vi.mock('src/components/Tab2/ChartCommentModal', () => ({ ChartCommentModal: () => null }));
 vi.mock('src/components/onboarding/IntroTourOverlay', () => ({ IntroTourOverlay: () => null }));
+vi.mock('src/components/alerts/AlertInvitation', () => ({ AlertInvitation: () => null }));
 vi.mock('src/components/common/AdSenseUnit', () => ({ AdSenseUnit: () => null }));
 import Tab2 from 'src/pages/Tab2';
 

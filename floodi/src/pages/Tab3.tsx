@@ -86,14 +86,12 @@ const Tab3: React.FC = () => {
             </IonCardHeader>
             <IonCardContent>
               <p>
-                FloodCast was created to provide Carolina Beach residents with the most accurate,
-                up-to-the-minute flood intelligence possible. Traditional tide tables are based 
-                on regional gauges (like Wrightsville Beach) and often fail to capture the 
-                unique inundation patterns of our local canals and road crossings.
+                FloodCast helps Carolina Beach residents anticipate coastal flooding by combining
+                local water-level observations, astronomical tides and weather information.
               </p>
               <p style={{ marginTop: '12px' }}>
-                By combining astronomical predictions with real-time sensor data, we help you 
-                know exactly when the water is coming—and when it's safe to travel.
+                Forecasts and estimated street impacts support planning. Conditions can change,
+                and a forecast does not establish whether a road is safe to travel.
               </p>
             </IonCardContent>
           </IonCard>
@@ -184,29 +182,31 @@ const Tab3: React.FC = () => {
               <div className="method-item">
                 <h4>Surge Analysis</h4>
                 <p>
-                  We calculate "live surge" by measuring the median deviation between real-time 
-                  observations and astronomical predictions. This offset is applied to future 
-                  forecasts for improved accuracy.
+                  The residual is observed water level minus the aligned astronomical tide.
+                  Forecasts combine recent residual behavior with supported weather relationships;
+                  longer-range outlooks use historical patterns. Residuals include non-tidal
+                  influences and measurement error, and are not always storm surge.
                 </p>
               </div>
               <div className="method-item">
                 <h4>Datum Alignment</h4>
                 <p>
-                  All data is normalized to the <strong>MLLW (Mean Lower Low Water)</strong> datum, 
-                  ensuring consistency across different sensor types and historical records.
+                  Water-level charts use feet relative to <strong>MLLW (Mean Lower Low Water)</strong>.
+                  Local sensor data is converted using the configured datum and timing alignment.
+                  Street-impact estimates still require local elevation calibration.
                 </p>
               </div>
             </IonCardContent>
           </IonCard>
 
           {/* About page ad unit. Replace the slot ID with your actual AdSense ad unit slot ID */}
-          <AdSenseUnit slot="about-bottom" />
+          <AdSenseUnit slot={import.meta.env.VITE_ADSENSE_ABOUT_SLOT || ''} />
 
           <footer className="about-footer">
             <p>Built with ❤️ for the Carolina Beach community.</p>
             <p className="version-tag">
               <Link to="/privacy" className="privacy-link">Privacy Policy</Link>
-              • FloodCast v1.2.0 • Build 2026.05.02
+              {' · '}Release {import.meta.env.VITE_APP_BUILD_ID || 'development'}
             </p>
           </footer>
         </div>

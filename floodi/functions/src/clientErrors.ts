@@ -2,7 +2,7 @@ import * as admin from 'firebase-admin';
 import * as logger from 'firebase-functions/logger';
 import { onRequest } from 'firebase-functions/v2/https';
 import { createHash } from 'node:crypto';
-import { CLIENT_ERROR_MESSAGES, validateClientErrorReport, validateClientPerformanceReport, type ClientTelemetryReport } from './telemetry/schema';
+import { CLIENT_ERROR_MESSAGES, validateClientErrorReport, validateClientPerformanceReport, validateClientWebVitalsReport, type ClientTelemetryReport } from './telemetry/schema';
 
 const MAX_BODY_BYTES = 8_192;
 const GLOBAL_PER_MINUTE = 50;
@@ -101,9 +101,9 @@ export function createClientErrorHandler(dependencies: HandlerDependencies) {
     let size: number;
     try { size = Buffer.byteLength(JSON.stringify(req.body), 'utf8'); } catch { res.status(400).send(); return; }
     if (size > MAX_BODY_BYTES) { res.status(413).send(); return; }
-    if (!validateClientErrorReport(req.body) && !validateClientPerformanceReport(req.body)) { res.status(400).send(); return; }
+    if (!validateClientErrorReport(req.body) && !validateClientPerformanceReport(req.body) && !validateClientWebVitalsReport(req.body)) { res.status(400).send(); return; }
     const report = req.body;
-    const isPerformance = report.code === 'page_load';
+    const isPerformance = report.code === 'page_load' || report.code === 'web_vitals';
     const category = isPerformance ? 'performance' : 'error';
     const timestamp = now();
     const minute = Math.floor(timestamp / 60_000);
@@ -139,6 +139,7 @@ export const collectClientErrors = onRequest({
       consume: createClientErrorQuota(admin.firestore()),
       log: report => {
         if (report.code === 'page_load') { logger.info('Frontend page load timing', { event: 'frontend_performance', client: report }); return; }
+        if (report.code === 'web_vitals') { logger.info('Frontend first foreground Web Vitals', { event: 'frontend_web_vitals', client: report }); return; }
         const severe = ['runtime_error', 'unhandled_rejection', 'react_render_error'].includes(report.code);
         const diagnostic = { event: 'frontend_error', client: report };
         if (report.code === 'monitoring_probe') logger.info(CLIENT_ERROR_MESSAGES[report.code], diagnostic);

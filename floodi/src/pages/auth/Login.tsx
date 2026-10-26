@@ -5,7 +5,6 @@ import {
   IonHeader,
   IonInput,
   IonItem,
-  IonLabel,
   IonList,
   IonPage,
   IonText,
@@ -66,9 +65,11 @@ const Login: React.FC = () => {
         <form onSubmit={handleSubmit} aria-label="Login form">
           <IonList>
             <IonItem>
-              <IonLabel position="stacked">Email</IonLabel>
               <IonInput
+                label="Email"
+                labelPlacement="stacked"
                 type="email"
+                inputmode="email"
                 value={email}
                 onIonChange={(e) => setEmail(e.detail.value || '')}
                 required
@@ -77,8 +78,9 @@ const Login: React.FC = () => {
               />
             </IonItem>
             <IonItem>
-              <IonLabel position="stacked">Password</IonLabel>
               <IonInput
+                label="Password"
+                labelPlacement="stacked"
                 type="password"
                 value={password}
                 onIonChange={(e) => setPassword(e.detail.value || '')}
@@ -111,11 +113,11 @@ const Login: React.FC = () => {
         </form>
         <div className="ion-text-center ion-padding-top">
           <p>
-            <Link to="/reset-password">Forgot Password?</Link>
+            <Link to={`/reset-password?redirect=${encodeURIComponent(redirectTo)}`}>Forgot Password?</Link>
           </p>
           <p>
             <IonText>Don’t have an account? </IonText>
-            <Link to="/register">Create Account</Link>
+            <Link to={`/register?redirect=${encodeURIComponent(redirectTo)}`}>Create Account</Link>
           </p>
         </div>
         <IonToast

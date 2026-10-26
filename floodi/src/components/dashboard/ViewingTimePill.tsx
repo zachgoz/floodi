@@ -17,7 +17,7 @@ export function ViewingTimePill({ time, fallbackLabel, onClick }: ViewingTimePil
         type="button"
         className="viewing-time-pill viewing-time-pill-button"
         onClick={onClick}
-        aria-label="Open time window settings"
+        aria-label={`${label} — open time window settings`}
       >
         {label}
       </button>

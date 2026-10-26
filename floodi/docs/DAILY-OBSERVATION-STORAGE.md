@@ -6,7 +6,7 @@ Each day uses atomic nested `merge: true` writes. A successful source does not e
 
 Archived camera links are stored separately in `persistedImagery` and overlay refreshable links in `imagery`. Repeated camera refreshes cannot replace saved `storage://` references. Both historical imagery layouts are read: timestamp → camera → URL and camera → timestamp → URL. Public client reads expose the existing camera → timestamp → URL shape. The new map has the same Firestore indexing exemption as the other observation maps.
 
-The application and backend range reader load requested daily documents together with the corresponding legacy months. Daily values override matching legacy instants after timezone normalization. Partial weather updates merge individual fields. UTC date iteration handles daylight saving changes and requests that cross midnight. Legacy weather after that archive's `lastUpdated` cutoff is excluded from observed weather, even when the timestamp has since passed. If the cutoff is absent or invalid, legacy weather is excluded rather than assigned observation provenance. The raw legacy archive is preserved for investigation. This cannot retrospectively establish provenance for every older weather row; forecasting training still needs its own source-quality checks.
+The application reads requested daily documents first, and downloads a legacy month only when a requested day lacks the explicit verified-coverage marker described below. An existing daily document alone does not prove its sources/history complete. Daily values override matching legacy instants after timezone normalization. Partial weather updates merge individual fields. UTC date iteration handles daylight saving changes and requests that cross midnight. Legacy weather after that archive's `lastUpdated` cutoff is excluded from observed weather, even when the timestamp has since passed. If the cutoff is absent or invalid, legacy weather is excluded rather than assigned observation provenance. The raw legacy archive is preserved for investigation. This cannot retrospectively establish provenance for every older weather row; forecasting training still needs its own source-quality checks. Backend historical range readers retain their conservative monthly-plus-daily merge.
 
 ## Migration
 
@@ -36,3 +36,19 @@ It returns a structured summary with requested/completed/partial/failed chunks, 
 ## Validation
 
 Unit tests exercise day boundaries, timezone normalization, zero/missing/future values, legacy/daily precedence, partial weather merges, archived image protection, oversized-patch errors with partial progress, dry-run behavior, idempotent migration and untouched-source verification. Emulator rules tests cover public reads of both document shapes and denied writes for ordinary users and client administrators. No production migration is performed by these tests.
+
+## Verified daily coverage for fast dashboard reads
+
+After the normal copy migration has completed, its optional metadata-only mode can certify each UTC day's coverage of the frozen legacy source:
+
+```sh
+npm run migrate:observations -- --project EXISTING_PROJECT --location carolina-beach --from YYYY-MM --to YYYY-MM --coverage-only
+```
+
+Review this dry-run before adding `--apply`. This mode does not copy missing observations or change any water, weather or image values. It fails if a valid legacy leaf is not represented in daily data, a gauge/image row has future provenance, or the legacy snapshot changes during verification. Run the normal copy first if coverage is incomplete. Valid newer daily corrections are retained, and archived camera URLs can satisfy older raw-image entries.
+
+In one transaction per month, the verifier rechecks the source's exact Firestore `updateTime`, reads all UTC days, verifies every eligible source leaf, and writes only a `legacyCoverage` map containing version, source month/update time, verification time and `archiveFrozen: true`. Empty-day markers express genuine absence in that archive; they do not create sensor readings, close historical gaps or imply continuous sensor uptime. Monthly forecast-contaminated weather remains excluded by its recorded cutoff. Applying again against the same source version writes no additional markers. Ongoing daily leaf merges preserve the marker.
+
+This is an explicit archive immutability contract: supported ingestion jobs write daily documents only. Future maintenance that changes a legacy month must invalidate its daily `legacyCoverage` markers atomically with that source change, copy/verify the updated archive, then recertify. Never edit a certified monthly source silently. The browser cannot independently check a month version without downloading that month; it trusts this server-owned proof. Missing, invalid, wrong-month, future-dated or unreadable markers fall back to the original month. No archive is deleted.
+
+Certification has not been applied merely by adding this code. Until operators run the reviewed metadata-only verification, the fallback remains active and month-transfer savings must not be claimed as measured production improvement.

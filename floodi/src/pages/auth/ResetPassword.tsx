@@ -5,7 +5,6 @@ import {
   IonHeader,
   IonInput,
   IonItem,
-  IonLabel,
   IonList,
   IonPage,
   IonText,
@@ -13,13 +12,15 @@ import {
   IonToast,
   IonToolbar,
 } from '@ionic/react';
-import { Link, useHistory } from 'react-router-dom';
+import { Link, useHistory, useLocation } from 'react-router-dom';
 import { useAuth } from 'src/contexts/AuthContext';
-import { isValidEmail, formatFirebaseAuthError } from 'src/utils/auth';
+import { isValidEmail, formatFirebaseAuthError, getRedirectFromSearch } from 'src/utils/auth';
 
 const ResetPassword: React.FC = () => {
   const { resetPassword, signInAnonymously, user } = useAuth();
   const history = useHistory();
+  const location = useLocation();
+  const redirectTo = getRedirectFromSearch(location.search, '/tab2');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -50,8 +51,7 @@ const ResetPassword: React.FC = () => {
         <form onSubmit={handleSubmit} aria-label="Reset password form">
           <IonList>
             <IonItem>
-              <IonLabel position="stacked">Email</IonLabel>
-              <IonInput type="email" value={email} onIonChange={(e) => setEmail(e.detail.value || '')} required />
+              <IonInput label="Email" labelPlacement="stacked" type="email" autocomplete="email" inputmode="email" value={email} onIonChange={(e) => setEmail(e.detail.value || '')} required />
             </IonItem>
           </IonList>
           <div className="ion-padding-top">
@@ -74,7 +74,7 @@ const ResetPassword: React.FC = () => {
         </form>
         <div className="ion-text-center ion-padding-top">
           <IonText>Remembered your password? </IonText>
-          <Link to="/login">Back to Login</Link>
+          <Link to={`/login?redirect=${encodeURIComponent(redirectTo)}`}>Back to Login</Link>
         </div>
         <IonToast isOpen={!!errorMsg} message={errorMsg || ''} duration={2500} color="danger" onDidDismiss={() => setErrorMsg(null)} />
         <IonToast isOpen={!!successMsg} message={successMsg || ''} duration={3000} color="success" onDidDismiss={() => setSuccessMsg(null)} />

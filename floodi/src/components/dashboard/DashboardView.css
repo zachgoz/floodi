@@ -84,3 +84,19 @@
   .dashboard-scroll-container { padding: 12px; }
   .dashboard-grid { gap: 16px; }
 }
+
+.dashboard-alert-invitation { order:1; }
+.dashboard-hydrograph-card { order:2; }
+.dashboard-current-conditions { background:var(--ion-toolbar-background, var(--ion-background-color)); padding:8px 16px 10px; border-top:1px solid var(--chart-grid); font-size:12px; }
+.dashboard-current-conditions > div { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; }
+.dashboard-current-conditions strong { font-size:13px; font-weight:600; }
+.dashboard-current-conditions span, .dashboard-current-conditions small { color:var(--dash-subtitle-color); }
+.dashboard-current-conditions .condition-elevated { color:var(--ion-color-danger-shade); font-weight:600; }
+.dashboard-current-conditions small { font-size:12px; margin-top:3px; }
+.dashboard-current-conditions button { min-height:32px; padding:4px 8px; border:1px solid var(--ion-color-primary); border-radius:8px; color:var(--ion-color-primary); background:transparent; font-size:12px; }
+@media (min-width:992px) {
+  .dashboard-alert-invitation { grid-column:1 / -1; grid-row:2; }
+  .dashboard-hydrograph-card, .dashboard-webcam-card { grid-row:3; }
+  .dashboard-outlook-card, .dashboard-map-card { grid-row:4; }
+  .dashboard-simulator-card { grid-row:5; }
+}

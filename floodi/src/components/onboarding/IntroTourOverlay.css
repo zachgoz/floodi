@@ -2,7 +2,7 @@
   position: fixed;
   inset: 0;
   z-index: 10000;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .intro-tour-mask {
@@ -12,6 +12,8 @@
   pointer-events: auto;
   transition: top 180ms ease, left 180ms ease, width 180ms ease, height 180ms ease;
 }
+
+.intro-tour-mask-full { inset: 0; }
 
 .intro-tour-spotlight {
   position: fixed;
@@ -70,8 +72,8 @@
 
 .intro-tour-close {
   appearance: none;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   border: 0;
@@ -119,22 +121,35 @@
 
 .intro-tour-step-list {
   display: flex;
-  gap: 8px;
+  gap: 2px;
   margin-top: 16px;
 }
 
 .intro-tour-dot {
   appearance: none;
-  width: 9px;
-  height: 9px;
+  width: 44px;
+  min-width: 28px;
+  height: 44px;
+  flex: 1;
+  max-width: 44px;
   border: 0;
   border-radius: 99px;
   padding: 0;
-  background: rgba(0, 119, 182, 0.25);
+  background: transparent;
   cursor: pointer;
 }
 
-.intro-tour-dot.active {
+.intro-tour-dot::before {
+  content: '';
+  display: block;
+  width: 9px;
+  height: 9px;
+  margin: auto;
+  border-radius: 99px;
+  background: rgba(0, 119, 182, 0.45);
+}
+
+.intro-tour-dot.active::before {
   width: 28px;
   background: var(--ion-color-tertiary);
 }
@@ -148,14 +163,33 @@
 
 .intro-tour-back,
 .intro-tour-next {
-  --border-radius: 999px;
-  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 44px;
+  border: 1px solid var(--ion-color-primary);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: .875rem;
+  font-weight: 600;
   text-transform: none;
+  cursor: pointer;
+  color: var(--ion-color-primary);
+  background: transparent;
 }
 
 .intro-tour-next {
-  --background: linear-gradient(135deg, #0077b6, #00a6c8);
-  --background-activated: linear-gradient(135deg, #0069a0, #0096b7);
+  background: var(--ion-color-primary);
+  color: var(--ion-color-primary-contrast, #fff);
+}
+
+.intro-tour-back:disabled { opacity: .5; cursor: default; }
+.intro-tour-card button:focus-visible { outline: 2px solid var(--ion-color-primary); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-tour-mask, .intro-tour-spotlight, .intro-tour-card { transition: none; }
 }
 
 @media (max-width: 680px) {

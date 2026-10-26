@@ -1,5 +1,5 @@
 import type { ForecastDocument } from "../../../functions/src/forecast/schema";
-import { eventDate, eventTime } from "src/utils/waterForecast";
+import { eventDate, eventTime, eventWindow, floodWindows } from "src/utils/waterForecast";
 import type { SelectedWaterForecast } from "src/utils/selectWaterForecast";
 import "./ForecastPanels.css";
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   onToggle: () => void;
   floodExpected?: boolean;
   floodPossible?: boolean;
+  thresholdFt?: number;
+  now?: Date;
 }
 export function FloodOutlook({
   outlook,
@@ -17,36 +19,56 @@ export function FloodOutlook({
   onToggle,
   floodExpected,
   floodPossible,
+  thresholdFt,
+  now = new Date(),
 }: Props) {
-  // Keep the mobile overview compact; complete evidence stays in the expander.
+  // Headline and timing come from the selected chart series. Generated wording
+  // and the full provenance stay in the disclosure, without inventing causes.
   const weatherSelected = selection.method === 'weather' || selection.method === 'learned';
-  const suppliedSummary = outlook?.explanation.evidenceIds.filter(id => !['availability', 'validation', 'uncertainty'].includes(id)) || [];
-  const summaryIds = weatherSelected ? suppliedSummary.includes('weather') ? ['weather'] : suppliedSummary.slice(0, 1) : [];
+  const hasThreshold = typeof thresholdFt === 'number' && Number.isFinite(thresholdFt);
+  const nextEvent = hasThreshold
+    ? floodWindows(selection.totalPoints, thresholdFt!).find(event => +(event.endTime ?? event.lastSampleTime) > +now)
+    : null;
+  const horizon = selection.horizonEnd;
+  const planning = !!nextEvent && weatherSelected && selection.tailMethod === 'historical-pattern'
+    && !!outlook?.tail && +nextEvent.peakTime >= Date.parse(outlook.tail.startsAt);
+  const hasCoverage = selection.totalPoints.length > 1 && horizon && +horizon > +now;
+  const headline = selection.method === 'tide' ? nextEvent || floodExpected ? 'Tide above flood stage' : 'Tide forecast only'
+    : nextEvent || floodExpected ? planning ? 'Flooding in the planning outlook' : 'Flooding forecast'
+      : floodPossible ? 'Flooding possible' : hasCoverage
+        ? hasThreshold || floodExpected === false ? 'No flooding forecast' : 'Water-level outlook'
+        : 'Forecast unavailable';
+  let period = horizon && +horizon > +now ? `Through ${eventDate(horizon)}, ${eventTime(horizon)} ET` : null;
+  if (nextEvent) {
+    let window = eventWindow(nextEvent.startTime, nextEvent.endTime);
+    if (nextEvent.startClipped) {
+      const start = nextEvent.startTime <= now ? 'Already above threshold' : 'Start unavailable';
+      const end = nextEvent.endTime;
+      const endTime = end && `${eventDate(end) === eventDate(nextEvent.startTime) ? '' : `${eventDate(end)}, `}${eventTime(end)}`;
+      window = `${start} · ${endTime ? `Until ${endTime}` : 'End unavailable'}`;
+    }
+    period = `${eventDate(nextEvent.startTime)} · ${window}`;
+  }
   return (
     <section className="forecast-panel dashboard-outlook-card">
       <div className="forecast-panel-heading">
         <div>
           <h2>Flood Outlook</h2>
-          <p>
-            {weatherSelected ? floodExpected ? 'Elevated flood risk' : floodPossible ? 'Flooding possible' : selection.tailMethod || selection.extensionMethod ? 'Extended outlook' : selection.method === 'learned' ? 'Short-range forecast' : 'Weather-aware forecast' : selection.method === 'steady' ? 'Steady projection' : 'Astronomical tide only'}
-          </p>
+          <p className="outlook-risk-label">{headline}</p>
         </div>
         <span className="confidence-badge">{selection.confidence === 'limited' ? 'Limited confidence' : 'Outlook unavailable'}</span>
       </div>
+      {period && <p className="outlook-period">{period}</p>}
+      {!nextEvent && floodPossible && <p className="forecast-caption">The forecast error range reaches flood stage.</p>}
       {outlook ? (
         <>
-          {summaryIds.map((id) => (
-            <p key={id}>{outlook.evidence.find((e) => e.id === id)?.text}</p>
-          ))}
           <p className="forecast-caption">
-            Updated {eventTime(new Date(outlook.generatedAt))} ET ·{" "}
-            {outlook.explanationSource === "fallback"
-              ? "Calculated summary"
-              : "Gemini 3.8 Flash explanation"}
+            Updated {eventDate(new Date(outlook.generatedAt))}, {eventTime(new Date(outlook.generatedAt))} ET
           </p>
           <details>
-            <summary>Model evaluation and data quality</summary>
+            <summary>Forecast details</summary>
             <p>{selection.reason}</p>
+            <p>{outlook.explanationSource === 'fallback' ? 'Calculated summary' : 'Gemini 3.8 Flash explanation'} · Limited confidence is not a calibrated probability of flooding.</p>
             {weatherSelected && <label className="forecast-toggle"><input type="checkbox" checked={showComparison} onChange={onToggle} /> Compare steady surge projection</label>}
             {outlook.validation && (
               <>
@@ -106,7 +128,6 @@ export function FloodOutlook({
               </>
             )}
             {outlook.evidence
-              .filter((e) => !summaryIds.includes(e.id))
               .map((e) => (
                 <p key={e.id}>{e.text}</p>
               ))}
@@ -122,7 +143,7 @@ export function FloodOutlook({
         <details>
           <summary>Why is the outlook unavailable?</summary>
           <p>{selection.reason}</p>
-          <p>Local sensor history, weather coverage and backend configuration must be verified before an intelligent outlook can be shown.</p>
+          <p>The chart shows the available fallback. A current local forecast is not available.</p>
         </details>
       )}
     </section>

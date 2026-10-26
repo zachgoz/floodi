@@ -5,7 +5,6 @@ import {
   IonHeader,
   IonInput,
   IonItem,
-  IonLabel,
   IonList,
   IonPage,
   IonText,
@@ -70,20 +69,16 @@ const Register: React.FC = () => {
         <form onSubmit={handleSubmit} aria-label="Register form">
           <IonList>
             <IonItem>
-              <IonLabel position="stacked">Email</IonLabel>
-              <IonInput type="email" value={email} onIonChange={(e) => setEmail(e.detail.value || '')} required />
+              <IonInput label="Email" labelPlacement="stacked" type="email" autocomplete="email" inputmode="email" value={email} onIonChange={(e) => setEmail(e.detail.value || '')} required />
             </IonItem>
             <IonItem>
-              <IonLabel position="stacked">Password</IonLabel>
-              <IonInput type="password" value={password} onIonChange={(e) => setPassword(e.detail.value || '')} required />
+              <IonInput label="Password" labelPlacement="stacked" type="password" autocomplete="new-password" value={password} onIonChange={(e) => setPassword(e.detail.value || '')} required />
             </IonItem>
             <IonItem>
-              <IonLabel position="stacked">Confirm Password</IonLabel>
-              <IonInput type="password" value={confirm} onIonChange={(e) => setConfirm(e.detail.value || '')} required />
+              <IonInput label="Confirm Password" labelPlacement="stacked" type="password" autocomplete="new-password" value={confirm} onIonChange={(e) => setConfirm(e.detail.value || '')} required />
             </IonItem>
             <IonItem>
-              <IonLabel position="stacked">Display Name (optional)</IonLabel>
-              <IonInput value={displayName} onIonChange={(e) => setDisplayName(e.detail.value || '')} />
+              <IonInput label="Display Name (optional)" labelPlacement="stacked" autocomplete="nickname" value={displayName} onIonChange={(e) => setDisplayName(e.detail.value || '')} />
             </IonItem>
           </IonList>
           <div className="ion-padding-top">
@@ -107,9 +102,10 @@ const Register: React.FC = () => {
             </IonButton>
           </div>
         </form>
+        <p className="ion-text-center">Creating an account does not activate flood alerts. <Link to="/alerts">View alert availability</Link>.</p>
         <div className="ion-text-center ion-padding-top">
           <IonText>Already have an account? </IonText>
-          <Link to="/login">Sign in</Link>
+          <Link to={`/login?redirect=${encodeURIComponent(redirectTo)}`}>Sign in</Link>
         </div>
         <IonToast isOpen={!!errorMsg} message={errorMsg || ''} duration={2500} color="danger" onDidDismiss={() => setErrorMsg(null)} />
         <IonToast isOpen={!!successMsg} message={successMsg || ''} duration={1500} color="success" onDidDismiss={() => setSuccessMsg(null)} />

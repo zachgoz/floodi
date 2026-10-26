@@ -69,7 +69,29 @@ export interface ClientPerformanceReport {
   cacheState: 'cached' | 'network' | 'unknown';
   timings: Partial<Record<typeof CLIENT_PERFORMANCE_TIMINGS[number], number>>;
 }
-export type ClientTelemetryReport = ClientErrorReport | ClientPerformanceReport;
+export interface ClientWebVitalsReport {
+  version: 1;
+  code: 'web_vitals';
+  route: '/' | '/tab2';
+  buildId: string;
+  /** One aggregate when the first foreground period ends, not a visit ID. */
+  scope: 'first-foreground';
+  metrics: { lcpMs?: number; inpMs?: number; cls?: number };
+}
+export type ClientTelemetryReport = ClientErrorReport | ClientPerformanceReport | ClientWebVitalsReport;
+
+/** No metric entries, DOM targets, URLs, navigation IDs or user identifiers. */
+export function validateClientWebVitalsReport(value: unknown): value is ClientWebVitalsReport {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const p = value as Record<string, unknown>;
+  if (!keysAllowed(p, ['version', 'code', 'route', 'buildId', 'scope', 'metrics']) ||
+      p.version !== 1 || p.code !== 'web_vitals' || !oneOf(p.route, ['/', '/tab2']) || p.scope !== 'first-foreground' ||
+      typeof p.buildId !== 'string' || !/^(?:[a-f0-9]{7,64}|unknown)$/.test(p.buildId) ||
+      !p.metrics || typeof p.metrics !== 'object' || Array.isArray(p.metrics)) return false;
+  const metrics = p.metrics as Record<string, unknown>;
+  return Object.keys(metrics).length > 0 && keysAllowed(metrics, ['lcpMs', 'inpMs', 'cls']) &&
+    Object.entries(metrics).every(([key, value]) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= (key === 'cls' ? 100 : 300_000));
+}
 
 /** Timing reports are distinct from exceptions and cannot carry messages,
  * identifiers, URLs, free-form stage names, or arbitrary numeric metadata. */

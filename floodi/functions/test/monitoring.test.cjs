@@ -24,3 +24,11 @@ test('invalid project/channel resources are rejected before planning unintended 
   assert.throws(()=>monitoringDefinitions(''), /project/);
   assert.throws(()=>monitoringDefinitions('existing-project',['projects/other-project/notificationChannels/1']), /existing project/);
 });
+
+test('existing scheduled-job incident policy includes shadow evaluation and reconciliation failures', () => {
+  const policy = monitoringDefinitions('existing-project').policies.find(value => value.displayName === 'FloodCast — data or scheduled job failure');
+  const filter = policy.conditions[0].conditionMatchedLog.filter;
+  assert.ok(filter.includes('jsonPayload.event="shadow_alert_failed"'));
+  for (const event of ['citizen_alert_request_failed', 'citizen_alert_delivery_failed', 'citizen_alert_delivery_rejected', 'citizen_alert_fanout_failed']) assert.ok(filter.includes(`jsonPayload.event="${event}"`));
+  assert.ok(filter.includes('jsonPayload.event="shadow_alert_reconcile_failed"'));
+});

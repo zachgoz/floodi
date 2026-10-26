@@ -75,8 +75,6 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
   computedOffset,
   offsetDataPoints,
   observedSource,
-  showDelta,
-  onShowDeltaChange,
   showComments = true,
   commentCount = 0,
   onShowCommentsChange
@@ -132,19 +130,19 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
 
       <IonItem>
         <IonLabel position="stacked">View Mode</IonLabel>
-        <IonSegment value={viewMode} onIonChange={handleViewModeChange}>
+        <IonSegment aria-label="View mode" value={viewMode} onIonChange={handleViewModeChange}>
           <IonSegmentButton value="basic">
             <IonLabel>Basic</IonLabel>
           </IonSegmentButton>
           <IonSegmentButton value="advanced">
-            <IonLabel>Advanced</IonLabel>
+            <IonLabel>Analysis</IonLabel>
           </IonSegmentButton>
         </IonSegment>
       </IonItem>
 
       <IonItem>
         <IonLabel position="stacked">Theme</IonLabel>
-        <IonSegment value={theme} onIonChange={handleThemeChange}>
+        <IonSegment aria-label="Theme" value={theme} onIonChange={handleThemeChange}>
           <IonSegmentButton value="auto">
             <IonLabel>Auto</IonLabel>
           </IonSegmentButton>
@@ -157,9 +155,13 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
         </IonSegment>
       </IonItem>
 
+      {viewMode === 'advanced' && <>
+      <IonItem lines="none">
+        <IonNote>Analysis controls customize this device's charts. They do not change alert criteria.</IonNote>
+      </IonItem>
       <IonItem>
         <IonLabel position="stacked">Preferred Data Source</IonLabel>
-        <IonSegment value={dataSource} onIonChange={handleDataSourceChange}>
+        <IonSegment aria-label="Preferred data source" value={dataSource} onIonChange={handleDataSourceChange}>
           <IonSegmentButton value="auto">
             <IonLabel>Auto</IonLabel>
           </IonSegmentButton>
@@ -177,19 +179,19 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
           <IonItem slot="header" lines="full">
             <IonLabel>
               <h3>Surge Offset</h3>
-              <p>{offsetConfig.mode === 'auto' ? 'Auto' : 'Manual'} · {offsetSummary} · Trend {showDelta ? 'on' : 'off'}</p>
+              <p>{offsetConfig.mode === 'auto' ? 'Auto' : 'Manual'} · {offsetSummary}</p>
             </IonLabel>
           </IonItem>
           <div slot="content" className="surge-offset-panel">
             <IonItem lines="none">
               <IonNote color="medium">
-                Adjust predictions using recent observed vs predicted differences.
+                Manual offsets replace the FloodCast model in your personal chart view.
               </IonNote>
             </IonItem>
 
             <IonItem>
               <IonLabel position="stacked">Offset Mode</IonLabel>
-              <IonSegment value={offsetConfig.mode} onIonChange={handleOffsetModeChange}>
+              <IonSegment aria-label="Offset mode" value={offsetConfig.mode} onIonChange={handleOffsetModeChange}>
                 <IonSegmentButton value="auto">
                   <IonLabel>Auto</IonLabel>
                 </IonSegmentButton>
@@ -201,8 +203,9 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
 
             {offsetConfig.mode === 'manual' && (
               <IonItem>
-                <IonLabel position="stacked">Manual Offset (ft)</IonLabel>
                 <IonInput
+                  label="Manual Offset (ft)"
+                  labelPlacement="stacked"
                   type="number"
                   value={offsetConfig.value}
                   onIonInput={handleManualOffsetChange}
@@ -226,19 +229,10 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
               </IonNote>
             </IonItem>
 
-            <IonItem>
-              <IonLabel>
-                <h3>Show offset trend</h3>
-                <p>Display past difference and forecast offset</p>
-              </IonLabel>
-              <IonToggle
-                checked={!!showDelta}
-                onIonChange={(event: CustomEvent<{ checked: boolean }>) => onShowDeltaChange?.(!!event.detail.checked)}
-              />
-            </IonItem>
           </div>
         </IonAccordion>
       </IonAccordionGroup>
+      </>}
 
       <IonItem>
         <IonLabel>
@@ -246,6 +240,7 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
           <p>{commentCount} visible on the current chart</p>
         </IonLabel>
         <IonToggle
+          aria-label="Show comments"
           checked={showComments}
           onIonChange={(event: CustomEvent<{ checked: boolean }>) => onShowCommentsChange?.(!!event.detail.checked)}
         />

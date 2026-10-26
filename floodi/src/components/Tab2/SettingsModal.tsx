@@ -153,10 +153,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           />
 
           {/* Flood Settings */}
-          <FloodSettings
+          {config.display.viewMode === 'advanced' && <FloodSettings
             thresholds={config.thresholds}
             onThresholdsChange={onThresholdsChange}
-          />
+          />}
 
           <div style={{ padding: '24px 16px 40px' }}>
             <IonButton 

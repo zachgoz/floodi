@@ -12,6 +12,8 @@
 import { Redirect, Route, useLocation } from 'react-router-dom';
 import {
   IonApp,
+  IonContent,
+  IonPage,
   IonIcon,
   IonLabel,
   IonRouterOutlet,
@@ -21,18 +23,12 @@ import {
   setupIonicReact
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import { ellipse, informationCircleOutline } from 'ionicons/icons';
-import Intro from './pages/Intro';
-import React from 'react';
+import { waterOutline, informationCircleOutline, notificationsOutline } from 'ionicons/icons';
+import React, { Suspense, lazy } from 'react';
 import Tab2 from './pages/Tab2';
-import Tab3 from './pages/Tab3';
-import { Login, Register, ResetPassword, Profile } from 'src/pages/auth';
-import { PrivacyPolicy } from 'src/pages/PrivacyPolicy';
 import { PrivateRoute, AdminRoute } from 'src/components/routing';
-import { UserRoleManager } from 'src/components/admin';
-import { SimpleAdminBootstrap } from 'src/components/admin/SimpleAdminBootstrap';
+
 import { markPerf } from 'src/lib/perfLogger';
-import { INTRO_STORAGE_KEY } from 'src/components/onboarding/IntroTourOverlay';
 import { trackScreenView } from 'src/lib/analytics';
 
 /* Core CSS required for Ionic components to work properly */
@@ -67,43 +63,40 @@ import '@ionic/react/css/palettes/dark.class.css';  // Toggle via class on docum
 /* Custom theme variables and app-specific styling */
 import './theme/variables.css';
 
+const Intro = lazy(() => import('./pages/Intro'));
+const Tab3 = lazy(() => import('./pages/Tab3'));
+const Login = lazy(() => import('./pages/auth/Login'));
+const Register = lazy(() => import('./pages/auth/Register'));
+const ResetPassword = lazy(() => import('./pages/auth/ResetPassword'));
+const Profile = lazy(() => import('./pages/auth/Profile'));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
+const UserRoleManager = lazy(() => import('./components/admin/UserRoleManager').then(m => ({ default: m.UserRoleManager })));
+const Alerts = lazy(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })));
+const UnsubscribeAlerts = lazy(() => import('./pages/Alerts').then(m => ({ default: m.UnsubscribeAlerts })));
+const RouteLoading = () => <IonPage><IonContent><p role="status" className="ion-padding">Loading…</p></IonContent></IonPage>;
+const DeferredRoute = ({ children }: React.PropsWithChildren) => <Suspense fallback={<RouteLoading />}>{children}</Suspense>;
+
 // Initialize Ionic React with default configuration
 setupIonicReact();
 
 /**
  * InitialRoute Component
  *
- * Handles the initial routing logic for the application by checking if the user
- * has previously seen the intro screen. This provides a better user experience
- * by showing the intro only once per device/browser.
+ * Opens the public forecast immediately. The optional introduction remains
+ * available from Help.
  *
  * @component
- * @returns {JSX.Element} A redirect component that routes to either intro or main app
+ * @returns {JSX.Element} A redirect to the public forecast
  *
  * @example
- * // First time users are redirected to /intro
- * // Returning users are redirected to /tab2 (main FloodCast page)
+ * // All visitors are redirected to /tab2 (main FloodCast page)
  */
 const InitialRoute: React.FC = () => {
   React.useEffect(() => {
     markPerf('route.initial.mounted');
   }, []);
 
-  // Check localStorage to determine if user has seen intro before
-  const seen = (() => {
-    try {
-      return localStorage.getItem(INTRO_STORAGE_KEY) === '1';
-    } catch {
-      // If localStorage is unavailable (privacy mode, etc.), skip intro
-      // This ensures the app still works in restrictive environments
-      return true;
-    }
-  })();
-
-  // Route based on intro and auth state
-  if (!seen) return <Redirect to={'/intro'} />;
-  // The public dashboard can load while account/profile work continues.
-  // PrivateRoute and AdminRoute retain their own authorization guards.
+  // First-time visitors see current conditions immediately. Help retains the optional tour.
   markPerf('route.initial.redirectTab2');
   return <Redirect to={'/tab2'} />;
 };
@@ -151,17 +144,17 @@ const AppTabs: React.FC = () => {
       <IonRouterOutlet>
         {/* One-time intro screen route */}
         <Route exact path="/intro">
-          <Intro />
+          <DeferredRoute><Intro /></DeferredRoute>
         </Route>
         {/* Auth routes */}
         <Route exact path="/login">
-          <Login />
+          <DeferredRoute><Login /></DeferredRoute>
         </Route>
         <Route exact path="/register">
-          <Register />
+          <DeferredRoute><Register /></DeferredRoute>
         </Route>
         <Route exact path="/reset-password">
-          <ResetPassword />
+          <DeferredRoute><ResetPassword /></DeferredRoute>
         </Route>
         {/* Primary FloodCast functionality - tide and flood data visualization */}
         <Route exact path="/tab2">
@@ -169,24 +162,23 @@ const AppTabs: React.FC = () => {
         </Route>
         {/* App information and about page */}
         <Route path="/tab3">
-          <Tab3 />
+          <DeferredRoute><Tab3 /></DeferredRoute>
         </Route>
         {/* Privacy Policy page */}
         <Route exact path="/privacy">
-          <PrivacyPolicy />
+          <DeferredRoute><PrivacyPolicy /></DeferredRoute>
         </Route>
         {/* Profile route accessible to all; content adapts to auth state */}
         <PrivateRoute exact path="/profile" requireAuth={false}>
-          <Profile />
+          <DeferredRoute><Profile /></DeferredRoute>
         </PrivateRoute>
         {/* Admin user management route - admin only */}
         <AdminRoute exact path="/admin/users" redirectTo="/profile">
-          <UserRoleManager />
+          <DeferredRoute><UserRoleManager /></DeferredRoute>
         </AdminRoute>
-        {/* Admin bootstrap route - for first-time admin setup */}
-        <PrivateRoute exact path="/admin/bootstrap" requireAuth={true}>
-          <SimpleAdminBootstrap />
-        </PrivateRoute>
+        <Route exact path="/alerts/unsubscribe"><DeferredRoute><UnsubscribeAlerts /></DeferredRoute></Route>
+        <Route exact path="/alerts"><DeferredRoute><Alerts /></DeferredRoute></Route>
+        <Route exact path="/admin/bootstrap"><Redirect to="/profile" /></Route>
         {/* Root route with conditional intro/main app logic */}
         <Route exact path="/">
           <InitialRoute />
@@ -198,13 +190,17 @@ const AppTabs: React.FC = () => {
         <IonTabBar slot="bottom">
           {/* Primary FloodCast tab - main functionality */}
           <IonTabButton tab="tab2" href="/tab2">
-            <IonIcon aria-hidden="true" icon={ellipse} />
-            <IonLabel>FloodCast</IonLabel>
+            <IonIcon aria-hidden="true" icon={waterOutline} />
+            <IonLabel>Forecast</IonLabel>
           </IonTabButton>
-          {/* About tab - app information and help */}
+          <IonTabButton tab="alerts" href="/alerts">
+            <IonIcon aria-hidden="true" icon={notificationsOutline} />
+            <IonLabel>Alerts</IonLabel>
+          </IonTabButton>
+          {/* About and methodology remain available under Help. */}
           <IonTabButton tab="tab3" href="/tab3">
             <IonIcon aria-hidden="true" icon={informationCircleOutline} />
-            <IonLabel>About</IonLabel>
+            <IonLabel>Help</IonLabel>
           </IonTabButton>
         </IonTabBar>
       )}
@@ -227,12 +223,12 @@ if (typeof window !== 'undefined') {
   const THEME_KEY = 'floodi.theme';
   const mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
   const syncFromStorage = () => {
-    const stored = localStorage.getItem(THEME_KEY) as 'auto' | 'light' | 'dark' | null;
-    applyTheme(stored ?? 'auto');
+    try { applyTheme((localStorage.getItem(THEME_KEY) as 'auto' | 'light' | 'dark' | null) ?? 'auto'); }
+    catch { applyTheme('auto'); }
   };
   const handleMql = () => {
-    const mode = (localStorage.getItem(THEME_KEY) as 'auto' | 'light' | 'dark' | null) || 'auto';
-    if (mode === 'auto') applyTheme('auto');
+    try { if ((localStorage.getItem(THEME_KEY) || 'auto') === 'auto') applyTheme('auto'); }
+    catch { applyTheme('auto'); }
   };
   // Initial
   syncFromStorage();

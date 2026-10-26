@@ -3,14 +3,18 @@
   "description": "Firebase Cloud Functions for FloodCast",
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test test/*.test.cjs",
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
     "test:rules": "firebase emulators:exec --only firestore --project demo-floodcast-rules --config ../firebase.rules-test.json \"node --test test/firestore.rules.test.cjs\"",
+    "test:integration": "npm run build && firebase emulators:exec --only firestore --project demo-floodcast-rules --config ../firebase.rules-test.json \"node --test --test-concurrency=1 test/firestore.rules.test.cjs test/publication.firestore.test.cjs test/citizenAlerts.firestore.test.cjs\"",
     "evaluate:residual": "npm run build && node lib/scripts/evaluate_residual.js",
     "collect:regional": "npm run build && node lib/scripts/collect_regional_history.js",
     "migrate:observations": "npm run build && node lib/scripts/migrate_observation_buckets.js",
     "evaluate:weather-response": "npm run build && node lib/scripts/evaluate_weather_response.js",
-    "evaluate:patterns": "npm run build && node lib/scripts/evaluate_patterns.js"
+    "evaluate:patterns": "npm run build && node lib/scripts/evaluate_patterns.js",
+    "verify:forecasts": "npm run build && node lib/scripts/verify_forecasts.js",
+    "evaluate:issued-curves": "npm run build && node lib/scripts/evaluate_issued_curve.js"
   },
   "engines": {
     "node": "22"

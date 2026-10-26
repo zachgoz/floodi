@@ -2,14 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>FloodCast</title>
+    <title>FloodCast · Carolina Beach Flood Forecast</title>
+    <meta name="description" content="Local water levels, tide forecasts and flood outlooks for Carolina Beach, North Carolina. Set up early access to FloodCast email advisories." />
+    <meta property="og:title" content="FloodCast · Carolina Beach Flood Forecast" />
+    <meta property="og:description" content="Follow local water levels and upcoming flood conditions in Carolina Beach." />
+    <meta property="og:type" content="website" />
     
     <base href="/" />
     
     <meta name="color-scheme" content="light dark" />
     <meta
       name="viewport"
-      content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="viewport-fit=cover, width=device-width, initial-scale=1.0"
     />
     <meta name="format-detection" content="telephone=no" />
     <meta name="msapplication-tap-highlight" content="no" />
@@ -27,9 +31,18 @@
     <meta name="apple-mobile-web-app-title" content="FloodCast" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
 
-    <!-- Google AdSense Verification -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7767091393137672"
-         crossorigin="anonymous"></script>
+    <script>
+      // Remove the email-unsubscribe capability before any analytics can see it.
+      (() => {
+      if (window.location.pathname === '/alerts/unsubscribe') {
+        const alertToken = new URLSearchParams(window.location.hash.slice(1)).get('token') || new URLSearchParams(window.location.search).get('token');
+        if (alertToken) {
+          window.__floodcastUnsubscribeToken = alertToken;
+          window.history.replaceState(window.history.state, '', window.location.pathname);
+        }
+      }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

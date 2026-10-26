@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   IonItem,
   IonLabel,
@@ -12,6 +12,7 @@ import {
 } from '@ionic/react';
 import { warningOutline } from 'ionicons/icons';
 import type { AppConfiguration } from './types';
+import { validThresholds } from './thresholdSettings';
 
 /**
  * Props for the FloodSettings component
@@ -36,6 +37,7 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
   thresholds,
   onThresholdsChange,
 }) => {
+  const [error, setError] = useState<string | null>(null);
   /**
    * Handle threshold input changes with validation
    */
@@ -45,8 +47,11 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
     const value = `${event.detail.value || ''}`;
     const numericValue = parseFloat(value);
     
-    if (!isNaN(numericValue) && numericValue > 0) {
+    if (validThresholds({ ...thresholds, [key]: numericValue })) {
+      setError(null);
       onThresholdsChange({ [key]: numericValue });
+    } else {
+      setError('Use positive levels in order: minor < moderate < major < extreme.');
     }
   };
 
@@ -54,7 +59,7 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
     <IonList className="flood-settings">
       <IonListHeader>
         <IonIcon icon={warningOutline} slot="start" />
-        <IonLabel>Flood Settings</IonLabel>
+        <IonLabel>Personal Flood Thresholds</IonLabel>
       </IonListHeader>
 
       <IonAccordionGroup className="threshold-accordion">
@@ -68,16 +73,17 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
           <div slot="content" className="threshold-panel">
             <IonItem lines="none">
               <IonNote color="medium">
-                Levels are in feet MLLW and drive chart flood highlighting.
+                Feet MLLW for this device's charts and event list. Alert thresholds are managed separately.
               </IonNote>
             </IonItem>
 
             <IonItem>
-              <IonLabel position="stacked">Minor Flood</IonLabel>
               <IonInput
+                label="Minor Flood"
+                labelPlacement="stacked"
                 type="number"
                 value={thresholds.minor.toString()}
-                onIonInput={handleThresholdChange('minor')}
+                onIonChange={handleThresholdChange('minor')}
                 placeholder="Feet"
                 min="0"
                 step="0.1"
@@ -85,11 +91,12 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
               />
             </IonItem>
             <IonItem>
-              <IonLabel position="stacked">Moderate Flood</IonLabel>
               <IonInput
+                label="Moderate Flood"
+                labelPlacement="stacked"
                 type="number"
                 value={thresholds.moderate.toString()}
-                onIonInput={handleThresholdChange('moderate')}
+                onIonChange={handleThresholdChange('moderate')}
                 placeholder="Feet"
                 min="0"
                 step="0.1"
@@ -97,11 +104,12 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
               />
             </IonItem>
             <IonItem>
-              <IonLabel position="stacked">Major Flood</IonLabel>
               <IonInput
+                label="Major Flood"
+                labelPlacement="stacked"
                 type="number"
                 value={thresholds.major.toString()}
-                onIonInput={handleThresholdChange('major')}
+                onIonChange={handleThresholdChange('major')}
                 placeholder="Feet"
                 min="0"
                 step="0.1"
@@ -109,17 +117,19 @@ export const FloodSettings: React.FC<FloodSettingsProps> = ({
               />
             </IonItem>
             <IonItem>
-              <IonLabel position="stacked">Extreme Flood</IonLabel>
               <IonInput
+                label="Extreme Flood"
+                labelPlacement="stacked"
                 type="number"
                 value={thresholds.extreme.toString()}
-                onIonInput={handleThresholdChange('extreme')}
+                onIonChange={handleThresholdChange('extreme')}
                 placeholder="Feet"
                 min="0"
                 step="0.1"
                 className="threshold-input"
               />
             </IonItem>
+            {error && <p role="alert" className="ion-padding-horizontal">{error}</p>}
           </div>
         </IonAccordion>
       </IonAccordionGroup>

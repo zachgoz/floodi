@@ -58,6 +58,11 @@ const baselineBridgeCache = () => {
 };
 
 describe('daily gauge model cache', () => {
+  it('rejects old linear-curve validation rather than reusing its peak gates', () => {
+    const previous = cache();
+    previous.version = 'gauge-weather-response-v6';
+    expect(restoreGaugeModel(previous, now)).toBeNull();
+  });
   it('round-trips ridge vectors, validation and original UTC dates', () => {
     const restored = restoreGaugeModel(cache(), now);
     expect(restored).toEqual(model());

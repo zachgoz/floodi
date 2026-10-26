@@ -94,3 +94,20 @@
 .surge-factors dd { margin:0; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .surge-factors p { color:var(--dash-subtitle-color, #667989); max-width:620px; }
 @media (max-width:600px) { .surge-readout > span { max-width:185px; font-size:.6875rem; } }
+
+@media (max-width:600px) {
+  .forecast-time-actions { justify-content:space-between; gap:0; }
+  .forecast-time-actions > button { padding:6px; min-width:40px; }
+  .forecast-time-actions .forecast-return-live { margin-left:0; padding:6px 8px; }
+}
+.surge-svg:focus-visible { outline:2px solid var(--ion-color-primary); outline-offset:3px; }
+
+.dashboard-outlook-card.forecast-panel { padding:16px; margin-bottom:16px; border-radius:16px; }
+.dashboard-outlook-card .forecast-panel-heading { gap:8px; }
+.dashboard-outlook-card .outlook-risk-label { margin:4px 0 0; color:var(--dash-title-color, var(--ion-text-color)); font-size:var(--dash-type-body, .875rem); font-weight:600; }
+.dashboard-outlook-card .outlook-period { margin:8px 0 4px; font-size:var(--dash-type-body, .875rem); line-height:1.4; }
+.dashboard-outlook-card .forecast-caption { margin:4px 0; font-size:var(--dash-type-label, .75rem); }
+.dashboard-outlook-card details { margin-top:4px; }
+.dashboard-outlook-card summary { display:flex; align-items:center; min-height:44px; padding:8px 0; }
+.dashboard-outlook-card .confidence-badge { white-space:normal; text-align:center; }
+.dashboard-outlook-card summary:focus-visible { outline:2px solid var(--ion-color-primary); outline-offset:2px; border-radius:4px; }

@@ -8,7 +8,9 @@ import { floodWindows, interpolate, surgeTrend, WaterPoint } from './water';
 
 const HOUR = 3600_000;
 const ordered = <T extends { t: Date }>(points: T[]) => [...new Map(points.filter(p => Number.isFinite(+p.t)).map(p => [+p.t, p])).values()].sort((a, b) => +a.t - +b.t);
-export const GAUGE_FORECAST_MODEL_VERSION = 'gauge-weather-response-v6';
+// The peak screens must be regenerated for the supported tide-aware curve;
+// older caches validate sparse linear interpolation instead.
+export const GAUGE_FORECAST_MODEL_VERSION = 'gauge-weather-response-v7';
 export interface GaugeForecastOptions { model?: WeatherResponseModel | null; includeDrivers?: boolean }
 type SerializedWeatherResponseModel = Omit<WeatherResponseModel, 'trainedUntil' | 'holdoutStarts' | 'testStart' | 'testEnd'> & { trainedUntil: string; holdoutStarts: string; testStart: string; testEnd: string };
 export interface GaugeModelCache {

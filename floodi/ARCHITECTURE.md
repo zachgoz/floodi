@@ -121,3 +121,12 @@ Daily jobs fit/cache private versioned models. Ten-minute numerical jobs use rea
 
 
 The October 16 dashboard startup and selected-time forecast explanation changes are documented in [startup and factors](docs/STARTUP-AND-FORECAST-FACTORS-2026-10-16.md), with [public factor metadata](docs/FORECAST-FACTORS.md) and [sampled browser timings](docs/FRONTEND-ERROR-COLLECTION.md). Public forecast values are unchanged by attribution.
+
+
+## Citizen alert pilot and launch UX
+
+`/alerts` is the resident enrollment/preferences route, promoted after Next Flooding Events and in navigation. Public forecast startup does not wait for account setup. Secondary account/help routes load on demand. Both plots retain one synchronized viewport and keyboard/touch controls; the selected forecast still drives every hazard calculation.
+
+`functions/src/citizenAlerts` keeps verified consent, private history, fan-out and a leased delivery queue separate from the existing shadow alert evaluator and immutable forecast publications. Resend is server-only and default-disabled. Stable message identifiers, enrollment generations, freshness/supersession checks, expiry and retries protect delivery. Gemini cannot enqueue alerts or supply numerical trigger values. Provider acceptance is not evidence of inbox delivery.
+
+The new release also negotiates public forecast gzip, trusts daily observation coverage only after explicit server certification, defers enabled ads until needed, and collects sampled bounded LCP/CLS/INP values. See [release validation](docs/qa/LAUNCH-IMPLEMENTATION-2026-10-19.md), [provider setup](docs/CITIZEN-ALERTS-SETUP.md), and [daily coverage contract](docs/DAILY-OBSERVATION-STORAGE.md).

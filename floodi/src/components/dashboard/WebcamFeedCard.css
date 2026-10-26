@@ -35,8 +35,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: var(--dash-type-title, 1.125rem);
+  font-weight: 600;
+  min-width: 0;
   color: var(--ion-color-dark);
 }
 
@@ -48,8 +49,10 @@
 .camera-selector {
   --padding-start: 0;
   --padding-end: 0;
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: inherit;
+  font-weight: inherit;
+  min-width: 0;
+  max-width: 100%;
   min-height: auto;
   color: var(--ion-color-dark);
 }
@@ -74,6 +77,18 @@
   background: rgba(var(--ion-color-primary-rgb), 0.1);
   color: var(--ion-color-primary);
 }
+
+.webcam-status-pill.stale {
+  background: rgba(var(--ion-color-warning-rgb), .16);
+  color: var(--ion-text-color);
+}
+
+.webcam-header-main { gap: 8px; }
+.webcam-title-group { min-width: 0; flex: 1; }
+.webcam-header-actions { display: flex; align-items: center; gap: 4px; }
+.webcam-status-pill { white-space: normal; text-align: center; }
+.webcam-timestamp-badge { max-width: calc(100% - 20px); }
+.timestamp-text { flex-wrap: wrap; }
 
 .pulse-dot {
   width: 6px;

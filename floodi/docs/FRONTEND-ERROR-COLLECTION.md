@@ -106,6 +106,10 @@ for every user. No REST proxy or transport override was added.
 
 ## Sampled dashboard startup timings
 
+The same sampled production cohort now lazily loads the standard GoogleChrome `web-vitals` library after window load. A separate one-shot `web_vitals` aggregate is sent when the first foreground period ends. It records only measured `lcpMs`, `inpMs` and `cls`; unsupported metrics and INP without a measured interaction remain absent. CLS is a unitless score, not milliseconds. These first-foreground aggregates are diagnostic field samples, not full-visit percentiles or forecasts of future performance. Continued activity after returning from the background is outside this explicitly labeled scope.
+
+Reports omit the library's entries, attribution, element targets, navigation URLs/IDs and all account/content identifiers. They retain the existing 25% startup cohort, have an independent maximum of three vitals reports per tab/UTC day, never retry, and share the backend performance sublimit of 10/minute and global cap. INFO records use `jsonPayload.event="frontend_web_vitals"`; startup reports still use `frontend_performance`. No raw browser metric object is sent. The official measurement implementation is documented at [GoogleChrome/web-vitals](https://github.com/GoogleChrome/web-vitals).
+
 Production builds sample 25% of page loads, capped at three timing reports per
 tab per UTC day. A separate `page_load` schema carries only the general dashboard
 route, deterministic build ID, `ready`/`partial`, script cache classification,

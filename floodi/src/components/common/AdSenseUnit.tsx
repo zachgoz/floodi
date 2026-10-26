@@ -1,10 +1,39 @@
 import { Capacitor } from '@capacitor/core';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 declare global {
   interface Window {
     adsbygoogle?: unknown[];
   }
+}
+
+let adScript: { element: HTMLScriptElement; promise: Promise<void> } | undefined;
+const initializedUnits = new WeakSet<HTMLElement>();
+
+/** One shared request across units and StrictMode effect replays. Failed loads
+ * are removed so a bounded retry can issue a real fresh request. */
+function loadAdSense(client: string): Promise<void> {
+  if (adScript?.element.isConnected) return adScript.promise;
+  const existing = document.querySelector<HTMLScriptElement>('script[data-floodcast-adsense]');
+  const script = existing ?? document.createElement('script');
+  if (script.dataset.floodcastLoaded === 'true') return Promise.resolve();
+  if (!existing) {
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    script.dataset.floodcastAdsense = 'true';
+    script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}`;
+  }
+  const promise = new Promise<void>((resolve, reject) => {
+    const cleanup = () => { clearTimeout(timeout); script.removeEventListener('load', loaded); script.removeEventListener('error', failed); };
+    const loaded = () => { cleanup(); script.dataset.floodcastLoaded = 'true'; resolve(); };
+    const failed = () => { cleanup(); script.remove(); reject(new Error('AdSense script unavailable')); };
+    const timeout = setTimeout(failed, 15_000);
+    script.addEventListener('load', loaded, { once: true });
+    script.addEventListener('error', failed, { once: true });
+    if (!existing) document.head.appendChild(script);
+  });
+  adScript = { element: script, promise };
+  return promise;
 }
 
 export interface AdSenseUnitProps {
@@ -45,21 +74,70 @@ export const AdSenseUnit: React.FC<AdSenseUnitProps> = ({
 }) => {
   const isNative = Capacitor.isNativePlatform();
   const isDev = import.meta.env.DEV;
+  const validSlot = /^\d+$/.test(slot);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const unitRef = useRef<HTMLModElement>(null);
+  const identity = `${client}:${slot}`;
+  const [nearIdentity, setNearIdentity] = useState<string | null>(null);
+  const ready = nearIdentity === identity;
 
   useEffect(() => {
-    // Only initialize AdSense script queue if ads are enabled on web and not in dev placeholder mode
-    if (isNative || !enabled || isDev) return;
-
-    // Initialize the AdSense unit once the component is mounted
-    try {
-      (window.adsbygoogle = window.adsbygoogle || []).push({});
-    } catch (error) {
-      console.warn('AdSense ad unit initialization deferred or failed:', error);
+    if (isNative || !enabled || isDev || !validSlot) { setNearIdentity(null); return; }
+    if (ready) return;
+    const container = containerRef.current;
+    if (!container) return;
+    let observer: IntersectionObserver | undefined;
+    const checkPosition = () => {
+      const rect = container.getBoundingClientRect();
+      if (rect.bottom >= -160 && rect.top <= window.innerHeight + 160) setNearIdentity(identity);
+    };
+    if (typeof IntersectionObserver === 'function') {
+      observer = new IntersectionObserver(entries => {
+        for (const entry of entries) {
+          if (entry.target !== container) continue;
+          if (entry.isIntersecting) setNearIdentity(identity);
+        }
+      }, { rootMargin: '160px 0px' });
+      observer.observe(container);
+    } else {
+      // Older browsers still defer below-fold units until the user reaches them.
+      checkPosition();
+      window.addEventListener('scroll', checkPosition, { passive: true });
+      window.addEventListener('resize', checkPosition);
     }
-  }, [isNative, enabled, isDev, slot]);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('scroll', checkPosition);
+      window.removeEventListener('resize', checkPosition);
+    };
+  }, [isNative, enabled, isDev, validSlot, identity, ready]);
+
+  useEffect(() => {
+    if (isNative || !enabled || isDev || !validSlot || !ready) return;
+    const unit = unitRef.current;
+    if (!unit) return;
+    let active = true;
+    let attempts = 0;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const initialize = () => {
+      if (!active || initializedUnits.has(unit) || attempts >= 2) return;
+      attempts++;
+      void loadAdSense(client).then(() => {
+        if (!active || !unit.isConnected || initializedUnits.has(unit)) return;
+        // Google also marks filled units; preserve them across effect replays.
+        if (unit.hasAttribute('data-adsbygoogle-status')) { initializedUnits.add(unit); return; }
+        (window.adsbygoogle = window.adsbygoogle || []).push({});
+        initializedUnits.add(unit);
+      }).catch(() => {
+        if (active && attempts < 2) retry = setTimeout(initialize, 5_000);
+      });
+    };
+    initialize();
+    return () => { active = false; clearTimeout(retry); };
+  }, [isNative, enabled, isDev, validSlot, client, identity, ready]);
 
   // Completely hidden on native platforms or when ads are disabled (default)
-  if (isNative || !enabled) {
+  if (isNative || !enabled || !isDev && !validSlot) {
     return null;
   }
 
@@ -113,7 +191,8 @@ export const AdSenseUnit: React.FC<AdSenseUnitProps> = ({
   }
 
   return (
-    <div 
+    <div
+      ref={containerRef}
       className="adsense-wrapper" 
       style={{ 
         margin: '24px auto', 
@@ -122,17 +201,20 @@ export const AdSenseUnit: React.FC<AdSenseUnitProps> = ({
         display: 'flex', 
         justifyContent: 'center',
         padding: '0 16px',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        minHeight: '100px'
       }}
     >
-      <ins
+      {ready && <ins
+        key={`${client}:${slot}`}
+        ref={unitRef}
         className="adsbygoogle"
-        style={style}
+        style={{ width: '100%', ...style }}
         data-ad-client={client}
         data-ad-slot={slot}
         data-ad-format={format}
         data-full-width-responsive={responsive ? 'true' : 'false'}
-      />
+      />}
     </div>
   );
 };

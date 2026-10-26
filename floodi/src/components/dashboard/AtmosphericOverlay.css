@@ -648,9 +648,9 @@
 }
 
 .is-live .viewing-time-pill {
-  background: rgba(var(--ion-color-success-rgb), 0.1);
-  color: var(--ion-color-success);
-  border-color: rgba(var(--ion-color-success-rgb), 0.2);
+  background: rgba(var(--ion-color-primary-rgb), 0.08);
+  color: var(--ion-color-primary);
+  border-color: rgba(var(--ion-color-primary-rgb), 0.2);
 }
 
 .modal-summary-section {

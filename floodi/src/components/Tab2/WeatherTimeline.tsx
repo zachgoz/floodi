@@ -81,12 +81,12 @@ export function WeatherTimeline({ windPoints, precipPoints, start, end, now, x, 
         <rect x={left} y={y} width={cellWidth} height={WEATHER_TIMELINE_HEIGHT} fill={selectedKey === +interval.start ? 'var(--chart-grid)' : 'transparent'} />
         <line x1={right} x2={right} y1={y + 3} y2={y + 65} stroke="var(--chart-grid)" />
         {interval.rain !== null && interval.rain > 0 && <rect x={left + 5} y={y + 65 - Math.max(2, interval.rain / maximumRain * 8)} width={Math.max(0, cellWidth - 10)} height={Math.max(2, interval.rain / maximumRain * 8)} fill="var(--ion-color-primary, #0077b6)" opacity={0.45} rx={2} />}
-        {cellWidth >= 56 && <>
+        {cellWidth >= 56 && <g aria-hidden="true">
           <text x={midpoint} y={y + 15} textAnchor="middle" fontSize={12} fill="var(--chart-label-text)" fontWeight={600}>{windText}</text>
           <text x={midpoint + (interval.windDirection === null ? 0 : 5)} y={y + 29} textAnchor="middle" fontSize={11} fill="var(--chart-axis-text)">{directionText}</text>
           {interval.windDirection !== null && <path d="M 0 5 L 0 -5 M -3 -2 L 0 -5 L 3 -2" transform={`translate(${midpoint - 14},${y + 25}) rotate(${interval.windDirection + 180})`} stroke="var(--chart-label-text)" strokeWidth={1.5} fill="none" />}
           <text x={midpoint} y={y + 51} textAnchor="middle" fontSize={12} fill="var(--ion-color-primary, #0077b6)" fontWeight={600}>{rainLabel(interval.rain, completeRain)}</text>
-        </>}
+        </g>}
       </g>;
     })}
     {now >= start && now <= end && <line x1={xOf(now)} x2={xOf(now)} y1={y} y2={y + WEATHER_TIMELINE_HEIGHT} stroke="var(--ion-color-primary, #0077b6)" strokeWidth={1.5} opacity={0.65} style={{ pointerEvents: 'none' }} />}

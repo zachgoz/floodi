@@ -15,7 +15,7 @@ afterEach(cleanup);
 describe('weather on the shared chart viewport', () => {
   it('links weather rows to external surge/tide zoom requests', () => {
     const { rerender } = render(<ChartViewer {...props} />);
-    const water = screen.getByRole('img');
+    const water = screen.getByRole('img', { name: 'Water level chart showing observed, predicted, and adjusted predictions over time' });
     expect(screen.getByTestId('weather-timeline')).toHaveAttribute('data-domain-start', water.getAttribute('data-domain-start'));
     expect(screen.getByTestId('weather-timeline')).toHaveAttribute('data-domain-end', water.getAttribute('data-domain-end'));
     rerender(<ChartViewer {...props} viewportRequest={{ id: 1, start: hour(1), end: hour(7) }} />);

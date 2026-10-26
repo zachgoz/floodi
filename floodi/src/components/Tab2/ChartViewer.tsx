@@ -871,6 +871,14 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
   const handleContainerKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      const shift = (+activeEnd - +activeStart) / 4 * (e.key === 'ArrowLeft' ? -1 : 1);
+      const next = { start: new Date(+activeStart + shift), end: new Date(+activeEnd + shift) };
+      setViewDomain(next);
+      onViewportDomainCommit?.(next.start, next.end);
+      return;
+    }
     const k = e.key.toLowerCase();
     if (k === 'c') onToggleComments?.();
     if (k === 'n' && onTimePointSelect) {
@@ -881,7 +889,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
   return (
     <div className="chart-viewer-layout">
-    <div className="chart-viewer chart-plot" ref={containerRef} onKeyDown={handleContainerKeyDown} tabIndex={0} aria-keyshortcuts={onTimePointSelect ? 'C N' : 'C'} style={{ width: '100%', overflow: 'hidden', position: 'relative' }}>
+    <div className="chart-viewer chart-plot" ref={containerRef} onKeyDown={handleContainerKeyDown} tabIndex={0} aria-keyshortcuts={onTimePointSelect ? 'ArrowLeft ArrowRight C N' : 'ArrowLeft ArrowRight C'} style={{ width: '100%', overflow: 'hidden', position: 'relative' }}>
 
       <svg
         ref={svgRef}
@@ -1009,7 +1017,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         </clipPath></defs>
 
         {observedPoints.filter(p => !p.estimated).length > 1 && (
-          <polyline
+          <polyline role="img"
             key="obs-line"
             aria-label="Observed water level"
             fill="none"
@@ -1020,7 +1028,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             points={observedPoints.filter(p => !p.estimated).map(p => `${xOf(p.t)},${yOf(p.v)}`).join(' ')}
           />
         )}
-        {observedPoints.some(p => p.estimated) && <polyline
+        {observedPoints.some(p => p.estimated) && <polyline role="img"
           aria-label="Estimated localized water level"
           fill="none" stroke={thresholds ? 'url(#obs-flood-gradient)' : 'var(--line-observed, #2ecc71)'}
           strokeWidth="3" strokeDasharray="3 3" strokeLinecap="round" strokeLinejoin="round"
@@ -1029,7 +1037,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
         {/* Astronomical tide remains visible in every view. */}
         {predictedPoints.length > 1 && (
-          <polyline
+          <polyline role="img"
             fill="none"
             aria-label="Astronomical tide prediction"
             stroke="#95a5a6"
@@ -1045,7 +1053,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
         {/* Adjusted predictions (using threshold gradient, dashed) */}
         {adjustedPoints.length > 1 && (
-          <polyline
+          <polyline role="img"
             key="adj-line"
             aria-label="Forecast total water level"
             clipPath={`url(#${forecastClipId})`}
@@ -1059,8 +1067,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           />
         )}
 
-        {experimentalPoints.length > 1 && <polyline aria-label="Comparison total water level" fill="none" stroke="#8462bf" strokeWidth={3} strokeDasharray="7 5" points={buildPolyline(experimentalPoints, xOf, yOf)} />}
-        {[experimentalLower, experimentalUpper].map((series,i) => series.length > 1 && <polyline key={`bound-${i}`} aria-label={i === 0 ? 'Forecast lower error bound' : 'Forecast upper error bound'} fill="none" stroke={experimentalPoints.length ? '#8462bf' : '#637b86'} opacity={0.6} strokeWidth={1} strokeDasharray="3 5" points={buildPolyline(series, xOf, yOf)} />)}
+        {experimentalPoints.length > 1 && <polyline role="img" aria-label="Comparison total water level" fill="none" stroke="#8462bf" strokeWidth={3} strokeDasharray="7 5" points={buildPolyline(experimentalPoints, xOf, yOf)} />}
+        {[experimentalLower, experimentalUpper].map((series,i) => series.length > 1 && <polyline role="img" key={`bound-${i}`} aria-label={i === 0 ? 'Forecast lower error bound' : 'Forecast upper error bound'} fill="none" stroke={experimentalPoints.length ? '#8462bf' : '#637b86'} opacity={0.6} strokeWidth={1} strokeDasharray="3 5" points={buildPolyline(series, xOf, yOf)} />)}
         {/* Surge offset trend */}
         {showDelta && deltaPoints.length > 1 && (
           <g>
@@ -1073,14 +1081,14 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
               strokeDasharray="4 4"
               opacity={0.5}
             />
-            <polyline
+            <polyline role="img"
               fill="none"
               stroke="#1976d2"
               strokeWidth="2"
               points={buildPolyline(deltaPoints, xOf, yOf)}
             />
             {surgeForecastPoints.length > 1 && (
-              <polyline
+              <polyline role="img"
                 fill="none"
                 stroke="#1976d2"
                 strokeWidth="2"

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { AppConfiguration, TimeRange, OffsetConfig } from '../types';
 import { LOCATIONS } from 'src/constants/locations';
+import { validThresholds } from '../thresholdSettings';
 
 /**
  * Local storage keys for configuration persistence
@@ -108,7 +109,8 @@ export function useSettingsStorage() {
       if (storedThresholds) {
         const parsed = JSON.parse(storedThresholds);
         if (parsed && typeof parsed.minor === 'number') {
-          thresholds = { ...DEFAULT_CONFIG.thresholds, ...parsed };
+          const candidate = { ...DEFAULT_CONFIG.thresholds, ...parsed };
+          thresholds = validThresholds(candidate) ? candidate : DEFAULT_CONFIG.thresholds;
           // Migration: if the stored value is an old default for Carolina Beach, update it
           if (locationId === 'carolina-beach') {
             const staleValues = [3.5, 4.0, 6.1]; // Known historical or incorrect values
@@ -219,7 +221,10 @@ export function useSettingsStorage() {
   }, []);
 
   const updateThresholds = useCallback((thresholds: Partial<AppConfiguration['thresholds']>) => {
-    setConfig(prev => ({ ...prev, thresholds: { ...prev.thresholds, ...thresholds } }));
+    setConfig(prev => {
+      const candidate = { ...prev.thresholds, ...thresholds };
+      return validThresholds(candidate) ? { ...prev, thresholds: candidate } : prev;
+    });
   }, []);
 
   const updateOffset = useCallback((offset: Partial<OffsetConfig>) => {

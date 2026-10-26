@@ -69,3 +69,7 @@ export { syncImagery } from "./syncImagery";
 export { refreshResidualHistory, generateFloodOutlook, floodOutlook } from './forecast/jobs';
 export { checkDataHealth } from './health';
 export { collectClientErrors } from './clientErrors';
+export { evaluateShadowFloodAlerts, reconcileShadowFloodAlerts } from './alerts/jobs';
+export { verifyPublishedForecasts } from './verification/jobs';
+
+export { citizenAlerts, queueCitizenFloodAlerts, queueCitizenAlertEnrollment, deliverCitizenFloodAlerts } from "./citizenAlerts/jobs";

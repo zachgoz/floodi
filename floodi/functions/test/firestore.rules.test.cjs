@@ -6,7 +6,7 @@ const {
   assertFails,
   assertSucceeds,
 } = require('@firebase/rules-unit-testing');
-const { doc, getDoc, setDoc, updateDoc, deleteDoc, Timestamp } = require('firebase/firestore');
+const { doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, Timestamp } = require('firebase/firestore');
 
 describe('Firestore account roles and forecast boundaries', {
   skip: process.env.FIRESTORE_EMULATOR_HOST ? false : 'Run npm run test:rules with the isolated Firestore emulator',
@@ -135,6 +135,40 @@ describe('Firestore account roles and forecast boundaries', {
       for (const location of ['forecast_models/carolina-beach', 'forecast_input_archive/carolina-beach/issues/issue']) {
         await assertFails(getDoc(doc(client(uid), location)));
         await assertFails(setDoc(doc(client(uid), location), { forged: true }));
+      }
+    }
+  });
+
+  it('denies all client access to publication, verification and shadow-alert records', async () => {
+    await seed('trusted', 'admin');
+    const paths = [
+      'forecast_publications/carolina-beach/issues/issue',
+      'forecast_explanations/carolina-beach/issues/issue',
+      'forecast_verification/carolina-beach/versions/prospective-v1/references/cb-reference-v1-test/days/2026-10-13',
+      'shadow_alert_states/carolina-beach-gauge',
+      'shadow_alert_states/carolina-beach-gauge/episodes/episode',
+      'shadow_alert_states/carolina-beach-gauge/revisions/revision',
+      'shadow_alert_states/carolina-beach-gauge/decisions/decision',
+      'shadow_alert_outbox/intent',
+      'citizen_alert_subscriptions/resident',
+      'citizen_alert_subscriptions/resident/history/delivery',
+      'citizen_alert_outbox/delivery',
+      'citizen_alert_unsubscribe/capability-hash',
+      'citizen_alert_fanout/intent',
+      '_citizenAlertLimits/resident',
+    ];
+    await environment.withSecurityRulesDisabled(async context => {
+      for (const path of paths) await setDoc(doc(context.firestore(), path), { version: 1 });
+    });
+    const clients = [environment.unauthenticatedContext().firestore(), client('resident'), client('trusted')];
+    for (const db of clients) {
+      for (const path of paths) {
+        const reference = doc(db, path);
+        await assertFails(getDoc(reference));
+        await assertFails(getDocs(collection(db, path.split('/').slice(0, -1).join('/'))));
+        await assertFails(setDoc(reference, { version: 2 }));
+        await assertFails(updateDoc(reference, { version: 2 }));
+        await assertFails(deleteDoc(reference));
       }
     }
   });

@@ -35,6 +35,9 @@
   position: relative;
 }
 
+.next-flood-loading-status { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.next-flood-loading-footer { min-height:44px; }
+
 .next-flood-card .forecast-caption {
   margin: 0 4px 4px;
   font-size: var(--dash-type-label, .75rem);
@@ -289,6 +292,24 @@
   color: var(--ion-color-primary);
   font-size: var(--dash-type-label, .75rem);
   margin-left: 2px;
+}
+
+.event-level-metrics .event-estimate-label {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--dash-type-label, .75rem);
+  font-weight: 500;
+  color: var(--dash-subtitle-color, var(--ion-text-color));
+}
+
+.event-outlook-label {
+  display: inline-block;
+  margin: 0 0 5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--dash-title-color, var(--ion-text-color));
+  background: rgba(var(--ion-color-primary-rgb), .1);
+  font-size: var(--dash-type-label, .75rem);
 }
 
 @media (max-width: 360px) {

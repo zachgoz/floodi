@@ -238,7 +238,12 @@ export function SurgeChart({ points, estimatedPoints = [], forecast = [], experi
           {patternAnalysis && <p>Repeating-pattern check: {patternAnalysis.reason} {patternAnalysis.validation?.improvementFraction !== null && patternAnalysis.validation?.improvementFraction !== undefined ? `Recent holdout error ${patternAnalysis.validation.improvementFraction >= 0 ? 'decreased' : 'increased'} ${Math.abs(patternAnalysis.validation.improvementFraction * 100).toFixed(0)}%.` : ''}</p>}
         </ChartInfo>
       </div>
-      <svg ref={svgRef} viewBox={`0 0 ${width} 270`} role="img"
+      <svg ref={svgRef} tabIndex={0} aria-keyshortcuts="ArrowLeft ArrowRight" onKeyDown={event => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const shift = (+domain.end - +domain.start) / 4 * (event.key === 'ArrowLeft' ? -1 : 1);
+        change({ start: new Date(+domain.start + shift), end: new Date(+domain.end + shift) });
+      }} viewBox={`0 0 ${width} 270`} role="img"
         data-domain-start={domain.start.toISOString()} data-domain-end={domain.end.toISOString()}
         aria-label={`Anomaly chart. ${readout ? `${readout.source}: ${readout.value.toFixed(2)} feet at ${time(readout.at)}` : 'No value at selected time'}. Positive anomalies above zero; negative anomalies below zero.`}
         className="surge-svg" style={{ touchAction: 'pan-y' }}

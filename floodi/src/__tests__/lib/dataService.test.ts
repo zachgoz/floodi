@@ -260,6 +260,58 @@ describe('fetchUnifiedObservations source freshness and recovery', () => {
     expect((await fetchObservations('carolina-beach', start, end)).fiman[at(-12)]).toBe(4.6);
   });
 
+  it('uses verified daily coverage without downloading the legacy month and preserves genuine gaps', async () => {
+    const bucket = { fiman: { [at(-12)]: 4.6 }, weather: { [at(-12)]: { precip: 0 } }, legacyCoverage: { version: 1, sourceMonth: '2026-10', archiveFrozen: true, sourceUpdateTime: at(-60), verifiedAt: at(-30) } };
+    vi.mocked(getDoc).mockImplementation(async reference => {
+      if (String(reference).endsWith('/2026-10')) throw new Error('Large legacy archive should not be requested');
+      return { exists: () => true, data: () => bucket } as Awaited<ReturnType<typeof getDoc>>;
+    });
+    const result = await fetchObservations('carolina-beach', new Date(at(-60)), now);
+    expect(result.fiman).toEqual(bucket.fiman);
+    expect(result.weather).toEqual(bucket.weather);
+    expect(result.noaa).toEqual({});
+    expect(getDoc).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(getDoc).mock.calls[0][0]).endsWith('/2026-10-14')).toBe(true);
+  });
+
+  it.each([
+    undefined,
+    { version: 1, sourceMonth: '2026-09', archiveFrozen: true, sourceUpdateTime: at(-60), verifiedAt: at(-30) },
+    { version: 1, sourceMonth: '2026-10', archiveFrozen: false, sourceUpdateTime: at(-60), verifiedAt: at(-30) },
+    { version: 1, sourceMonth: '2026-10', archiveFrozen: true, sourceUpdateTime: at(-60), verifiedAt: at(30) },
+    { version: 1, sourceMonth: '2026-10', archiveFrozen: true, sourceUpdateTime: at(-10), verifiedAt: at(-30) },
+    { version: 1, sourceMonth: '2026-10', archiveFrozen: true, sourceUpdateTime: '2026-10-14T11:00:00', verifiedAt: at(-30) },
+  ])('keeps monthly history for partial days or invalid coverage proof: %j', async legacyCoverage => {
+    vi.mocked(getDoc).mockImplementation(async reference => {
+      const bucket = String(reference).endsWith('/2026-10')
+        ? { fiman: { [at(-48)]: 4.1 }, weather: { [at(-48)]: { precip: .1 } }, imagery: { Camera: { [at(-48)]: 'storage://saved.jpg' } }, lastUpdated: now.toISOString() }
+        : { fiman: { [at(-12)]: 4.6 }, legacyCoverage };
+      return { exists: () => true, data: () => bucket } as Awaited<ReturnType<typeof getDoc>>;
+    });
+    const result = await fetchObservations('carolina-beach', new Date(at(-60)), now);
+    expect(result.fiman).toEqual({ [at(-48)]: 4.1, [at(-12)]: 4.6 });
+    expect(result.weather[at(-48)]).toEqual({ precip: .1 });
+    expect(result.imagery.Camera[at(-48)]).toBe('storage://saved.jpg');
+    expect(getDoc).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back only for the month containing an unverified day, and limits returned rows to the requested range', async () => {
+    vi.setSystemTime(new Date('2026-11-02T01:00:00Z'));
+    const requestedStart = new Date('2026-10-31T23:00:00Z');
+    const requestedEnd = new Date('2026-11-01T01:00:00Z');
+    vi.mocked(getDoc).mockImplementation(async reference => {
+      const path = String(reference);
+      const bucket = path.endsWith('/2026-10-31') ? { fiman: { '2026-10-31T23:30:00Z': 4 }, legacyCoverage: { version: 1, sourceMonth: '2026-10', archiveFrozen: true, sourceUpdateTime: '2026-10-17T00:00:00Z', verifiedAt: '2026-10-17T01:00:00Z' } }
+        : path.endsWith('/2026-11') ? { fiman: { '2026-11-01T00:30:00Z': 4.5, '2026-11-01T06:00:00Z': 5, '2026-10-30T00:00:00Z': 3 } } : {};
+      return { exists: () => true, data: () => bucket } as Awaited<ReturnType<typeof getDoc>>;
+    });
+    const result = await fetchObservations('carolina-beach', requestedStart, requestedEnd);
+    expect(result.fiman).toEqual({ '2026-10-31T23:30:00.000Z': 4, '2026-11-01T00:30:00.000Z': 4.5 });
+    const paths = vi.mocked(getDoc).mock.calls.map(([path]) => String(path));
+    expect(paths).not.toContain('locations/carolina-beach/observations/2026-10');
+    expect(paths).toContain('locations/carolina-beach/observations/2026-11');
+  });
+
   it('keeps archived image URLs when daily buckets and provider gap filling refresh raw camera links', async () => {
     vi.mocked(getDoc).mockImplementation(async reference => {
       const bucket = String(reference).endsWith('/2026-10') ? { fiman: { [at(-90)]: 4.3 }, noaa: { [at(-6)]: 3.5 }, imagery: { [at(-90)]: { Camera: 'storage://archived.jpg' } } }

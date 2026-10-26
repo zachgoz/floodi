@@ -17,6 +17,15 @@ export interface ObservationBucket {
   persistedImagery?: Record<string, Record<string, string>>;
   /** Actual observed weather; future forecast weather is kept in predictions. */
   weather?: Record<string, Record<string, unknown>>;
+  /** Trusted migration proof: all eligible leaves from a frozen legacy month
+   * are represented in this UTC day. It does not imply complete sensor uptime. */
+  legacyCoverage?: {
+    version: 1;
+    sourceMonth: string;
+    sourceUpdateTime: string;
+    archiveFrozen: true;
+    verifiedAt: string;
+  };
   /** Last sync timestamp */
   lastUpdated: string;
 }

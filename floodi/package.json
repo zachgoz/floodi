@@ -34,7 +34,8 @@
     "react-dom": "19.0.0",
     "react-router": "^5.3.4",
     "react-router-dom": "^5.3.4",
-    "superstatic": "^10.0.0"
+    "superstatic": "^10.0.0",
+    "web-vitals": "^6.2.3"
   },
   "devDependencies": {
     "@capacitor/cli": "7.4.3",

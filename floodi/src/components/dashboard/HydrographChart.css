@@ -238,3 +238,6 @@
 @media (max-width:360px) {
   .hydrograph-header .view-basic .wind-level .metric-icon-box { display:none; }
 }
+
+.hydrograph-subtitle.is-live, .is-live .viewing-time-pill { color:var(--ion-color-primary); }
+.viewing-time-pill-button { min-height:44px; display:inline-flex; align-items:center; }

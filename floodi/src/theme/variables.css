@@ -2,8 +2,8 @@
 
 :root {
   /* Oceanic Vibe - Primary (Deep Aqua/Ocean Blue) */
-  --ion-color-primary: #0077b6;
-  --ion-color-primary-rgb: 0, 119, 182;
+  --ion-color-primary: #006da7;
+  --ion-color-primary-rgb: 0, 109, 167;
   --ion-color-primary-contrast: #ffffff;
   --ion-color-primary-contrast-rgb: 255, 255, 255;
   --ion-color-primary-shade: #0069a0;
@@ -82,8 +82,8 @@
   --dash-card-border: 1px solid rgba(0,0,0,0.07);
   --dash-header-divider: rgba(0,0,0,0.07);
   --dash-title-color: #1a1a2e;
-  --dash-subtitle-color: rgba(30,30,50,0.55);
-  --dash-label-color: rgba(30,30,50,0.45);
+  --dash-subtitle-color: #5d6370;
+  --dash-label-color: #626977;
   --dash-page-bg: var(--ion-background-color, #f0f2f5);
   --dash-slider-track: rgba(0,0,0,0.12);
   --dash-map-overlay-bg: rgba(240,243,248,0.85);
@@ -101,7 +101,7 @@
   --sentinel-border: rgba(0,0,0,0.1);
   --sentinel-metrics-bg: rgba(0,0,0,0.05);
   --sentinel-text-main: #1a1a2e;
-  --sentinel-text-dim: rgba(30,30,50,0.5);
+  --sentinel-text-dim: #626977;
   --sentinel-pill-bg: #0077b6;
   --sentinel-pill-text: #ffffff;
 
@@ -166,8 +166,8 @@
 /* Explicit light mode override — beats OS dark preference */
 .ion-palette-light body,
 .ion-palette-light {
-  --ion-color-primary: #0077b6;
-  --ion-color-primary-rgb: 0, 119, 182;
+  --ion-color-primary: #006da7;
+  --ion-color-primary-rgb: 0, 109, 167;
   --ion-color-primary-contrast: #ffffff;
   --ion-color-primary-contrast-rgb: 255, 255, 255;
   --ion-color-primary-shade: #0069a0;
@@ -200,8 +200,8 @@
   --dash-card-border: 1px solid rgba(0,0,0,0.07);
   --dash-header-divider: rgba(0,0,0,0.07);
   --dash-title-color: #1a1a2e;
-  --dash-subtitle-color: rgba(30,30,50,0.55);
-  --dash-label-color: rgba(30,30,50,0.45);
+  --dash-subtitle-color: #5d6370;
+  --dash-label-color: #626977;
   --dash-slider-track: rgba(0,0,0,0.12);
   --dash-map-overlay-bg: rgba(240,243,248,0.85);
 
