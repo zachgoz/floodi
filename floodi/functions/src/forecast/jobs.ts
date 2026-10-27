@@ -9,10 +9,11 @@ import { explainWithGemini } from "./gemini";
 import { ForecastDocument, validateForecast, validateExplanation } from "./schema";
 import { fetchFimanData } from "../etl/fiman";
 import { fetchNoaaPredictions } from "../etl/noaa";
-import { residuals } from "./water";
+import { residuals, WaterPoint } from "./water";
 import { trainWeatherResponse } from "./weatherResponse";
 import { publishForecastExplanation, publishNumericalForecast } from './publication';
 import { encodeJsonResponse } from '../utils/jsonResponse';
+import { runTimesFmChallenger } from './challenger';
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 const plainJson = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -96,6 +97,9 @@ export const generateFloodOutlook = onSchedule(
     let degraded = false;
     let inputPath: string | null = null;
     let modelPath: string | null = null;
+    let challengerResiduals: WaterPoint[] = [];
+    let challengerTide: WaterPoint[] = [];
+    let challengerWeather: Array<{ t: Date; windSpeedMph?: number; surfacePressureHpa?: number }> = [];
     try {
       const modelSnapshot = await db.doc(`forecast_models/${SITE.id}`).get();
       const modelCache = modelSnapshot.data();
@@ -133,6 +137,9 @@ export const generateFloodOutlook = onSchedule(
         reference,
         reference,
       );
+      challengerResiduals = recent;
+      challengerTide = tide;
+      challengerWeather = forecastWeather;
       stage = 'numerical';
       document = buildGaugeForecast(
         recent,
@@ -225,6 +232,23 @@ export const generateFloodOutlook = onSchedule(
     } catch (error) {
       degraded = true;
       logger.warn('Explanation scheduling unavailable', { event: 'gemini_schedule_failed', error: safeError(error) });
+    }
+    // Launch TimesFM-3 + NOAA ETSS shadow challenger asynchronously
+    if (document.status === 'available') {
+      runTimesFmChallenger({
+        db,
+        siteId: SITE.id,
+        thresholdFt: SITE.thresholdFt,
+        issuedAt: new Date(document.generatedAt),
+        recentResidual: challengerResiduals,
+        tide: challengerTide,
+        forecastWeather: challengerWeather,
+      }).catch(err => {
+        logger.warn('TimesFM shadow challenger unhandled error; primary forecast intact', {
+          event: 'timesfm_challenger_unhandled',
+          error: safeError(err),
+        });
+      });
     }
     await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, { attemptedAt: now.toISOString(), status: document.status === 'unavailable' ? 'failed' : degraded ? 'partial' : 'ok', stage, numericalGeneratedAt: document.generatedAt, observationAt: document.observationAt, explanationSource: document.explanationSource, ...(numericalError ? { error: safeError(numericalError) } : {}) });
     if (document.status === 'unavailable') throw new Error('No current numerical outlook could be generated');
