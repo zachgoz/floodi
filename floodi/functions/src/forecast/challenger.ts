@@ -251,28 +251,17 @@ export async function runTimesFmChallenger(
       });
 
       // Hybrid Fallback: Blend latest measured residual with NOAA ETSS guidance
-      // AND incorporate shallow-water estuarine tidal harmonic oscillation
       const anchorResidual = targetHistory.at(-1) ?? 0.5;
-      const harmonicDelta = fitResidualHarmonics(historyPoints, issuedAt);
-      const anchorTide = interpolate(tide, issuedAt, 45 * 60_000) ?? 3.5;
       const mean: number[] = [];
       const q10: number[] = [];
       const q90: number[] = [];
 
       for (let i = 0; i < horizonSteps; i++) {
-        const stepTime = futureDates[i];
         const noaaVal = noaaPoints.length ? futureNoaaSurge[i] : anchorResidual;
         // Exponential blending: weight decays over 6 hours (12 steps of 30 mins)
+        // smoothly bridging from measured gauge residual to NOAA ETSS hydrodynamic surge guidance
         const alpha = Math.exp(-i / 12);
-        const slowSurge = alpha * anchorResidual + (1 - alpha) * noaaVal;
-
-        let deltaH = harmonicDelta(stepTime);
-        // If history had negligible variation (e.g. flat synthetic input), use shallow-water tide response
-        if (Math.abs(deltaH) < 0.02 && futureTide.length > i) {
-          deltaH = -0.25 * ((futureTide[i] - anchorTide) / 2.0);
-        }
-
-        const blended = slowSurge + deltaH;
+        const blended = alpha * anchorResidual + (1 - alpha) * noaaVal;
         mean.push(blended);
 
         // Calibrated empirical error growth for storm surge

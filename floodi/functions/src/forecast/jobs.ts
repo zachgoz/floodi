@@ -9,7 +9,7 @@ import { explainWithGemini } from "./gemini";
 import { ForecastDocument, validateForecast, validateExplanation } from "./schema";
 import { fetchFimanData } from "../etl/fiman";
 import { fetchNoaaPredictions } from "../etl/noaa";
-import { interpolate, residuals, WaterPoint } from "./water";
+import { residuals, WaterPoint } from "./water";
 import { trainWeatherResponse } from "./weatherResponse";
 import { publishForecastExplanation, publishNumericalForecast } from './publication';
 import { encodeJsonResponse } from '../utils/jsonResponse';
@@ -318,9 +318,10 @@ export const floodChallenger = onRequest(
       return;
     }
     try {
+      const force = req.query.force === 'true' || req.query.fresh === '1';
       const snap = await db.doc(`locations/${SITE.id}/forecast_challengers/timesfm-3/outlook/current`).get();
       let data = snap.data();
-      if (!snap.exists || !data || data.status !== 'available' || !Array.isArray(data.points) || data.points.length < 100 || Date.parse(data.expiresAt) <= Date.now()) {
+      if (force || !snap.exists || !data || data.status !== 'available' || !Array.isArray(data.points) || data.points.length < 100 || Date.parse(data.expiresAt) <= Date.now()) {
         const outlookSnap = await db.doc(`locations/${SITE.id}/outlook/current`).get();
         const outlookData = outlookSnap.data();
         if (outlookSnap.exists && outlookData && Array.isArray(outlookData.points) && outlookData.points.length > 0) {
@@ -344,9 +345,7 @@ export const floodChallenger = onRequest(
           if (historyResidual.length < 24) {
             historyResidual = Array.from({ length: 97 }, (_, idx) => {
               const t = new Date(now.getTime() - (96 - idx) * 30 * 60_000);
-              const tideVal = interpolate(tidePoints, t) ?? 3.5;
-              const tideOffset = -0.25 * ((tideVal - 3.5) / 2.0);
-              return { t, v: Math.round((currentResidual + tideOffset) * 1000) / 1000 };
+              return { t, v: currentResidual };
             });
           }
 

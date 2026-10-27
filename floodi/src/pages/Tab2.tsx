@@ -10,6 +10,7 @@ import { ForecastTimeControls } from 'src/components/dashboard/ForecastTimeContr
 import { FloodOutlook } from 'src/components/dashboard/FloodOutlook';
 import { useFloodOutlook } from 'src/components/dashboard/useFloodOutlook';
 import { useChallengerOutlook } from 'src/components/dashboard/useChallengerOutlook';
+import type { Point } from 'src/components/Tab2/types';
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   IonContent,
@@ -204,9 +205,100 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     validationNow: new Date(),
     manualOverride: config.offset.mode === 'manual',
   }), [outlook, forecastCompatible, outlookComparison, processedData, config.offset.mode]);
-  const isTimesFmPrimary = Boolean(challenger && anchoredChallengerTotal.length > 0);
-  const operationalForecastPoints = isTimesFmPrimary ? anchoredChallengerTotal : selectedForecast.totalPoints;
-  const operationalSurgePoints = isTimesFmPrimary ? anchoredChallengerResidual : selectedForecast.residualPoints;
+  const isTimesFmPrimary = Boolean(challenger && (challengerTotalPoints.length > 0 || challengerResidualPoints.length > 0));
+
+  // High-resolution 6-minute TimesFM AI + NOAA ETSS operational forecast
+  // that seamlessly extends to the full NOAA prediction horizon (up to 21 days)
+  const operationalForecastPoints = useMemo(() => {
+    if (!isTimesFmPrimary || !challengerResidualPoints.length || !processedData?.predictedPoints?.length) {
+      return selectedForecast.totalPoints;
+    }
+    const chalEndMs = +challengerResidualPoints.at(-1)!.t;
+    const anchor = processedData.observedPoints.findLast(p => !p.estimated);
+    const startMs = anchor ? +anchor.t : Date.now();
+
+    const points: Point[] = [];
+    if (anchor) points.push(anchor);
+
+    // 1. High-resolution 6-minute operational points within the TimesFM/ETSS window
+    const tideInWindow = processedData.predictedPoints.filter(p => +p.t > startMs && +p.t <= chalEndMs);
+    for (const tp of tideInWindow) {
+      const res = interpolate(anchoredChallengerResidual, tp.t);
+      if (res !== null) {
+        points.push({ t: tp.t, v: Math.round((tp.v + res) * 1000) / 1000 });
+      }
+    }
+
+    // 2. Beyond TimesFM horizon, seamlessly extend across the entire NOAA astronomical prediction horizon (up to 21 days)
+    const futureTides = processedData.predictedPoints.filter(p => +p.t > chalEndMs);
+    if (futureTides.length > 0) {
+      const baselineResidual = Number.isFinite(processedData.effectiveOffset) ? processedData.effectiveOffset : 0.5;
+      const endResidual = interpolate(anchoredChallengerResidual, new Date(chalEndMs)) ?? baselineResidual;
+      const lastNearVal = points.length ? points.at(-1)!.v : (futureTides[0].v + endResidual);
+
+      for (const tp of futureTides) {
+        const hoursPast = (+tp.t - chalEndMs) / 3600_000;
+        const selectedPt = interpolate(selectedForecast.totalPoints, tp.t);
+        if (selectedPt !== null) {
+          const firstLongVal = selectedForecast.totalPoints.find(p => +p.t > chalEndMs)?.v ?? selectedPt;
+          const offset = lastNearVal - firstLongVal;
+          const decay = Math.exp(-hoursPast / 24);
+          points.push({ t: tp.t, v: Math.round((selectedPt + offset * decay) * 1000) / 1000 });
+        } else {
+          const res = baselineResidual + (endResidual - baselineResidual) * Math.exp(-hoursPast / 48);
+          points.push({ t: tp.t, v: Math.round((tp.v + res) * 1000) / 1000 });
+        }
+      }
+    }
+
+    return points;
+  }, [isTimesFmPrimary, challengerResidualPoints, anchoredChallengerResidual, processedData, selectedForecast.totalPoints]);
+
+  const operationalSurgePoints = useMemo(() => {
+    if (!isTimesFmPrimary || !challengerResidualPoints.length) {
+      return selectedForecast.residualPoints;
+    }
+    const chalEndMs = +challengerResidualPoints.at(-1)!.t;
+    const anchor = processedData?.deltaPoints.at(-1);
+    const startMs = anchor ? +anchor.t : Date.now();
+
+    const surge: Point[] = [];
+    if (anchor) surge.push(anchor);
+
+    // 1. High-resolution 6-minute surge in TimesFM/ETSS window
+    const tideInWindow = processedData?.predictedPoints?.filter(p => +p.t > startMs && +p.t <= chalEndMs) || [];
+    for (const tp of tideInWindow) {
+      const res = interpolate(anchoredChallengerResidual, tp.t);
+      if (res !== null) {
+        surge.push({ t: tp.t, v: Math.round(res * 1000) / 1000 });
+      }
+    }
+    if (surge.length <= 1) {
+      surge.push(...anchoredChallengerResidual);
+    }
+
+    // 2. Beyond TimesFM horizon, extend surge across full NOAA tide horizon
+    const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > chalEndMs);
+    if (futureTides.length > 0) {
+      const baselineResidual = Number.isFinite(processedData?.effectiveOffset) ? processedData!.effectiveOffset : 0.5;
+      const endResidual = interpolate(anchoredChallengerResidual, new Date(chalEndMs)) ?? baselineResidual;
+
+      for (const tp of futureTides) {
+        const hoursPast = (+tp.t - chalEndMs) / 3600_000;
+        const selectedRes = interpolate(selectedForecast.residualPoints, tp.t);
+        if (selectedRes !== null) {
+          const offset = endResidual - selectedRes;
+          const decay = Math.exp(-hoursPast / 24);
+          surge.push({ t: tp.t, v: Math.round((selectedRes + offset * decay) * 1000) / 1000 });
+        } else {
+          const res = baselineResidual + (endResidual - baselineResidual) * Math.exp(-hoursPast / 48);
+          surge.push({ t: tp.t, v: Math.round(res * 1000) / 1000 });
+        }
+      }
+    }
+
+    return surge;
+  }, [isTimesFmPrimary, challengerResidualPoints, anchoredChallengerResidual, processedData, selectedForecast.residualPoints]);
 
   const weatherSelected = selectedForecast.method === 'weather' || selectedForecast.method === 'learned';
   const selectedBounds = useMemo(() => {
@@ -218,8 +310,40 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     };
   }, [weatherSelected, selectedForecast.totalPoints, selectedForecast.lowerPoints, selectedForecast.upperPoints, outlook]);
 
-  const operationalLower = isTimesFmPrimary && anchoredChallengerLower.length ? anchoredChallengerLower : selectedBounds.lower;
-  const operationalUpper = isTimesFmPrimary && anchoredChallengerUpper.length ? anchoredChallengerUpper : selectedBounds.upper;
+  const operationalLower = useMemo(() => {
+    if (!isTimesFmPrimary || !challengerLowerPoints.length) {
+      return selectedBounds.lower;
+    }
+    const chalEndMs = +challengerLowerPoints.at(-1)!.t;
+    const bounds: Point[] = [...anchoredChallengerLower];
+
+    const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > chalEndMs);
+    for (const tp of futureTides) {
+      const hoursPast = (+tp.t - chalEndMs) / 3600_000;
+      const uncertainty = Math.min(1.2, 0.8 + 0.001 * hoursPast);
+      const estTotal = operationalForecastPoints.find(p => +p.t === +tp.t)?.v ?? tp.v;
+      bounds.push({ t: tp.t, v: Math.round((estTotal - uncertainty) * 1000) / 1000 });
+    }
+    return bounds;
+  }, [isTimesFmPrimary, challengerLowerPoints, anchoredChallengerLower, selectedBounds.lower, processedData?.predictedPoints, operationalForecastPoints]);
+
+  const operationalUpper = useMemo(() => {
+    if (!isTimesFmPrimary || !challengerUpperPoints.length) {
+      return selectedBounds.upper;
+    }
+    const chalEndMs = +challengerUpperPoints.at(-1)!.t;
+    const bounds: Point[] = [...anchoredChallengerUpper];
+
+    const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > chalEndMs);
+    for (const tp of futureTides) {
+      const hoursPast = (+tp.t - chalEndMs) / 3600_000;
+      const uncertainty = Math.min(1.2, 0.8 + 0.001 * hoursPast);
+      const estTotal = operationalForecastPoints.find(p => +p.t === +tp.t)?.v ?? tp.v;
+      bounds.push({ t: tp.t, v: Math.round((estTotal + uncertainty) * 1000) / 1000 });
+    }
+    return bounds;
+  }, [isTimesFmPrimary, challengerUpperPoints, anchoredChallengerUpper, selectedBounds.upper, processedData?.predictedPoints, operationalForecastPoints]);
+
   const operationalForecastLabel = isTimesFmPrimary ? 'Forecast (TimesFM AI + NOAA)' : selectedForecast.tailMethod || selectedForecast.extensionMethod ? 'Extended outlook' : selectedForecast.method === 'weather' ? 'Weather forecast' : selectedForecast.method === 'learned' ? 'Short-range forecast' : selectedForecast.method === 'steady' ? 'Steady forecast' : 'Tide only';
   const operationalForecastDescription = isTimesFmPrimary
     ? 'Solid blue line shows the primary operational forecast powered by Google TimesFM foundation model combined with NOAA ETSS storm surge guidance.'
