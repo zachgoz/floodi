@@ -220,3 +220,102 @@ test('runTimesFmChallenger handles TimesFM failure gracefully without throwing',
   assert.equal(nullDoc, null);
 });
 
+test('fitResidualHarmonics handles edge cases and models lunar semi-diurnal M2 constituent', () => {
+  const { fitResidualHarmonics } = require('../lib/forecast/challenger');
+  const now = new Date('2026-10-27T12:00:00Z');
+
+  // 1. Insufficient history (< 12 samples) returns 0.0
+  const shortHistory = [
+    { t: new Date(now.getTime() - 3600_000).toISOString(), v: 0.5 },
+  ];
+  const fnShort = fitResidualHarmonics(shortHistory, now);
+  assert.equal(fnShort(now), 0);
+  assert.equal(fnShort(new Date(now.getTime() + 6 * 3600_000)), 0);
+
+  // 2. Exact zero delta at anchorTime
+  const waveHistory = [];
+  for (let i = 0; i < 48; i++) {
+    const t = new Date(now.getTime() - (48 - i) * 30 * 60_000);
+    const h = (t.getTime() - now.getTime()) / 3600_000;
+    // Amplitude 0.35 ft, period 12.4206h (M2)
+    const v = 0.8 + 0.35 * Math.cos(2 * Math.PI * h / 12.4206);
+    waveHistory.push({ t: t.toISOString(), v });
+  }
+
+  const fnWave = fitResidualHarmonics(waveHistory, now);
+  // Anchor assertion: must be strictly 0.0 at now
+  assert.equal(Math.abs(fnWave(now)) < 1e-4, true);
+
+  // At quarter cycle (~3.1h), delta is negative
+  const quarterCycle = new Date(now.getTime() + 3.105 * 3600_000);
+  assert.equal(fnWave(quarterCycle) < -0.2, true);
+
+  // At half cycle (~6.21h), delta reaches full inverted amplitude (~ -0.7 ft)
+  const halfCycle = new Date(now.getTime() + 6.21 * 3600_000);
+  assert.equal(fnWave(halfCycle) < -0.5, true);
+
+  // At full cycle (~12.42h), returns back near 0.0
+  const fullCycle = new Date(now.getTime() + 12.4206 * 3600_000);
+  assert.equal(Math.abs(fnWave(fullCycle)) < 0.05, true);
+});
+
+test('runTimesFmChallenger produces physically dynamic non-flat residual oscillations matching tidal cycles', async () => {
+  const db = createMockFirestore();
+  const issuedAt = new Date('2026-10-27T12:00:00Z');
+
+  // Build oscillating history mimicking real Carolina Beach sensor readings
+  const recentResidual = [];
+  for (let i = 0; i < 96; i++) {
+    const t = new Date(issuedAt.getTime() - (96 - i) * 30 * 60_000);
+    const h = (t.getTime() - issuedAt.getTime()) / 3600_000;
+    recentResidual.push({ t, v: 0.8 + 0.3 * Math.cos(2 * Math.PI * h / 12.4206) });
+  }
+
+  const tide = [];
+  for (let step = 0; step <= 96; step++) {
+    const t = new Date(issuedAt.getTime() + step * 30 * 60_000);
+    tide.push({ t, v: 3.5 + 2.0 * Math.cos(step * 0.25) });
+  }
+
+  const doc = await runTimesFmChallenger({
+    db,
+    siteId: 'carolina-beach',
+    thresholdFt: 5.75,
+    issuedAt,
+    recentResidual,
+    tide,
+    timesfmClient: {
+      async forecast() {
+        throw new Error('Fallback to hybrid');
+      },
+    },
+    noaaForecastProvider: async () => ({
+      station: '8658163',
+      stationName: 'Wrightsville Beach',
+      retrievedAt: issuedAt.toISOString(),
+      points: [
+        { t: issuedAt.toISOString(), surgeFt: 0.65 },
+        { t: new Date(issuedAt.getTime() + 24 * 3600_000).toISOString(), surgeFt: 0.85 },
+      ],
+    }),
+  });
+
+  assert.ok(doc);
+  assert.equal(doc.engine, 'noaa-etss-hybrid');
+  assert.equal(doc.points.length, 48);
+
+  const residuals = doc.points.map(p => p.residualFt);
+  const minRes = Math.min(...residuals);
+  const maxRes = Math.max(...residuals);
+  const range = maxRes - minRes;
+
+  // The residual MUST NOT be a flat line; it must oscillate with tidal shallow-water dynamics
+  assert.equal(range > 0.2, true, `Residual range (${range.toFixed(3)} ft) should be > 0.2 ft, not flat`);
+
+  // Verify mathematical integrity for all points
+  for (const pt of doc.points) {
+    assert.equal(Math.round((pt.tideFt + pt.residualFt) * 1000) / 1000, pt.totalFt);
+  }
+});
+
+

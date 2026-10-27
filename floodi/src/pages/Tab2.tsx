@@ -145,6 +145,38 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   } = useChallengerOutlook(config.locationId);
   const [showSteadyComparison, setShowSteadyComparison] = useState(false);
   const [showChallengerComparison, setShowChallengerComparison] = useState(false);
+  const anchoredChallengerResidual = useMemo(() => {
+    if (!challengerResidualPoints.length) return [];
+    const anchor = processedData?.deltaPoints.at(-1);
+    if (anchor && +challengerResidualPoints[0].t > +anchor.t) {
+      return [anchor, ...challengerResidualPoints];
+    }
+    return challengerResidualPoints;
+  }, [challengerResidualPoints, processedData]);
+  const anchoredChallengerTotal = useMemo(() => {
+    if (!challengerTotalPoints.length) return [];
+    const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
+    if (anchor && +challengerTotalPoints[0].t > +anchor.t) {
+      return [anchor, ...challengerTotalPoints];
+    }
+    return challengerTotalPoints;
+  }, [challengerTotalPoints, processedData]);
+  const anchoredChallengerLower = useMemo(() => {
+    if (!challengerLowerPoints.length) return [];
+    const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
+    if (anchor && +challengerLowerPoints[0].t > +anchor.t) {
+      return [anchor, ...challengerLowerPoints];
+    }
+    return challengerLowerPoints;
+  }, [challengerLowerPoints, processedData]);
+  const anchoredChallengerUpper = useMemo(() => {
+    if (!challengerUpperPoints.length) return [];
+    const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
+    if (anchor && +challengerUpperPoints[0].t > +anchor.t) {
+      return [anchor, ...challengerUpperPoints];
+    }
+    return challengerUpperPoints;
+  }, [challengerUpperPoints, processedData]);
   const patternProjection = useMemo(() => {
     if (!processedData) return null;
     const reference = { station: processedData.observationStation, datum: 'MLLW', units: 'ft' };
@@ -586,19 +618,19 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         forecastDescription={selectedForecast.reason}
                         experimentalPoints={
                           showChallengerComparison
-                            ? challengerTotalPoints
+                            ? anchoredChallengerTotal
                             : weatherSelected && showSteadyComparison
                             ? processedData?.adjustedPoints || []
                             : []
                         }
                         experimentalLower={
                           showChallengerComparison
-                            ? challengerLowerPoints
+                            ? anchoredChallengerLower
                             : []
                         }
                         experimentalUpper={
                           showChallengerComparison
-                            ? challengerUpperPoints
+                            ? anchoredChallengerUpper
                             : []
                         }
                         experimentalLabel={
@@ -668,7 +700,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                       forecastDescription={selectedForecast.reason}
                       experimentalForecast={
                         showChallengerComparison
-                          ? challengerResidualPoints
+                          ? anchoredChallengerResidual
                           : weatherSelected && showSteadyComparison
                           ? processedData?.surgeForecastPoints || []
                           : []

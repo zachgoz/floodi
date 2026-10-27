@@ -70,8 +70,9 @@ export function useChallengerOutlook(locationId: string) {
       const timeout = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
 
       try {
-        // 1. Try public cached HTTP endpoint first
-        const res = await fetch('/api/challenger', {
+        // 1. Try public cached HTTP endpoint first (with 1-minute cache bucket)
+        const cacheBucket = Math.floor(Date.now() / 60_000);
+        const res = await fetch(`/api/challenger?t=${cacheBucket}`, {
           signal: controller.signal,
           cache: 'no-store',
         });

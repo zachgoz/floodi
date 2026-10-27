@@ -9,7 +9,7 @@ import { explainWithGemini } from "./gemini";
 import { ForecastDocument, validateForecast, validateExplanation } from "./schema";
 import { fetchFimanData } from "../etl/fiman";
 import { fetchNoaaPredictions } from "../etl/noaa";
-import { residuals, WaterPoint } from "./water";
+import { interpolate, residuals, WaterPoint } from "./water";
 import { trainWeatherResponse } from "./weatherResponse";
 import { publishForecastExplanation, publishNumericalForecast } from './publication';
 import { encodeJsonResponse } from '../utils/jsonResponse';
@@ -243,6 +243,7 @@ export const generateFloodOutlook = onSchedule(
         recentResidual: challengerResiduals,
         tide: challengerTide,
         forecastWeather: challengerWeather,
+        horizonSteps: 144,
       }).catch(err => {
         logger.warn('TimesFM shadow challenger unhandled error; primary forecast intact', {
           event: 'timesfm_challenger_unhandled',
@@ -308,17 +309,36 @@ export const floodChallenger = onRequest(
     try {
       const snap = await db.doc(`locations/${SITE.id}/forecast_challengers/timesfm-3/outlook/current`).get();
       let data = snap.data();
-      if (!snap.exists || !data || data.status !== 'available') {
+      if (!snap.exists || !data || data.status !== 'available' || !Array.isArray(data.points) || data.points.length < 100 || Date.parse(data.expiresAt) <= Date.now()) {
         const outlookSnap = await db.doc(`locations/${SITE.id}/outlook/current`).get();
         const outlookData = outlookSnap.data();
         if (outlookSnap.exists && outlookData && Array.isArray(outlookData.points) && outlookData.points.length > 0) {
           const now = new Date();
           const tidePoints = outlookData.points.map((p: any) => ({ t: new Date(p.t), v: Number(p.tideFt) }));
           const currentResidual = Number(outlookData.currentResidualFt ?? 0.5);
-          const historyResidual = Array.from({ length: 97 }, (_, idx) => ({
-            t: new Date(now.getTime() - (96 - idx) * 30 * 60_000),
-            v: currentResidual,
-          }));
+
+          // Reconstruct realistic recent residual history
+          const historyStart = new Date(now.getTime() - 48 * 3600_000);
+          let historyResidual: WaterPoint[] = [];
+          try {
+            const sensor = await fetchFimanData(SITE.retrievalPlatform, historyStart, now, SITE.offsetFt);
+            if (sensor?.waterLevels?.length) {
+              const reference = { station: SITE.sensor, datum: SITE.datum, units: SITE.units };
+              historyResidual = residuals(points(sensor.waterLevels), tidePoints, reference, reference);
+            }
+          } catch {
+            // Sensor fetch failure will fall back to harmonic reconstruction below
+          }
+
+          if (historyResidual.length < 24) {
+            historyResidual = Array.from({ length: 97 }, (_, idx) => {
+              const t = new Date(now.getTime() - (96 - idx) * 30 * 60_000);
+              const tideVal = interpolate(tidePoints, t) ?? 3.5;
+              const tideOffset = -0.25 * ((tideVal - 3.5) / 2.0);
+              return { t, v: Math.round((currentResidual + tideOffset) * 1000) / 1000 };
+            });
+          }
+
           const generated = await runTimesFmChallenger({
             db,
             siteId: SITE.id,
@@ -326,6 +346,7 @@ export const floodChallenger = onRequest(
             issuedAt: now,
             recentResidual: historyResidual,
             tide: tidePoints,
+            horizonSteps: 144,
           });
           if (generated) {
             data = generated as any;

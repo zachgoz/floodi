@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { GoogleAuth } from 'google-auth-library';
 
 export interface TimesFmPredictionRequest {
@@ -30,6 +32,23 @@ export interface TimesFmPredictionResult {
   engine: 'vertex-ai-timesfm' | 'bigquery-ai-forecast' | 'noaa-etss-hybrid';
 }
 
+function findServiceAccountKey(): string | undefined {
+  const envPath = process.env.SERVICE_ACCOUNT_KEY_PATH;
+  if (envPath && fs.existsSync(envPath)) return envPath;
+
+  const candidates = [
+    path.resolve(process.cwd(), '../service-account.json'),
+    path.resolve(process.cwd(), 'service-account.json'),
+    path.resolve(__dirname, '../../../../service-account.json'),
+    path.resolve(__dirname, '../../../service-account.json'),
+    path.resolve(__dirname, '../../service-account.json'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return undefined;
+}
+
 /**
  * TimesFM Client
  * Connects Floodi Cloud Functions to Google Vertex AI Model Garden TimesFM Endpoint
@@ -45,7 +64,9 @@ export class TimesFmVertexClient {
     this.projectId = options.projectId || process.env.VERTEX_AI_PROJECT || 'project-3d38501c-9460-4059-821';
     this.location = options.location || 'us-central1';
     this.endpointId = options.endpointId || process.env.TIMESFM_ENDPOINT_ID || 'timesfm-endpoint';
+    const saKey = findServiceAccountKey();
     this.auth = options.auth || new GoogleAuth({
+      ...(saKey ? { keyFilename: saKey } : {}),
       scopes: ['https://www.googleapis.com/auth/cloud-platform', 'https://www.googleapis.com/auth/bigquery'],
     });
   }
