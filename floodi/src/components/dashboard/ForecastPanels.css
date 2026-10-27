@@ -111,3 +111,49 @@
 .dashboard-outlook-card summary { display:flex; align-items:center; min-height:44px; padding:8px 0; }
 .dashboard-outlook-card .confidence-badge { white-space:normal; text-align:center; }
 .dashboard-outlook-card summary:focus-visible { outline:2px solid var(--ion-color-primary); outline-offset:2px; border-radius:4px; }
+
+.challenger-toggle-container {
+  margin: 12px 0 16px;
+  padding: 12px 14px;
+  background: rgba(132, 98, 191, 0.08);
+  border: 1px solid rgba(132, 98, 191, 0.25);
+  border-radius: 12px;
+}
+.challenger-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  cursor: pointer;
+  margin: 0;
+  padding: 0;
+}
+.challenger-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: var(--dash-type-body, .875rem);
+}
+.challenger-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #8462bf;
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.challenger-summary-pill {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(132, 98, 191, 0.3);
+  font-size: 0.75rem;
+  color: var(--dash-subtitle-color, #667989);
+}
+

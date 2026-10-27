@@ -21,6 +21,10 @@
         "function": "floodOutlook"
       },
       {
+        "source": "/api/challenger",
+        "function": "floodChallenger"
+      },
+      {
         "source": "/api/client-errors",
         "function": "collectClientErrors"
       },

@@ -9,6 +9,7 @@ import { SurgeChart } from 'src/components/dashboard/SurgeChart';
 import { ForecastTimeControls } from 'src/components/dashboard/ForecastTimeControls';
 import { FloodOutlook } from 'src/components/dashboard/FloodOutlook';
 import { useFloodOutlook } from 'src/components/dashboard/useFloodOutlook';
+import { useChallengerOutlook } from 'src/components/dashboard/useChallengerOutlook';
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   IonContent,
@@ -135,7 +136,15 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   } = useChartData(config);
 
   const { outlook, refresh: refreshOutlook } = useFloodOutlook(config.locationId);
+  const {
+    challenger,
+    totalPoints: challengerTotalPoints,
+    lowerPoints: challengerLowerPoints,
+    upperPoints: challengerUpperPoints,
+    residualPoints: challengerResidualPoints,
+  } = useChallengerOutlook(config.locationId);
   const [showSteadyComparison, setShowSteadyComparison] = useState(false);
+  const [showChallengerComparison, setShowChallengerComparison] = useState(false);
   const patternProjection = useMemo(() => {
     if (!processedData) return null;
     const reference = { station: processedData.observationStation, datum: 'MLLW', units: 'ft' };
@@ -575,6 +584,33 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         adjustedPoints={selectedForecast.totalPoints}
                         forecastLabel={forecastLabel}
                         forecastDescription={selectedForecast.reason}
+                        experimentalPoints={
+                          showChallengerComparison
+                            ? challengerTotalPoints
+                            : weatherSelected && showSteadyComparison
+                            ? processedData?.adjustedPoints || []
+                            : []
+                        }
+                        experimentalLower={
+                          showChallengerComparison
+                            ? challengerLowerPoints
+                            : []
+                        }
+                        experimentalUpper={
+                          showChallengerComparison
+                            ? challengerUpperPoints
+                            : []
+                        }
+                        experimentalLabel={
+                          showChallengerComparison
+                            ? 'TimesFM-3 + ETSS (Challenger)'
+                            : 'Steady comparison'
+                        }
+                        experimentalDescription={
+                          showChallengerComparison
+                            ? 'Purple dashed line shows the TimesFM-3 foundation model combined with NOAA ETSS storm surge guidance and 80% confidence interval. Primary operational forecast remains in blue.'
+                            : undefined
+                        }
                         deltaPoints={processedData?.deltaPoints || []}
                         timeOffsetMins={processedData?.timeOffsetMins || 0}
                         surgeForecastPoints={selectedForecast.residualPoints}
@@ -630,13 +666,35 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                       forecast={selectedForecast.residualPoints}
                       forecastLabel={forecastLabel}
                       forecastDescription={selectedForecast.reason}
-                      experimentalForecast={weatherSelected && showSteadyComparison ? processedData?.surgeForecastPoints || [] : []}
-                      comparisonLabel="Steady comparison"
+                      experimentalForecast={
+                        showChallengerComparison
+                          ? challengerResidualPoints
+                          : weatherSelected && showSteadyComparison
+                          ? processedData?.surgeForecastPoints || []
+                          : []
+                      }
+                      comparisonLabel={
+                        showChallengerComparison
+                          ? 'TimesFM-3 Residual'
+                          : 'Steady comparison'
+                      }
                       patternAnalysis={patternProjection?.analysis}
                     />
                       </HydrographChart>
                     </div>
-                    <FloodOutlook outlook={outlook} selection={selectedForecast} thresholdFt={config.thresholds.minor} now={processedData?.timeDomain.now || new Date()} showComparison={showSteadyComparison} floodExpected={hasUpcomingFlooding(selectedForecast.totalPoints, config.thresholds.minor, processedData?.timeDomain.now || new Date())} floodPossible={hasUpcomingFlooding(selectedBounds.upper, config.thresholds.minor, processedData?.timeDomain.now || new Date())} onToggle={() => setShowSteadyComparison(v => !v)} />
+                    <FloodOutlook
+                      outlook={outlook}
+                      selection={selectedForecast}
+                      thresholdFt={config.thresholds.minor}
+                      now={processedData?.timeDomain.now || new Date()}
+                      showComparison={showSteadyComparison}
+                      floodExpected={hasUpcomingFlooding(selectedForecast.totalPoints, config.thresholds.minor, processedData?.timeDomain.now || new Date())}
+                      floodPossible={hasUpcomingFlooding(selectedBounds.upper, config.thresholds.minor, processedData?.timeDomain.now || new Date())}
+                      onToggle={() => setShowSteadyComparison(v => !v)}
+                      challenger={challenger}
+                      showChallenger={showChallengerComparison}
+                      onToggleChallenger={() => setShowChallengerComparison(v => !v)}
+                    />
                   <div className="dashboard-webcam-card" data-tour-id="webcam">
                     <WebcamFeedCard
                       cameraId={selectedCameraId}

@@ -58,4 +58,54 @@ describe('compact resident flood outlook', () => {
     expect(screen.queryByText('No flooding forecast')).not.toBeInTheDocument();
     expect(screen.getByText('Outlook unavailable')).toBeInTheDocument();
   });
+  it('renders and toggles challenger comparison when challenger outlook is available', () => {
+    const onToggleChallenger = vi.fn();
+    const challenger = {
+      challengerId: 'timesfm-3',
+      locationId: 'carolina-beach',
+      generatedAt: now.toISOString(),
+      expiresAt: at(60).toISOString(),
+      status: 'available' as const,
+      engine: 'timesfm-3-vertex-etss-hybrid',
+      horizonSteps: 48,
+      thresholdFt: 5.6,
+      points: [],
+      peak: {
+        t: at(12).toISOString(),
+        totalFt: 5.82,
+        tideFt: 4.1,
+        residualFt: 1.72,
+        exceedsThreshold: true,
+      },
+      covariatesUsed: ['noaa-etss-surge'],
+    };
+    const { container, rerender } = render(
+      <FloodOutlook
+        {...props}
+        challenger={challenger}
+        showChallenger={false}
+        onToggleChallenger={onToggleChallenger}
+      />
+    );
+    const details = container.querySelector('details')!;
+    expect(within(details).getByText('Compare TimesFM-3 Challenger')).toBeInTheDocument();
+    expect(within(details).getByText('AI + NOAA ETSS')).toBeInTheDocument();
+    expect(within(details).queryByText(/Challenger Peak/)).not.toBeInTheDocument();
+
+    fireEvent.click(within(details).getByLabelText(/Compare TimesFM-3 Challenger/));
+    expect(onToggleChallenger).toHaveBeenCalledOnce();
+
+    rerender(
+      <FloodOutlook
+        {...props}
+        challenger={challenger}
+        showChallenger={true}
+        onToggleChallenger={onToggleChallenger}
+      />
+    );
+    expect(within(details).getByText(/5.82 ft/)).toBeInTheDocument();
+    expect(within(details).getByText(/(Flooding)/)).toBeInTheDocument();
+    expect(within(details).getByText(/Horizon: 24h/)).toBeInTheDocument();
+  });
 });
+

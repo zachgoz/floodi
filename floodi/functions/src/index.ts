@@ -66,7 +66,7 @@ export const fimanProxy = onRequest({ cors: true, maxInstances: 10 }, async (req
 export { syncWaterLevels, syncPredictions } from "./syncData";
 export { runBackfillData } from "./backfill";
 export { syncImagery } from "./syncImagery";
-export { refreshResidualHistory, generateFloodOutlook, floodOutlook } from './forecast/jobs';
+export { refreshResidualHistory, generateFloodOutlook, floodOutlook, floodChallenger } from './forecast/jobs';
 export { checkDataHealth } from './health';
 export { collectClientErrors } from './clientErrors';
 export { evaluateShadowFloodAlerts, reconcileShadowFloodAlerts } from './alerts/jobs';

@@ -191,6 +191,10 @@ service cloud.firestore {
       match /flood_events/{eventId} {
         allow read: if true;
       }
+
+      match /forecast_challengers/{challengerId}/{document=**} {
+        allow read: if true;
+      }
     }
   }
 }

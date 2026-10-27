@@ -1,4 +1,5 @@
 import type { ForecastDocument } from "../../../functions/src/forecast/schema";
+import type { ChallengerOutlookDocument } from "./useChallengerOutlook";
 import { eventDate, eventTime, eventWindow, floodWindows } from "src/utils/waterForecast";
 import type { SelectedWaterForecast } from "src/utils/selectWaterForecast";
 import "./ForecastPanels.css";
@@ -11,6 +12,9 @@ interface Props {
   floodPossible?: boolean;
   thresholdFt?: number;
   now?: Date;
+  challenger?: ChallengerOutlookDocument | null;
+  showChallenger?: boolean;
+  onToggleChallenger?: () => void;
 }
 export function FloodOutlook({
   outlook,
@@ -21,6 +25,9 @@ export function FloodOutlook({
   floodPossible,
   thresholdFt,
   now = new Date(),
+  challenger,
+  showChallenger,
+  onToggleChallenger,
 }: Props) {
   // Headline and timing come from the selected chart series. Generated wording
   // and the full provenance stay in the disclosure, without inventing causes.
@@ -70,6 +77,30 @@ export function FloodOutlook({
             <p>{selection.reason}</p>
             <p>{outlook.explanationSource === 'fallback' ? 'Calculated summary' : 'Gemini 3.8 Flash explanation'} · Limited confidence is not a calibrated probability of flooding.</p>
             {weatherSelected && <label className="forecast-toggle"><input type="checkbox" checked={showComparison} onChange={onToggle} /> Compare steady surge projection</label>}
+            {challenger && onToggleChallenger && (
+              <div className="challenger-toggle-container">
+                <label className="forecast-toggle challenger-toggle">
+                  <span className="challenger-toggle-label">
+                    <input
+                      type="checkbox"
+                      checked={showChallenger}
+                      onChange={onToggleChallenger}
+                    />
+                    <strong>Compare TimesFM-3 Challenger</strong>
+                    <span className="challenger-badge">AI + NOAA ETSS</span>
+                  </span>
+                </label>
+                {showChallenger && challenger.peak && (
+                  <div className="challenger-summary-pill">
+                    <span>
+                      Challenger Peak: <strong>{challenger.peak.totalFt.toFixed(2)} ft</strong>{' '}
+                      ({challenger.peak.exceedsThreshold ? 'Flooding' : 'Below threshold'})
+                    </span>
+                    <span>Horizon: {challenger.horizonSteps / 2}h</span>
+                  </div>
+                )}
+              </div>
+            )}
             {outlook.validation && (
               <>
                 <p>

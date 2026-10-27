@@ -10,6 +10,7 @@ vi.mock('src/components/Tab2/hooks/useSettingsStorage', () => ({ useSettingsStor
 vi.mock('src/components/Tab2/hooks/useAtmosphericState', () => ({ useAtmosphericState: () => ({ activeAtmo: { wl: null, isLive: true, isSimulated: false, targetTime: null }, simulationLevel: 0, setSimulationLevel: vi.fn(), setIsUserSimulating: vi.fn() }) }));
 vi.mock('src/components/Tab2/hooks/useChartComments', () => ({ useChartComments: () => ({ comments: [] }) }));
 vi.mock('src/components/dashboard/useFloodOutlook', () => ({ useFloodOutlook: () => ({ outlook: null, refresh: vi.fn() }) }));
+vi.mock('src/components/dashboard/useChallengerOutlook', () => ({ useChallengerOutlook: () => ({ challenger: null, loading: false, refresh: vi.fn(), totalPoints: [], lowerPoints: [], upperPoints: [], residualPoints: [] }) }));
 vi.mock('src/components/dashboard/InundationMap', () => ({ default: () => <div data-testid="loaded-map">Flood map</div> }));
 vi.mock('@vis.gl/react-google-maps', () => ({ APIProvider: ({ children }: React.PropsWithChildren) => <>{children}</> }));
 vi.mock('src/components/dashboard/SurgeChart', () => ({ SurgeChart: () => null }));

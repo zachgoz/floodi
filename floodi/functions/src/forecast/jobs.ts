@@ -293,3 +293,37 @@ export const floodOutlook = onRequest(
     }
   },
 );
+
+/** Public cached read for TimesFM-3 shadow challenger outlook. */
+export const floodChallenger = onRequest(
+  { cors: true, maxInstances: 5 },
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.vary('Accept-Encoding');
+    if (req.method !== "GET") {
+      res.set('Allow', 'GET');
+      res.status(405).json({ error: "Method not allowed" });
+      return;
+    }
+    try {
+      const snap = await db.doc(`locations/${SITE.id}/forecast_challengers/timesfm-3/outlook/current`).get();
+      const data = snap.data();
+      if (!snap.exists || !data || data.status !== 'available') {
+        res.status(503).json({ error: "Current challenger outlook unavailable" });
+        return;
+      }
+      const encoded = await encodeJsonResponse(data, req.get('Accept-Encoding'));
+      if (encoded.notAcceptable) { res.status(406).send(); return; }
+      const remaining = Math.floor((Date.parse(data.expiresAt) - Date.now()) / 1000);
+      if (remaining > 0) res.set("Cache-Control", `public, max-age=${Math.min(60, remaining)}, s-maxage=${Math.min(300, remaining)}`);
+      if (encoded.contentEncoding) res.set('Content-Encoding', encoded.contentEncoding);
+      res.type('application/json').send(encoded.body);
+    } catch (error) {
+      res.set('Cache-Control', 'no-store');
+      res.removeHeader('Content-Encoding');
+      logger.error('Cached challenger read failed', { event: 'challenger_read_failed', error: safeError(error) });
+      res.status(503).json({ error: "Challenger outlook unavailable" });
+    }
+  },
+);
+
