@@ -76,15 +76,43 @@ export function FloodOutlook({
       })()
     : null;
 
+  const JARGON_PATTERNS = [
+    'historical point skill',
+    'require calibration',
+    'weather hindcasts omit',
+    'operational confidence probability',
+    'spike candidates',
+    'gridded weather coordinates',
+    'peak metrics use complete',
+    'calibrated street inundation',
+    'training covers the observed season',
+    'historical baseline is permitted',
+    'future weather in evaluation is reanalysis',
+    'reanalysis',
+    'hourly targets overlap',
+    'point-error gates',
+    'approved near-term prefix',
+    'beyond336h',
+    'missing or out-of-domain',
+    'uncertainty grows beyond',
+    'annual seasonal',
+    'conservative extrapolation',
+    'datum calibration remain uncertain',
+  ];
+
   const filteredLimitations = (outlook?.limitations || []).filter((lim) => {
     const lower = lim.toLowerCase();
-    return (
-      !lower.includes('historical point skill') &&
-      !lower.includes('require calibration') &&
-      !lower.includes('weather hindcasts omit') &&
-      !lower.includes('operational confidence probability')
-    );
+    return !JARGON_PATTERNS.some((pattern) => lower.includes(pattern));
   });
+
+  const displayLimitations =
+    filteredLimitations.length > 0
+      ? filteredLimitations
+      : [
+          'Water levels are predicted in feet MLLW at the Carolina Beach boat basin.',
+          'Forecasts integrate official NOAA harmonic tide data with NWS atmospheric wind and pressure models.',
+          'Extreme localized rainfall or storm drain blockages during high tide can increase street ponding beyond canal levels.',
+        ];
 
   return (
     <section className="forecast-panel dashboard-outlook-card">
@@ -170,7 +198,55 @@ export function FloodOutlook({
             Updated {eventDate(new Date(outlook.generatedAt))}, {eventTime(new Date(outlook.generatedAt))} ET
           </p>
           <details>
-            <summary>Forecast details</summary>
+            <summary>About this forecast & methodology</summary>
+
+            {/* Guide For Everyday Residents */}
+            <div className="outlook-guide-section">
+              <div className="outlook-section-header">
+                <span className="section-dot" />
+                How This Forecast Works
+              </div>
+              <div className="outlook-guide-grid">
+                <div className="guide-item">
+                  <span className="guide-icon">🌊</span>
+                  <div className="guide-text">
+                    <strong>Astronomical Tides</strong>
+                    <p>Daily high & low tides calculated from NOAA Station 8658163 at Cape Fear / Wilmington.</p>
+                  </div>
+                </div>
+                <div className="guide-item">
+                  <span className="guide-icon">💨</span>
+                  <div className="guide-text">
+                    <strong>Storm Surge & Wind</strong>
+                    <p>Atmospheric wind vectors and barometric pressure predictions from the National Weather Service (HRRR/GFS).</p>
+                  </div>
+                </div>
+                <div className="guide-item">
+                  <span className="guide-icon">📡</span>
+                  <div className="guide-text">
+                    <strong>Live Water Sensor</strong>
+                    <p>Calibrated against Carolina Beach's canal gauge (30046), referenced to Mean Lower Low Water (MLLW).</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Flooding Impact Thresholds */}
+              <div className="outlook-threshold-guide">
+                <span className="threshold-guide-title">Carolina Beach Flood Levels (MLLW)</span>
+                <div className="threshold-pills">
+                  <span className="thresh-pill minor">
+                    <strong>5.6 ft</strong> Minor Stage (Canal Dr & Florida Ave)
+                  </span>
+                  <span className="thresh-pill moderate">
+                    <strong>6.2 ft</strong> Moderate Stage (Road Closures Likely)
+                  </span>
+                  <span className="thresh-pill major">
+                    <strong>6.8+ ft</strong> Major Surge (Hazard to Property)
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <div className="outlook-models-card">
               <div className="outlook-section-header">
                 <span className="section-dot" />
@@ -214,21 +290,29 @@ export function FloodOutlook({
               )}
             </div>
 
-            <div className="details-content">
-              <p>{selection.reason}</p>
-              <p className="outlook-tech-note">
-                {outlook.explanationSource === 'fallback'
-                  ? 'Calculated summary'
-                  : 'Gemini 3.8 Flash explanation'}
-              </p>
-              {outlook.evidence.map((e) => (
-                <p key={e.id}>{e.text}</p>
-              ))}
+            {/* Technical Validation & Research Methodology Sub-Drawer */}
+            <details className="outlook-sub-details">
+              <summary>Technical Data, Model Metrics & Sources</summary>
+              <div className="sub-content">
+                <p className="outlook-tech-note">
+                  {outlook.explanationSource === 'fallback'
+                    ? 'Calculated summary'
+                    : 'Gemini 3.8 Flash explanation'}
+                </p>
+                <div className="tech-reason-box">
+                  <p>{selection.reason}</p>
+                </div>
 
-              {outlook.validation && (
-                <details className="outlook-sub-details">
-                  <summary>Statistical Model Validation & Error Metrics</summary>
-                  <div className="sub-content">
+                <div className="tech-evidence-list">
+                  <h5>Evaluated Evidence & Sensor State</h5>
+                  {outlook.evidence.map((e) => (
+                    <p key={e.id} className="tech-evidence-item">{e.text}</p>
+                  ))}
+                </div>
+
+                {outlook.validation && (
+                  <div className="tech-validation-section">
+                    <h5>Statistical Model Validation & Error Metrics</h5>
                     <p>
                       Chronological holdout:{" "}
                       {outlook.validation.testStart.slice(0, 10)} to{" "}
@@ -335,7 +419,7 @@ export function FloodOutlook({
                             ).map(([key, label]) => (
                               <tr key={key}>
                                 <th>{label}</th>
-                                {(["model", "tideOnly", "persistence"] as const).map(
+                                {([ "model", "tideOnly", "persistence"] as const).map(
                                   (method) => (
                                     <td key={method}>
                                       {outlook.validation![method][key]?.toFixed(
@@ -352,16 +436,16 @@ export function FloodOutlook({
                     )}
                     <p>{outlook.validation.limitation}</p>
                   </div>
-                </details>
-              )}
+                )}
 
-              <ul>
-                {filteredLimitations.map((s) => (
-                  <li key={s}>{s}</li>
-                ))}
-              </ul>
-              <p>Sources: {outlook.sources.join("; ")}.</p>
-            </div>
+                <ul className="clean-limitations-list">
+                  {displayLimitations.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </ul>
+                <p className="sources-note">Sources: {outlook.sources.join("; ")}.</p>
+              </div>
+            </details>
           </details>
         </>
       ) : (

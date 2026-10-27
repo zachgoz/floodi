@@ -404,12 +404,108 @@
   margin: 4px 0 10px;
 }
 
+/* Resident Forecast Guide & Methodology */
+.outlook-guide-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--chart-grid, #e2e8f0);
+}
+.outlook-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+@media (max-width: 768px) {
+  .outlook-guide-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+.guide-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(var(--ion-color-primary-rgb), 0.03);
+  border: 1px solid var(--chart-grid, rgba(226, 232, 240, 0.8));
+}
+.guide-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.guide-text strong {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--dash-title-color, var(--ion-text-color));
+  margin-bottom: 3px;
+}
+.guide-text p {
+  font-size: 0.75rem !important;
+  line-height: 1.4 !important;
+  color: var(--dash-subtitle-color, #667989) !important;
+  margin: 0 !important;
+}
+
+/* Carolina Beach Street Flood Thresholds */
+.outlook-threshold-guide {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--dash-card-bg, #ffffff);
+  border: 1px solid var(--chart-grid, #e2e8f0);
+}
+.threshold-guide-title {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dash-subtitle-color, #667989);
+  margin-bottom: 8px;
+}
+.threshold-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.thresh-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.thresh-pill strong {
+  font-weight: 800;
+}
+.thresh-pill.minor {
+  background: rgba(234, 179, 8, 0.1);
+  color: #b45309;
+  border: 1px solid rgba(234, 179, 8, 0.3);
+}
+.thresh-pill.moderate {
+  background: rgba(249, 115, 22, 0.1);
+  color: #c2410c;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+.thresh-pill.major {
+  background: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
 /* Compact Holdout & Benchmarking Sub-Drawer */
 .outlook-sub-details {
-  margin-top: 10px !important;
+  margin: 12px 14px 14px !important;
   border: 1px solid var(--chart-grid, #edf2f7) !important;
   border-radius: 10px !important;
-  background: rgba(241, 245, 249, 0.5) !important;
+  background: rgba(241, 245, 249, 0.4) !important;
 }
 .outlook-sub-details summary {
   padding: 8px 12px !important;
@@ -418,7 +514,46 @@
   color: var(--dash-subtitle-color, #667989) !important;
 }
 .outlook-sub-details .sub-content {
-  padding: 8px 12px 12px;
+  padding: 10px 14px 14px;
 }
+.tech-reason-box {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(var(--ion-color-primary-rgb), 0.04);
+  margin-bottom: 12px;
+}
+.tech-reason-box p {
+  font-size: 0.78rem !important;
+  line-height: 1.45 !important;
+  margin: 0 !important;
+  color: var(--ion-text-color) !important;
+}
+.tech-evidence-list h5, .tech-validation-section h5 {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dash-subtitle-color, #667989);
+  margin: 12px 0 6px;
+}
+.tech-evidence-item {
+  font-size: 0.75rem !important;
+  line-height: 1.45 !important;
+  color: var(--dash-subtitle-color, #475569) !important;
+  margin: 4px 0 !important;
+}
+.clean-limitations-list {
+  margin: 12px 0 8px 16px;
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--dash-subtitle-color, #475569);
+  line-height: 1.5;
+}
+.sources-note {
+  font-size: 0.72rem !important;
+  color: var(--dash-subtitle-color, #94a3b8) !important;
+  margin-top: 8px !important;
+}
+
 
 
