@@ -233,23 +233,34 @@ export const generateFloodOutlook = onSchedule(
       degraded = true;
       logger.warn('Explanation scheduling unavailable', { event: 'gemini_schedule_failed', error: safeError(error) });
     }
-    // Launch TimesFM-3 + NOAA ETSS shadow challenger asynchronously
+    // Generate and publish TimesFM-3 + NOAA ETSS operational forecast
     if (document.status === 'available') {
-      runTimesFmChallenger({
-        db,
-        siteId: SITE.id,
-        thresholdFt: SITE.thresholdFt,
-        issuedAt: new Date(document.generatedAt),
-        recentResidual: challengerResiduals,
-        tide: challengerTide,
-        forecastWeather: challengerWeather,
-        horizonSteps: 144,
-      }).catch(err => {
-        logger.warn('TimesFM shadow challenger unhandled error; primary forecast intact', {
-          event: 'timesfm_challenger_unhandled',
+      try {
+        const challengerDoc = await runTimesFmChallenger({
+          db,
+          siteId: SITE.id,
+          thresholdFt: SITE.thresholdFt,
+          issuedAt: new Date(document.generatedAt),
+          recentResidual: challengerResiduals,
+          tide: challengerTide,
+          forecastWeather: challengerWeather,
+          horizonSteps: 144,
+        });
+        if (challengerDoc && challengerDoc.status === 'available') {
+          logger.info('TimesFM operational forecast generated and published successfully', {
+            event: 'timesfm_operational_published',
+            siteId: SITE.id,
+            engine: challengerDoc.engine,
+            peakFt: challengerDoc.peak?.totalFt,
+            steps: challengerDoc.points.length,
+          });
+        }
+      } catch (err) {
+        logger.warn('TimesFM generation failed; legacy forecast preserved', {
+          event: 'timesfm_operational_fallback',
           error: safeError(err),
         });
-      });
+      }
     }
     await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, { attemptedAt: now.toISOString(), status: document.status === 'unavailable' ? 'failed' : degraded ? 'partial' : 'ok', stage, numericalGeneratedAt: document.generatedAt, observationAt: document.observationAt, explanationSource: document.explanationSource, ...(numericalError ? { error: safeError(numericalError) } : {}) });
     if (document.status === 'unavailable') throw new Error('No current numerical outlook could be generated');

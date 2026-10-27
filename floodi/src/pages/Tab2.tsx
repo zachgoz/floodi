@@ -204,13 +204,10 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     validationNow: new Date(),
     manualOverride: config.offset.mode === 'manual',
   }), [outlook, forecastCompatible, outlookComparison, processedData, config.offset.mode]);
-  // One selected physical forecast drives both charts and every hazard calculation.
-  // Actual measurements and the near-live display estimate remain untouched.
-  const forecastData = useMemo(() => processedData ? {
-    ...processedData,
-    adjustedPoints: selectedForecast.totalPoints,
-    surgeForecastPoints: selectedForecast.residualPoints,
-  } : null, [processedData, selectedForecast]);
+  const isTimesFmPrimary = Boolean(challenger && anchoredChallengerTotal.length > 0);
+  const operationalForecastPoints = isTimesFmPrimary ? anchoredChallengerTotal : selectedForecast.totalPoints;
+  const operationalSurgePoints = isTimesFmPrimary ? anchoredChallengerResidual : selectedForecast.residualPoints;
+
   const weatherSelected = selectedForecast.method === 'weather' || selectedForecast.method === 'learned';
   const selectedBounds = useMemo(() => {
     const timestamps = new Set(selectedForecast.totalPoints.map(point => +point.t));
@@ -220,7 +217,21 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
       upper: selectedForecast.upperPoints ?? supported.map(point => ({ t: new Date(point.t), v: point.upperFt })),
     };
   }, [weatherSelected, selectedForecast.totalPoints, selectedForecast.lowerPoints, selectedForecast.upperPoints, outlook]);
-  const forecastLabel = selectedForecast.tailMethod || selectedForecast.extensionMethod ? 'Extended outlook' : selectedForecast.method === 'weather' ? 'Weather forecast' : selectedForecast.method === 'learned' ? 'Short-range forecast' : selectedForecast.method === 'steady' ? 'Steady forecast' : 'Tide only';
+
+  const operationalLower = isTimesFmPrimary && anchoredChallengerLower.length ? anchoredChallengerLower : selectedBounds.lower;
+  const operationalUpper = isTimesFmPrimary && anchoredChallengerUpper.length ? anchoredChallengerUpper : selectedBounds.upper;
+  const operationalForecastLabel = isTimesFmPrimary ? 'Forecast (TimesFM AI + NOAA)' : selectedForecast.tailMethod || selectedForecast.extensionMethod ? 'Extended outlook' : selectedForecast.method === 'weather' ? 'Weather forecast' : selectedForecast.method === 'learned' ? 'Short-range forecast' : selectedForecast.method === 'steady' ? 'Steady forecast' : 'Tide only';
+  const operationalForecastDescription = isTimesFmPrimary
+    ? 'Solid blue line shows the primary operational forecast powered by Google TimesFM foundation model combined with NOAA ETSS storm surge guidance.'
+    : selectedForecast.reason;
+
+  // One selected physical forecast drives both charts and every hazard calculation.
+  // Actual measurements and the near-live display estimate remain untouched.
+  const forecastData = useMemo(() => processedData ? {
+    ...processedData,
+    adjustedPoints: operationalForecastPoints,
+    surgeForecastPoints: operationalSurgePoints,
+  } : null, [processedData, operationalForecastPoints, operationalSurgePoints]);
 
   useEffect(() => {
     markPerf('tab2.dataState', {
@@ -424,7 +435,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   const floodWindow = useMemo(() => {
     if (!processedData) return null;
     const target = activeAtmo.targetTime || new Date();
-    const event = floodWindows([...processedData.observedPoints, ...selectedForecast.totalPoints], config.thresholds.minor)
+    const event = floodWindows([...processedData.observedPoints, ...operationalForecastPoints], config.thresholds.minor)
       .find(e => e.startTime <= target && ((e.endTime || e.lastSampleTime) >= target));
     if (!event) return null;
     return {
@@ -433,7 +444,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
       maxRoadFloodDepth: Math.max(0, event.peakValue - config.thresholds.minor),
       maxWaterLevel: event.peakValue, maxWaterLevelTime: event.peakTime,
     };
-  }, [processedData, selectedForecast.totalPoints, activeAtmo.targetTime, config.thresholds.minor]);
+  }, [processedData, operationalForecastPoints, activeAtmo.targetTime, config.thresholds.minor]);
 
   // Compute next tide info reactively
   const nextTideInfo = useMemo(() => {
@@ -443,14 +454,14 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     // Create combined actual + FloodCast prediction curve to ensure we find actual expected peaks (including surge)
     const combinedPoints = [
       ...processedData.observedPoints,
-      ...selectedForecast.totalPoints
+      ...operationalForecastPoints
     ];
     return findNextTideExtremum(
       combinedPoints.length > 0 ? combinedPoints : processedData.predictedPoints,
       activeAtmo.targetTime,
       activeAtmo.wl
     );
-  }, [processedData, selectedForecast.totalPoints, activeAtmo.targetTime, activeAtmo.wl]);
+  }, [processedData, operationalForecastPoints, activeAtmo.targetTime, activeAtmo.wl]);
 
   return (
     <IonPage
@@ -497,7 +508,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                 <div className="dashboard-sidebar">
                   <div className="dashboard-next-events" data-tour-id="events">
                     <NextFloodingEventsCard
-                      adjustedPoints={selectedForecast.totalPoints}
+                      adjustedPoints={operationalForecastPoints}
                       predictedPoints={processedData?.predictedPoints || []}
                       windPoints={processedData?.windPoints || []}
                       precipPoints={processedData?.precipPoints || []}
@@ -508,7 +519,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                       loading={loading}
                       streetCalibration={LOCATIONS[config.locationId]?.streetCalibration}
                       forecastHorizon={weatherSelected ? selectedForecast.horizonEnd : null}
-                      upperForecastPoints={selectedBounds.upper}
+                      upperForecastPoints={operationalUpper}
                       planningOutlookStart={weatherSelected && outlook?.tail ? new Date(outlook.tail.startsAt) : null}
                     />
                   </div>
@@ -613,41 +624,45 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         source={activeAtmo.source}
                         observedPoints={processedData?.observedPoints || []}
                         predictedPoints={processedData?.predictedPoints || []}
-                        adjustedPoints={selectedForecast.totalPoints}
-                        forecastLabel={forecastLabel}
-                        forecastDescription={selectedForecast.reason}
+                        adjustedPoints={operationalForecastPoints}
+                        forecastLabel={operationalForecastLabel}
+                        forecastDescription={operationalForecastDescription}
                         experimentalPoints={
                           showChallengerComparison
-                            ? anchoredChallengerTotal
+                            ? (isTimesFmPrimary ? selectedForecast.totalPoints : anchoredChallengerTotal)
                             : weatherSelected && showSteadyComparison
                             ? processedData?.adjustedPoints || []
                             : []
                         }
                         experimentalLower={
                           showChallengerComparison
-                            ? anchoredChallengerLower
+                            ? (isTimesFmPrimary ? selectedBounds.lower : anchoredChallengerLower)
                             : []
                         }
                         experimentalUpper={
                           showChallengerComparison
-                            ? anchoredChallengerUpper
+                            ? (isTimesFmPrimary ? selectedBounds.upper : anchoredChallengerUpper)
                             : []
                         }
                         experimentalLabel={
                           showChallengerComparison
-                            ? 'TimesFM-3 + ETSS (Challenger)'
+                            ? (isTimesFmPrimary ? 'Legacy Baseline Model' : 'TimesFM-3 + ETSS (Challenger)')
                             : 'Steady comparison'
                         }
                         experimentalDescription={
                           showChallengerComparison
-                            ? 'Purple dashed line shows the TimesFM-3 foundation model combined with NOAA ETSS storm surge guidance and 80% confidence interval. Primary operational forecast remains in blue.'
+                            ? (isTimesFmPrimary
+                                ? 'Dashed line shows the legacy numerical model projection for comparison. Solid blue line is the primary TimesFM-3 operational forecast.'
+                                : 'Purple dashed line shows the TimesFM-3 foundation model combined with NOAA ETSS storm surge guidance and 80% confidence interval. Primary operational forecast remains in blue.')
                             : undefined
                         }
                         showChallenger={showChallengerComparison}
                         onToggleChallenger={() => setShowChallengerComparison(v => !v)}
+                        challengerToggleLabel={isTimesFmPrimary ? 'Compare Legacy Baseline' : 'Compare TimesFM-3 Challenger'}
+                        challengerBadgeText={isTimesFmPrimary ? 'Legacy Model' : 'AI+ETSS'}
                         deltaPoints={processedData?.deltaPoints || []}
                         timeOffsetMins={processedData?.timeOffsetMins || 0}
-                        surgeForecastPoints={selectedForecast.residualPoints}
+                        surgeForecastPoints={operationalSurgePoints}
                         windPoints={processedData?.windPoints || []}
                         precipPoints={processedData?.precipPoints || []}
                         domainStart={processedData?.timeDomain.start || new Date(Date.now() - 24 * 3600 * 1000)}
@@ -697,19 +712,19 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                       focusRatio={chartFocusRatio}
                       onViewportChange={handleSurgeViewportChange}
                       onResetToLive={resetToLive}
-                      forecast={selectedForecast.residualPoints}
-                      forecastLabel={forecastLabel}
-                      forecastDescription={selectedForecast.reason}
+                      forecast={operationalSurgePoints}
+                      forecastLabel={operationalForecastLabel}
+                      forecastDescription={operationalForecastDescription}
                       experimentalForecast={
                         showChallengerComparison
-                          ? anchoredChallengerResidual
+                          ? (isTimesFmPrimary ? selectedForecast.residualPoints : anchoredChallengerResidual)
                           : weatherSelected && showSteadyComparison
                           ? processedData?.surgeForecastPoints || []
                           : []
                       }
                       comparisonLabel={
                         showChallengerComparison
-                          ? 'TimesFM-3 Residual'
+                          ? (isTimesFmPrimary ? 'Legacy Residual' : 'TimesFM-3 Residual')
                           : 'Steady comparison'
                       }
                       patternAnalysis={patternProjection?.analysis}
@@ -718,16 +733,17 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                     </div>
                     <FloodOutlook
                       outlook={outlook}
-                      selection={selectedForecast}
+                      selection={isTimesFmPrimary ? { ...selectedForecast, totalPoints: operationalForecastPoints, residualPoints: operationalSurgePoints } : selectedForecast}
                       thresholdFt={config.thresholds.minor}
                       now={processedData?.timeDomain.now || new Date()}
                       showComparison={showSteadyComparison}
-                      floodExpected={hasUpcomingFlooding(selectedForecast.totalPoints, config.thresholds.minor, processedData?.timeDomain.now || new Date())}
-                      floodPossible={hasUpcomingFlooding(selectedBounds.upper, config.thresholds.minor, processedData?.timeDomain.now || new Date())}
+                      floodExpected={hasUpcomingFlooding(operationalForecastPoints, config.thresholds.minor, processedData?.timeDomain.now || new Date())}
+                      floodPossible={hasUpcomingFlooding(operationalUpper, config.thresholds.minor, processedData?.timeDomain.now || new Date())}
                       onToggle={() => setShowSteadyComparison(v => !v)}
                       challenger={challenger}
                       showChallenger={showChallengerComparison}
                       onToggleChallenger={() => setShowChallengerComparison(v => !v)}
+                      isTimesFmPrimary={isTimesFmPrimary}
                     />
                   <div className="dashboard-webcam-card" data-tour-id="webcam">
                     <WebcamFeedCard

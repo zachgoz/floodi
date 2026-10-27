@@ -38,6 +38,8 @@ interface HydrographChartProps extends ChartViewerProps {
   forecastDescription?: string;
   showChallenger?: boolean;
   onToggleChallenger?: () => void;
+  challengerToggleLabel?: string;
+  challengerBadgeText?: string;
   controls?: React.ReactNode;
   children?: React.ReactNode;
 }
@@ -60,6 +62,8 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
   forecastDescription,
   showChallenger,
   onToggleChallenger,
+  challengerToggleLabel = 'TimesFM-3 Challenger',
+  challengerBadgeText = 'AI+ETSS',
   controls,
   children,
   ...chartProps
@@ -112,16 +116,16 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
         </div>
         <div className="chart-legend-actions">
           {onToggleChallenger && (
-            <label className="hydrograph-challenger-toggle" title="Compare TimesFM-3 AI Foundation Model + NOAA ETSS storm surge guidance">
+            <label className="hydrograph-challenger-toggle" title={challengerToggleLabel}>
               <input
                 type="checkbox"
-                aria-label="Compare TimesFM-3 Challenger"
+                aria-label={challengerToggleLabel}
                 checked={!!showChallenger}
                 onChange={onToggleChallenger}
               />
               <i className="legend-line experimental-line" />
-              <span className="challenger-toggle-text">TimesFM-3 Challenger</span>
-              <span className="challenger-badge-mini">AI+ETSS</span>
+              <span className="challenger-toggle-text">{challengerToggleLabel}</span>
+              <span className="challenger-badge-mini">{challengerBadgeText}</span>
             </label>
           )}
           <ChartInfo label="About water level forecasts">

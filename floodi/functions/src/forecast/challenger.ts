@@ -319,7 +319,7 @@ export async function runTimesFmChallenger(
       }
     }
 
-    const expiresAt = new Date(issuedAt.getTime() + 15 * 60_000).toISOString();
+    const expiresAt = new Date(issuedAt.getTime() + 45 * 60_000).toISOString();
     const challengerDoc: ChallengerOutlookDocument = {
       challengerId: 'timesfm-3',
       locationId: siteId,

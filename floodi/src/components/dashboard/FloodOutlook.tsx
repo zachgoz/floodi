@@ -15,6 +15,7 @@ interface Props {
   challenger?: ChallengerOutlookDocument | null;
   showChallenger?: boolean;
   onToggleChallenger?: () => void;
+  isTimesFmPrimary?: boolean;
 }
 export function FloodOutlook({
   outlook,
@@ -28,6 +29,7 @@ export function FloodOutlook({
   challenger,
   showChallenger,
   onToggleChallenger,
+  isTimesFmPrimary,
 }: Props) {
   // Headline and timing come from the selected chart series. Generated wording
   // and the full provenance stay in the disclosure, without inventing causes.
@@ -121,7 +123,11 @@ export function FloodOutlook({
           <h2>Flood Outlook</h2>
         </div>
         <span className="confidence-badge">
-          {selection.confidence === 'limited' ? 'Active 72-Hour Outlook' : 'Outlook unavailable'}
+          {isTimesFmPrimary
+            ? 'TimesFM AI + NOAA Operational'
+            : selection.confidence === 'limited'
+            ? 'Active 72-Hour Outlook'
+            : 'Outlook unavailable'}
         </span>
       </div>
 

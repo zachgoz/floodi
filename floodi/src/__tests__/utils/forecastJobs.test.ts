@@ -63,6 +63,7 @@ vi.mock('../../../functions/src/forecast/weatherResponse', async () => ({ ...(aw
 vi.mock('../../../functions/src/forecast/gemini', () => ({ explainWithGemini: vi.fn() }));
 vi.mock('../../../functions/src/etl/fiman', () => ({ fetchFimanData: vi.fn() }));
 vi.mock('../../../functions/src/etl/noaa', () => ({ fetchNoaaPredictions: vi.fn() }));
+vi.mock('../../../functions/src/forecast/challenger', () => ({ runTimesFmChallenger: vi.fn().mockResolvedValue(null) }));
 
 const HOUR = 3600_000;
 const initialNow = new Date('2026-10-10T12:00:00Z');
