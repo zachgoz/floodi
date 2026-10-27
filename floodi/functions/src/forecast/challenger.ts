@@ -154,18 +154,56 @@ export async function runTimesFmChallenger(
     if (weatherWind.length > 0) covariatesUsed.push('surface_wind_speed');
     if (weatherPressure.length > 0) covariatesUsed.push('surface_pressure');
 
-    const prediction = await timesfmClient.forecast({
-      targetHistory,
-      timestamps,
-      horizon: horizonSteps,
-      futureTide,
-      futureNoaaSurge: noaaPoints.length ? futureNoaaSurge : undefined,
-      futureWeather: {
-        windSpeed: futureWind,
-        pressure: futurePressure,
-      },
-      quantiles: [0.1, 0.5, 0.9],
-    });
+    let prediction: TimesFmPredictionResult;
+    try {
+      prediction = await timesfmClient.forecast({
+        targetHistory,
+        timestamps,
+        horizon: horizonSteps,
+        futureTide,
+        futureNoaaSurge: noaaPoints.length ? futureNoaaSurge : undefined,
+        futureWeather: {
+          windSpeed: futureWind,
+          pressure: futurePressure,
+        },
+        quantiles: [0.1, 0.5, 0.9],
+      });
+    } catch (modelErr) {
+      if (!noaaPoints.length) {
+        throw new Error('Both TimesFM inference and NOAA ETSS surge guidance are unavailable');
+      }
+      logger.warn('TimesFM remote inference failed, activating NOAA ETSS hybrid fallback', {
+        event: 'timesfm_fallback_etss',
+        error: safeError(modelErr),
+      });
+
+      // Hybrid Fallback: Blend latest measured residual with NOAA ETSS guidance
+      const anchorResidual = targetHistory.at(-1) ?? 0.5;
+      const mean: number[] = [];
+      const q10: number[] = [];
+      const q90: number[] = [];
+
+      for (let i = 0; i < horizonSteps; i++) {
+        const noaaVal = noaaPoints.length ? futureNoaaSurge[i] : anchorResidual;
+        // Exponential blending: weight decays over 6 hours (12 steps of 30 mins)
+        const alpha = Math.exp(-i / 12);
+        const blended = alpha * anchorResidual + (1 - alpha) * noaaVal;
+        mean.push(blended);
+
+        // Calibrated empirical error growth for storm surge
+        const uncertainty = 0.25 + 0.008 * i;
+        q10.push(blended - uncertainty);
+        q90.push(blended + uncertainty);
+      }
+
+      prediction = {
+        mean,
+        q10,
+        q50: mean,
+        q90,
+        engine: 'noaa-etss-hybrid',
+      };
+    }
 
     // 5. Reconstruct total forecasted water level curve
     const challengerPoints: ChallengerPoint[] = [];

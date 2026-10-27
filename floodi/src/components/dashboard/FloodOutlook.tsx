@@ -74,100 +74,193 @@ export function FloodOutlook({
           </p>
           <details>
             <summary>Forecast details</summary>
-            <p>{selection.reason}</p>
-            <p>{outlook.explanationSource === 'fallback' ? 'Calculated summary' : 'Gemini 3.8 Flash explanation'} · Limited confidence is not a calibrated probability of flooding.</p>
-            {weatherSelected && <label className="forecast-toggle"><input type="checkbox" checked={showComparison} onChange={onToggle} /> Compare steady surge projection</label>}
-            {challenger && onToggleChallenger && (
-              <div className="challenger-toggle-container">
-                <label className="forecast-toggle challenger-toggle">
-                  <span className="challenger-toggle-label">
-                    <input
-                      type="checkbox"
-                      checked={showChallenger}
-                      onChange={onToggleChallenger}
-                    />
-                    <strong>Compare TimesFM-3 Challenger</strong>
-                    <span className="challenger-badge">AI + NOAA ETSS</span>
-                  </span>
-                </label>
-                {showChallenger && challenger.peak && (
-                  <div className="challenger-summary-pill">
-                    <span>
-                      Challenger Peak: <strong>{challenger.peak.totalFt.toFixed(2)} ft</strong>{' '}
-                      ({challenger.peak.exceedsThreshold ? 'Flooding' : 'Below threshold'})
-                    </span>
-                    <span>Horizon: {challenger.horizonSteps / 2}h</span>
-                  </div>
-                )}
+            <div className="outlook-models-card">
+              <div className="outlook-section-header">
+                <span className="section-dot" />
+                Forecast Model Overlays
               </div>
-            )}
-            {outlook.validation && (
-              <>
-                <p>
-                  Chronological holdout:{" "}
-                  {outlook.validation.testStart.slice(0, 10)} to{" "}
-                  {outlook.validation.testEnd.slice(0, 10)}.
-                </p>
-                {outlook.leadValidation && <div className="forecast-table-wrap"><table><thead><tr><th>Lead</th><th>Model error</th><th>Steady error</th></tr></thead><tbody>{outlook.leadValidation.map(p => <tr key={p.leadHours}><th>{p.leadHours}h</th><td>{p.modelMaeFt?.toFixed(2) ?? 'Unavailable'} ft</td><td>{p.persistenceMaeFt?.toFixed(2) ?? 'Unavailable'} ft</td></tr>)}</tbody></table></div>}
-                {selection.extensionMethod && outlook.extension && !outlook.tail && <>
-                  <p>Longer-range residual outlook</p>
-                  <div className="forecast-table-wrap"><table><thead><tr><th>Lead</th><th>Forecast error</th><th>Steady error</th></tr></thead><tbody>{outlook.extension.leadValidation.map(p => <tr key={p.leadHours}><th>{p.leadHours}h{p.method === 'steady-residual' ? ' · Steady' : ''}</th><td>{p.modelMaeFt?.toFixed(2) ?? 'Unavailable'} ft</td><td>{p.persistenceMaeFt?.toFixed(2) ?? 'Unavailable'} ft</td></tr>)}</tbody></table></div>
-                </>}
-                {selection.tailMethod && outlook.tail && <>
-                  <p>History-based outlook through {eventDate(selection.totalPoints.at(-1)!.t)}, {eventTime(selection.totalPoints.at(-1)!.t)} ET. {outlook.tail.weatherSupportedUntil ? `Forecast weather contributes through ${eventDate(new Date(outlook.tail.weatherSupportedUntil))}.` : 'The longer outlook uses historical tide and residual patterns.'}</p>
-                  <div className="forecast-table-wrap"><table><thead><tr><th>Ahead</th><th>History error</th><th>Weather error</th><th>Steady error</th></tr></thead><tbody>{outlook.tail.summary.validationLeads.filter(p => p.leadHours >= 24).map(p => <tr key={p.leadHours}><th>{p.leadHours}h</th><td>{p.historicalMaeFt === null ? 'Unavailable' : `${p.historicalMaeFt.toFixed(2)} ft`}</td><td>{p.weatherMaeFt === null ? 'Unavailable' : `${p.weatherMaeFt.toFixed(2)} ft`}</td><td>{p.persistenceMaeFt === null ? 'Unavailable' : `${p.persistenceMaeFt.toFixed(2)} ft`}</td></tr>)}</tbody></table></div>
-                </>}
-                {!outlook.leadValidation && <div className="forecast-table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Holdout metric</th>
-                        <th>Weather model</th>
-                        <th>Tides only</th>
-                        <th>Persistence</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(
-                        [
-                          ["maeFt", "Water level MAE (ft)"],
-                          ["peakMaeFt", "Daily peak MAE (ft)"],
-                          ["onsetMaeMinutes", "Onset MAE (min)"],
-                          ["durationMaeMinutes", "Duration MAE (min)"],
-                          ["hits", "Detected events"],
-                          ["misses", "Missed events"],
-                          ["falseAlarms", "False alarms"],
-                        ] as const
-                      ).map(([key, label]) => (
-                        <tr key={key}>
-                          <th>{label}</th>
-                          {(["model", "tideOnly", "persistence"] as const).map(
-                            (method) => (
-                              <td key={method}>
-                                {outlook.validation![method][key]?.toFixed(
-                                  key.endsWith("Ft") ? 2 : 0,
-                                ) ?? "Unavailable"}
-                              </td>
-                            ),
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>}
-                <p>{outlook.validation.limitation}</p>
-              </>
-            )}
-            {outlook.evidence
-              .map((e) => (
+              {onToggleChallenger && (
+                <div className="challenger-toggle-container">
+                  <label className="forecast-toggle challenger-toggle">
+                    <span className="challenger-toggle-label">
+                      <input
+                        type="checkbox"
+                        checked={showChallenger}
+                        onChange={onToggleChallenger}
+                      />
+                      <strong>Compare TimesFM-3 Challenger</strong>
+                      <span className="challenger-badge">AI + NOAA ETSS</span>
+                    </span>
+                  </label>
+                  {showChallenger && (
+                    <div className="challenger-summary-pill">
+                      <span>
+                        Challenger Peak:{' '}
+                        <strong>
+                          {challenger?.peak ? `${challenger.peak.totalFt.toFixed(2)} ft` : 'Calculating...'}
+                        </strong>{' '}
+                        {challenger?.peak
+                          ? `(${challenger.peak.exceedsThreshold ? 'Flooding' : 'Below threshold'})`
+                          : ''}
+                      </span>
+                      <span>
+                        Horizon: {challenger ? `${challenger.horizonSteps / 2}h` : '24h'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {weatherSelected && (
+                <label className="forecast-toggle">
+                  <input type="checkbox" checked={showComparison} onChange={onToggle} /> Compare steady surge projection
+                </label>
+              )}
+            </div>
+
+            <div className="details-content">
+              <p>{selection.reason}</p>
+              <p>{outlook.explanationSource === 'fallback' ? 'Calculated summary' : 'Gemini 3.8 Flash explanation'} · Limited confidence is not a calibrated probability of flooding.</p>
+              {outlook.evidence.map((e) => (
                 <p key={e.id}>{e.text}</p>
               ))}
-            <ul>
-              {outlook.limitations.map((s) => (
-                <li key={s}>{s}</li>
-              ))}
-            </ul>
-            <p>Sources: {outlook.sources.join("; ")}.</p>
+
+              {outlook.validation && (
+                <details className="outlook-sub-details">
+                  <summary>Statistical Model Validation & Error Metrics</summary>
+                  <div className="sub-content">
+                    <p>
+                      Chronological holdout:{" "}
+                      {outlook.validation.testStart.slice(0, 10)} to{" "}
+                      {outlook.validation.testEnd.slice(0, 10)}.
+                    </p>
+                    {outlook.leadValidation && (
+                      <div className="forecast-table-wrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Lead</th>
+                              <th>Model error</th>
+                              <th>Steady error</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {outlook.leadValidation.map((p) => (
+                              <tr key={p.leadHours}>
+                                <th>{p.leadHours}h</th>
+                                <td>{p.modelMaeFt?.toFixed(2) ?? 'Unavailable'} ft</td>
+                                <td>{p.persistenceMaeFt?.toFixed(2) ?? 'Unavailable'} ft</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {selection.extensionMethod && outlook.extension && !outlook.tail && (
+                      <>
+                        <p>Longer-range residual outlook</p>
+                        <div className="forecast-table-wrap">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Lead</th>
+                                <th>Forecast error</th>
+                                <th>Steady error</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {outlook.extension.leadValidation.map((p) => (
+                                <tr key={p.leadHours}>
+                                  <th>{p.leadHours}h{p.method === 'steady-residual' ? ' · Steady' : ''}</th>
+                                  <td>{p.modelMaeFt?.toFixed(2) ?? 'Unavailable'} ft</td>
+                                  <td>{p.persistenceMaeFt?.toFixed(2) ?? 'Unavailable'} ft</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    )}
+                    {selection.tailMethod && outlook.tail && (
+                      <>
+                        <p>
+                          History-based outlook through {eventDate(selection.totalPoints.at(-1)!.t)}, {eventTime(selection.totalPoints.at(-1)!.t)} ET. {outlook.tail.weatherSupportedUntil ? `Forecast weather contributes through ${eventDate(new Date(outlook.tail.weatherSupportedUntil))}.` : 'The longer outlook uses historical tide and residual patterns.'}
+                        </p>
+                        <div className="forecast-table-wrap">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Ahead</th>
+                                <th>History error</th>
+                                <th>Weather error</th>
+                                <th>Steady error</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {outlook.tail.summary.validationLeads.filter((p) => p.leadHours >= 24).map((p) => (
+                                <tr key={p.leadHours}>
+                                  <th>{p.leadHours}h</th>
+                                  <td>{p.historicalMaeFt === null ? 'Unavailable' : `${p.historicalMaeFt.toFixed(2)} ft`}</td>
+                                  <td>{p.weatherMaeFt === null ? 'Unavailable' : `${p.weatherMaeFt.toFixed(2)} ft`}</td>
+                                  <td>{p.persistenceMaeFt === null ? 'Unavailable' : `${p.persistenceMaeFt.toFixed(2)} ft`}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    )}
+                    {!outlook.leadValidation && (
+                      <div className="forecast-table-wrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Holdout metric</th>
+                              <th>Weather model</th>
+                              <th>Tides only</th>
+                              <th>Persistence</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(
+                              [
+                                ["maeFt", "Water level MAE (ft)"],
+                                ["peakMaeFt", "Daily peak MAE (ft)"],
+                                ["onsetMaeMinutes", "Onset MAE (min)"],
+                                ["durationMaeMinutes", "Duration MAE (min)"],
+                                ["hits", "Detected events"],
+                                ["misses", "Missed events"],
+                                ["falseAlarms", "False alarms"],
+                              ] as const
+                            ).map(([key, label]) => (
+                              <tr key={key}>
+                                <th>{label}</th>
+                                {(["model", "tideOnly", "persistence"] as const).map(
+                                  (method) => (
+                                    <td key={method}>
+                                      {outlook.validation![method][key]?.toFixed(
+                                        key.endsWith("Ft") ? 2 : 0,
+                                      ) ?? "Unavailable"}
+                                    </td>
+                                  ),
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    <p>{outlook.validation.limitation}</p>
+                  </div>
+                </details>
+              )}
+
+              <ul>
+                {outlook.limitations.map((s) => (
+                  <li key={s}>{s}</li>
+                ))}
+              </ul>
+              <p>Sources: {outlook.sources.join("; ")}.</p>
+            </div>
           </details>
         </>
       ) : (

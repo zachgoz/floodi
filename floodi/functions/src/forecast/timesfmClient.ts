@@ -27,7 +27,7 @@ export interface TimesFmPredictionResult {
   q10?: number[];
   q50?: number[];
   q90?: number[];
-  engine: 'vertex-ai-timesfm' | 'bigquery-ai-forecast';
+  engine: 'vertex-ai-timesfm' | 'bigquery-ai-forecast' | 'noaa-etss-hybrid';
 }
 
 /**

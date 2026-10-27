@@ -102,22 +102,79 @@
 }
 .surge-svg:focus-visible { outline:2px solid var(--ion-color-primary); outline-offset:3px; }
 
-.dashboard-outlook-card.forecast-panel { padding:16px; margin-bottom:16px; border-radius:16px; }
-.dashboard-outlook-card .forecast-panel-heading { gap:8px; }
-.dashboard-outlook-card .outlook-risk-label { margin:4px 0 0; color:var(--dash-title-color, var(--ion-text-color)); font-size:var(--dash-type-body, .875rem); font-weight:600; }
-.dashboard-outlook-card .outlook-period { margin:8px 0 4px; font-size:var(--dash-type-body, .875rem); line-height:1.4; }
-.dashboard-outlook-card .forecast-caption { margin:4px 0; font-size:var(--dash-type-label, .75rem); }
-.dashboard-outlook-card details { margin-top:4px; }
-.dashboard-outlook-card summary { display:flex; align-items:center; min-height:44px; padding:8px 0; }
-.dashboard-outlook-card .confidence-badge { white-space:normal; text-align:center; }
-.dashboard-outlook-card summary:focus-visible { outline:2px solid var(--ion-color-primary); outline-offset:2px; border-radius:4px; }
+.dashboard-outlook-card.forecast-panel {
+  padding: 20px 22px;
+  margin-bottom: 20px;
+  border-radius: 20px;
+  background: var(--dash-card-bg, var(--ion-card-background, #fff));
+  border: 1px solid var(--chart-grid, rgba(220, 228, 233, 0.6));
+  box-shadow: 0 4px 20px rgba(22, 54, 73, 0.05);
+}
+.dashboard-outlook-card .forecast-panel-heading {
+  gap: 12px;
+  align-items: flex-start;
+}
+.dashboard-outlook-card .outlook-risk-label {
+  margin: 6px 0 0;
+  color: var(--dash-title-color, var(--ion-text-color));
+  font-size: var(--dash-type-title, 1.05rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.dashboard-outlook-card .outlook-period {
+  margin: 10px 0 6px;
+  font-size: var(--dash-type-body, 0.9rem);
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--ion-text-color);
+}
+.dashboard-outlook-card .forecast-caption {
+  margin: 4px 0 10px;
+  font-size: var(--dash-type-label, 0.75rem);
+  color: var(--dash-subtitle-color, #667989);
+}
+.dashboard-outlook-card .confidence-badge {
+  white-space: normal;
+  text-align: center;
+}
+
+/* Quick Model Controls Card */
+.outlook-models-card {
+  margin: 14px 0;
+  padding: 14px 16px;
+  background: rgba(var(--ion-color-primary-rgb), 0.04);
+  border: 1px solid rgba(var(--ion-color-primary-rgb), 0.15);
+  border-radius: 14px;
+}
+.outlook-section-header {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dash-subtitle-color, #667989);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.outlook-section-header .section-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ion-color-primary);
+}
 
 .challenger-toggle-container {
-  margin: 12px 0 16px;
+  margin: 8px 0;
   padding: 12px 14px;
   background: rgba(132, 98, 191, 0.08);
-  border: 1px solid rgba(132, 98, 191, 0.25);
+  border: 1px solid rgba(132, 98, 191, 0.28);
   border-radius: 12px;
+  transition: all 0.2s ease;
+}
+.challenger-toggle-container:hover {
+  background: rgba(132, 98, 191, 0.12);
+  border-color: rgba(132, 98, 191, 0.4);
 }
 .challenger-toggle {
   display: flex;
@@ -156,4 +213,68 @@
   font-size: 0.75rem;
   color: var(--dash-subtitle-color, #667989);
 }
+
+/* Technical Details Disclosure */
+.dashboard-outlook-card details {
+  margin-top: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--chart-grid, #e2e8f0);
+  background: var(--dash-card-bg, rgba(248, 250, 252, 0.5));
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+.dashboard-outlook-card details[open] {
+  background: var(--dash-card-bg, #fff);
+  box-shadow: 0 4px 16px rgba(22, 54, 73, 0.04);
+}
+.dashboard-outlook-card summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 650;
+  font-size: 0.85rem;
+  color: var(--dash-title-color);
+  user-select: none;
+}
+.dashboard-outlook-card summary:focus-visible {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.dashboard-outlook-card details .details-content {
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--chart-grid, #e2e8f0);
+}
+.details-content p {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin: 6px 0;
+  color: var(--ion-text-color);
+}
+.details-content .outlook-tech-note {
+  font-size: 0.75rem;
+  color: var(--dash-subtitle-color, #667989);
+  margin: 4px 0 10px;
+}
+
+/* Compact Holdout & Benchmarking Sub-Drawer */
+.outlook-sub-details {
+  margin-top: 10px !important;
+  border: 1px solid var(--chart-grid, #edf2f7) !important;
+  border-radius: 10px !important;
+  background: rgba(241, 245, 249, 0.5) !important;
+}
+.outlook-sub-details summary {
+  padding: 8px 12px !important;
+  min-height: 36px !important;
+  font-size: 0.78rem !important;
+  color: var(--dash-subtitle-color, #667989) !important;
+}
+.outlook-sub-details .sub-content {
+  padding: 8px 12px 12px;
+}
+
 

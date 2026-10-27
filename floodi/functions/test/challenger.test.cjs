@@ -185,8 +185,8 @@ test('runTimesFmChallenger handles TimesFM failure gracefully without throwing',
     },
   };
 
-  // Must NOT throw
-  const doc = await runTimesFmChallenger({
+  // 1. When NOAA surge is available, it gracefully falls back to noaa-etss-hybrid
+  const hybridDoc = await runTimesFmChallenger({
     db,
     siteId: '30046',
     thresholdFt: 5.75,
@@ -194,8 +194,29 @@ test('runTimesFmChallenger handles TimesFM failure gracefully without throwing',
     recentResidual,
     tide: [{ t: issuedAt, v: 3.5 }],
     timesfmClient: failingClient,
+    noaaForecastProvider: async () => ({
+      station: 'ncwrit',
+      generatedAt: issuedAt.toISOString(),
+      points: [{ t: issuedAt.toISOString(), surgeFt: 1.2 }],
+    }),
   });
 
-  assert.equal(doc, null);
-  assert.equal(db.store.size, 0);
+  assert.equal(hybridDoc.status, 'available');
+  assert.equal(hybridDoc.engine, 'noaa-etss-hybrid');
+  assert.equal(hybridDoc.points.length, 48);
+
+  // 2. When both TimesFM and NOAA surge fail, it handles gracefully without throwing and returns null
+  const nullDoc = await runTimesFmChallenger({
+    db,
+    siteId: '30046',
+    thresholdFt: 5.75,
+    issuedAt,
+    recentResidual,
+    tide: [{ t: issuedAt, v: 3.5 }],
+    timesfmClient: failingClient,
+    noaaForecastProvider: async () => null,
+  });
+
+  assert.equal(nullDoc, null);
 });
+

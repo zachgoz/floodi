@@ -307,8 +307,32 @@ export const floodChallenger = onRequest(
     }
     try {
       const snap = await db.doc(`locations/${SITE.id}/forecast_challengers/timesfm-3/outlook/current`).get();
-      const data = snap.data();
+      let data = snap.data();
       if (!snap.exists || !data || data.status !== 'available') {
+        const outlookSnap = await db.doc(`locations/${SITE.id}/outlook/current`).get();
+        const outlookData = outlookSnap.data();
+        if (outlookSnap.exists && outlookData && Array.isArray(outlookData.points) && outlookData.points.length > 0) {
+          const now = new Date();
+          const tidePoints = outlookData.points.map((p: any) => ({ t: new Date(p.t), v: Number(p.tideFt) }));
+          const currentResidual = Number(outlookData.currentResidualFt ?? 0.5);
+          const historyResidual = Array.from({ length: 97 }, (_, idx) => ({
+            t: new Date(now.getTime() - (96 - idx) * 30 * 60_000),
+            v: currentResidual,
+          }));
+          const generated = await runTimesFmChallenger({
+            db,
+            siteId: SITE.id,
+            thresholdFt: SITE.thresholdFt,
+            issuedAt: now,
+            recentResidual: historyResidual,
+            tide: tidePoints,
+          });
+          if (generated) {
+            data = generated as any;
+          }
+        }
+      }
+      if (!data || data.status !== 'available') {
         res.status(503).json({ error: "Current challenger outlook unavailable" });
         return;
       }
