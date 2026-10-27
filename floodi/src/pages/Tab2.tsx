@@ -643,6 +643,8 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                             ? 'Purple dashed line shows the TimesFM-3 foundation model combined with NOAA ETSS storm surge guidance and 80% confidence interval. Primary operational forecast remains in blue.'
                             : undefined
                         }
+                        showChallenger={showChallengerComparison}
+                        onToggleChallenger={() => setShowChallengerComparison(v => !v)}
                         deltaPoints={processedData?.deltaPoints || []}
                         timeOffsetMins={processedData?.timeOffsetMins || 0}
                         surgeForecastPoints={selectedForecast.residualPoints}

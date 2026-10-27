@@ -241,3 +241,68 @@
 
 .hydrograph-subtitle.is-live, .is-live .viewing-time-pill { color:var(--ion-color-primary); }
 .viewing-time-pill-button { min-height:44px; display:inline-flex; align-items:center; }
+
+.chart-legend-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.hydrograph-challenger-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: rgba(132, 98, 191, 0.08);
+  border: 1px solid rgba(132, 98, 191, 0.3);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-right: 4px;
+}
+
+.hydrograph-challenger-toggle:hover {
+  background: rgba(132, 98, 191, 0.16);
+  border-color: rgba(132, 98, 191, 0.5);
+  transform: translateY(-1px);
+}
+
+.hydrograph-challenger-toggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: #8462bf;
+  margin: 0;
+  cursor: pointer;
+}
+
+.hydrograph-challenger-toggle .challenger-toggle-text {
+  font-weight: 600;
+  color: var(--ion-text-color, #1e293b);
+  font-size: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+.hydrograph-challenger-toggle .challenger-badge-mini {
+  font-size: 0.62rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #8462bf;
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 600px) {
+  .chart-legend-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .chart-legend-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

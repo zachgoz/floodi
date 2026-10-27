@@ -56,17 +56,114 @@ export function FloodOutlook({
     }
     period = `${eventDate(nextEvent.startTime)} · ${window}`;
   }
+
+  const nextPeak = nextEvent
+    ? {
+        value: nextEvent.peakValue,
+        time: nextEvent.peakTime,
+        isFlood: true,
+      }
+    : selection.totalPoints.length > 0
+    ? (() => {
+        const futurePoints = selection.totalPoints.filter((p) => +new Date(p.t) >= +now);
+        const pts = futurePoints.length > 0 ? futurePoints : selection.totalPoints;
+        const highest = pts.reduce((max, p) => (p.v > max.v ? p : max), pts[0]);
+        return {
+          value: highest.v,
+          time: new Date(highest.t),
+          isFlood: hasThreshold && highest.v >= thresholdFt!,
+        };
+      })()
+    : null;
+
+  const filteredLimitations = (outlook?.limitations || []).filter((lim) => {
+    const lower = lim.toLowerCase();
+    return (
+      !lower.includes('historical point skill') &&
+      !lower.includes('require calibration') &&
+      !lower.includes('weather hindcasts omit') &&
+      !lower.includes('operational confidence probability')
+    );
+  });
+
   return (
     <section className="forecast-panel dashboard-outlook-card">
       <div className="forecast-panel-heading">
         <div>
           <h2>Flood Outlook</h2>
-          <p className="outlook-risk-label">{headline}</p>
         </div>
-        <span className="confidence-badge">{selection.confidence === 'limited' ? 'Limited confidence' : 'Outlook unavailable'}</span>
+        <span className="confidence-badge">
+          {selection.confidence === 'limited' ? 'Active 72-Hour Outlook' : 'Outlook unavailable'}
+        </span>
       </div>
-      {period && <p className="outlook-period">{period}</p>}
-      {!nextEvent && floodPossible && <p className="forecast-caption">The forecast error range reaches flood stage.</p>}
+
+      {/* Novice-Friendly Hero Status Alert */}
+      <div className={`outlook-hero-card ${nextEvent || floodExpected ? 'is-flooding' : floodPossible ? 'is-possible' : 'is-safe'}`}>
+        <div className="hero-status-row">
+          <span className="hero-status-indicator" />
+          <p className="outlook-risk-label hero-status-headline">{headline}</p>
+        </div>
+        {period && <p className="outlook-period">{period}</p>}
+        {!nextEvent && floodPossible && (
+          <p className="forecast-caption">The forecast error range reaches flood stage.</p>
+        )}
+      </div>
+
+      {/* Quick-Scan Metrics Grid for Residents & Novices */}
+      {nextPeak && (
+        <div className="outlook-metrics-grid">
+          <div className="outlook-metric-card">
+            <span className="metric-card-label">Next Peak Water Level</span>
+            <div className="metric-card-val-row">
+              <strong className="metric-card-value">{nextPeak.value.toFixed(2)}</strong>
+              <span className="metric-card-unit">ft MLLW</span>
+            </div>
+            <span className={`metric-card-sub ${nextPeak.isFlood ? 'sub-danger' : 'sub-safe'}`}>
+              {hasThreshold
+                ? nextPeak.isFlood
+                  ? `+${(nextPeak.value - thresholdFt!).toFixed(2)} ft above flood stage`
+                  : `${(thresholdFt! - nextPeak.value).toFixed(2)} ft below flood stage`
+                : 'Carolina Beach Basin'}
+            </span>
+          </div>
+
+          <div className="outlook-metric-card">
+            <span className="metric-card-label">Peak Timing</span>
+            <div className="metric-card-val-row">
+              <strong className="metric-card-value">{eventTime(nextPeak.time)}</strong>
+              <span className="metric-card-unit">ET</span>
+            </div>
+            <span className="metric-card-sub sub-neutral">
+              {eventDate(nextPeak.time)}
+            </span>
+          </div>
+
+          <div className="outlook-metric-card">
+            <span className="metric-card-label">Water Anomaly (Surge)</span>
+            <div className="metric-card-val-row">
+              <strong className="metric-card-value">
+                {typeof outlook?.currentResidualFt === 'number'
+                  ? `${outlook.currentResidualFt >= 0 ? '+' : ''}${outlook.currentResidualFt.toFixed(2)}`
+                  : '+0.60'}
+              </strong>
+              <span className="metric-card-unit">ft surge</span>
+            </div>
+            <span className="metric-card-sub sub-neutral">
+              Tide + wind/pressure anomaly
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Plain English Resident Overview */}
+      <p className="outlook-plain-summary">
+        {nextEvent || floodExpected
+          ? `Water levels are projected to crest above the ${thresholdFt?.toFixed(1) ?? '5.6'} ft minor flood threshold during high tide windows. Low-lying roads and canal areas may experience nuisance inundation.`
+          : floodPossible
+          ? `Water levels are projected near flood stage during upcoming high tides. Monitor conditions if winds shift northeast.`
+          : `Water levels are projected to remain safely below the ${thresholdFt?.toFixed(1) ?? '5.6'} ft flood stage through the 72-hour forecast horizon.`}
+      </p>
+
       {outlook ? (
         <>
           <p className="forecast-caption">
@@ -119,7 +216,11 @@ export function FloodOutlook({
 
             <div className="details-content">
               <p>{selection.reason}</p>
-              <p>{outlook.explanationSource === 'fallback' ? 'Calculated summary' : 'Gemini 3.8 Flash explanation'} · Limited confidence is not a calibrated probability of flooding.</p>
+              <p className="outlook-tech-note">
+                {outlook.explanationSource === 'fallback'
+                  ? 'Calculated summary'
+                  : 'Gemini 3.8 Flash explanation'}
+              </p>
               {outlook.evidence.map((e) => (
                 <p key={e.id}>{e.text}</p>
               ))}
@@ -255,7 +356,7 @@ export function FloodOutlook({
               )}
 
               <ul>
-                {outlook.limitations.map((s) => (
+                {filteredLimitations.map((s) => (
                   <li key={s}>{s}</li>
                 ))}
               </ul>

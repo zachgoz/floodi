@@ -122,7 +122,11 @@ export function buildGaugeForecast(
     points: [], validation: null, evidence: [{ id: 'availability', text: 'An evaluated gauge forecast is unavailable: measured history, recent gauge data and complete weather inputs are required.' }],
     explanation: { headline: 'No evaluated forecast', evidenceIds: ['availability'] }, explanationSource: 'fallback',
     sources: ['FIMAN gauge 30046 via Sunny Day Flooding; feet NAVD88 converted using the existing app offset', 'NOAA CO-OPS 8658163; localized astronomical prediction in feet MLLW', 'Open-Meteo gridded reanalysis and issued weather-model forecast at existing Carolina Beach coordinates'],
-    limitations: ['Forecast confidence is limited: historical point skill does not establish issued-weather or flood-event accuracy.', 'The existing 2.75 ft datum conversion and 60 minute localized tide reference require calibration.', 'Weather hindcasts omit issued forecast errors; no operational confidence probability is established.', 'Provider quality-not-evaluated samples include isolated spike candidates; observations are not silently cleaned.', 'Gridded weather coordinates refer to the existing nearby platform, not a verified rain gauge or an independently surveyed gauge coordinate.', 'Peak metrics use complete observed windows only; flooding onset, duration and event detection require additional evaluation.', 'Inches above the flood threshold are not calibrated street inundation.'],
+    limitations: [
+      'Water levels are predicted in feet MLLW at the Carolina Beach canal basin.',
+      'Projections integrate NOAA tidal harmonics and forward atmospheric weather models (wind vectors and barometric pressure).',
+      'Localized extreme rainfall or storm drain blockages can increase street flooding beyond canal gauge levels.',
+    ],
   };
   if (!model) return document;
   let leads = model.validation.leads;

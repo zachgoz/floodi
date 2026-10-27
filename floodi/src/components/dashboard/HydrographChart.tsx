@@ -36,6 +36,8 @@ interface HydrographChartProps extends ChartViewerProps {
   experimentalDescription?: string;
   forecastLabel?: string;
   forecastDescription?: string;
+  showChallenger?: boolean;
+  onToggleChallenger?: () => void;
   controls?: React.ReactNode;
   children?: React.ReactNode;
 }
@@ -56,6 +58,8 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
   experimentalDescription,
   forecastLabel = 'Forecast',
   forecastDescription,
+  showChallenger,
+  onToggleChallenger,
   controls,
   children,
   ...chartProps
@@ -104,16 +108,31 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
           {chartProps.observedPoints?.some(p => p.estimated) && <span><i className="legend-line estimated-line" />Estimated</span>}
           <span><i className="legend-line tide-line" />Tide</span>
           <span><i className="legend-line forecast-line" />{forecastLabel}</span>
-          {chartProps.experimentalPoints?.length ? <span><i className="legend-line experimental-line" />{experimentalLabel}</span> : null}
+          {chartProps.experimentalPoints?.length && !onToggleChallenger ? <span><i className="legend-line experimental-line" />{experimentalLabel}</span> : null}
         </div>
-        <ChartInfo label="About water level forecasts">
-          <p>Water levels in feet MLLW. Line colors indicate flood thresholds. Both charts share their time window.</p>
-          {forecastDescription && <p>{forecastDescription}</p>}
-          {(chartProps.experimentalLower?.length || 0) > 1 && <p>Thin dashed lines show historical error bounds; weather forecast uncertainty can add further error.</p>}
-          {warnings?.map((warning, i) => <p key={i}>{warning}</p>)}
-          {chartProps.experimentalPoints?.length ? <p>{experimentalDescription || 'Purple: optional comparison. Flood cards use the primary forecast.'}</p> : null}
-          {onResetView && <button className="chart-info-action" onClick={onResetView}>Reset to default view</button>}
-        </ChartInfo>
+        <div className="chart-legend-actions">
+          {onToggleChallenger && (
+            <label className="hydrograph-challenger-toggle" title="Compare TimesFM-3 AI Foundation Model + NOAA ETSS storm surge guidance">
+              <input
+                type="checkbox"
+                aria-label="Compare TimesFM-3 Challenger"
+                checked={!!showChallenger}
+                onChange={onToggleChallenger}
+              />
+              <i className="legend-line experimental-line" />
+              <span className="challenger-toggle-text">TimesFM-3 Challenger</span>
+              <span className="challenger-badge-mini">AI+ETSS</span>
+            </label>
+          )}
+          <ChartInfo label="About water level forecasts">
+            <p>Water levels in feet MLLW. Line colors indicate flood thresholds. Both charts share their time window.</p>
+            {forecastDescription && <p>{forecastDescription}</p>}
+            {(chartProps.experimentalLower?.length || 0) > 1 && <p>Thin dashed lines show uncertainty bounds; weather forecast uncertainty can add further error.</p>}
+            {warnings?.map((warning, i) => <p key={i}>{warning}</p>)}
+            {chartProps.experimentalPoints?.length ? <p>{experimentalDescription || 'Purple: optional TimesFM-3 challenger comparison.'}</p> : null}
+            {onResetView && <button className="chart-info-action" onClick={onResetView}>Reset to default view</button>}
+          </ChartInfo>
+        </div>
       </div>
       <div className="hydrograph-chart-wrapper">
         {loading && (
