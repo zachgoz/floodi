@@ -146,37 +146,35 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   } = useChallengerOutlook(config.locationId);
   const [showSteadyComparison, setShowSteadyComparison] = useState(false);
   const [showChallengerComparison, setShowChallengerComparison] = useState(false);
+  const FORECAST_INTERPOLATE_GAP_MS = 3 * 3600_000; // 3 hours to safely bridge 30-min to 1-hour model intervals and anchor observations
+
   const anchoredChallengerResidual = useMemo(() => {
     if (!challengerResidualPoints.length) return [];
     const anchor = processedData?.deltaPoints.at(-1);
-    if (anchor && +challengerResidualPoints[0].t > +anchor.t) {
-      return [anchor, ...challengerResidualPoints];
-    }
-    return challengerResidualPoints;
+    if (!anchor) return challengerResidualPoints;
+    const futureChallenger = challengerResidualPoints.filter(p => +p.t > +anchor.t);
+    return futureChallenger.length ? [anchor, ...futureChallenger] : [anchor];
   }, [challengerResidualPoints, processedData]);
   const anchoredChallengerTotal = useMemo(() => {
     if (!challengerTotalPoints.length) return [];
     const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
-    if (anchor && +challengerTotalPoints[0].t > +anchor.t) {
-      return [anchor, ...challengerTotalPoints];
-    }
-    return challengerTotalPoints;
+    if (!anchor) return challengerTotalPoints;
+    const futureChallenger = challengerTotalPoints.filter(p => +p.t > +anchor.t);
+    return futureChallenger.length ? [anchor, ...futureChallenger] : [anchor];
   }, [challengerTotalPoints, processedData]);
   const anchoredChallengerLower = useMemo(() => {
     if (!challengerLowerPoints.length) return [];
     const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
-    if (anchor && +challengerLowerPoints[0].t > +anchor.t) {
-      return [anchor, ...challengerLowerPoints];
-    }
-    return challengerLowerPoints;
+    if (!anchor) return challengerLowerPoints;
+    const futureChallenger = challengerLowerPoints.filter(p => +p.t > +anchor.t);
+    return futureChallenger.length ? [anchor, ...futureChallenger] : [anchor];
   }, [challengerLowerPoints, processedData]);
   const anchoredChallengerUpper = useMemo(() => {
     if (!challengerUpperPoints.length) return [];
     const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
-    if (anchor && +challengerUpperPoints[0].t > +anchor.t) {
-      return [anchor, ...challengerUpperPoints];
-    }
-    return challengerUpperPoints;
+    if (!anchor) return challengerUpperPoints;
+    const futureChallenger = challengerUpperPoints.filter(p => +p.t > +anchor.t);
+    return futureChallenger.length ? [anchor, ...futureChallenger] : [anchor];
   }, [challengerUpperPoints, processedData]);
   const patternProjection = useMemo(() => {
     if (!processedData) return null;
@@ -186,7 +184,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   const surgeEstimatePoints = useMemo(() => {
     if (!processedData) return [];
     const estimates = processedData.observedPoints.filter(p => p.estimated).flatMap(p => {
-      const tide = interpolate(processedData.predictedPoints, p.t);
+      const tide = interpolate(processedData.predictedPoints, p.t, FORECAST_INTERPOLATE_GAP_MS);
       return tide === null ? [] : [{ ...p, v: p.v - tide }];
     });
     const anchor = processedData.deltaPoints.at(-1);
@@ -223,9 +221,12 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     // 1. High-resolution 6-minute operational points within the TimesFM/ETSS window
     const tideInWindow = processedData.predictedPoints.filter(p => +p.t > startMs && +p.t <= chalEndMs);
     for (const tp of tideInWindow) {
-      const res = interpolate(anchoredChallengerResidual, tp.t);
+      const res = interpolate(anchoredChallengerResidual, tp.t, FORECAST_INTERPOLATE_GAP_MS);
       if (res !== null) {
         points.push({ t: tp.t, v: Math.round((tp.v + res) * 1000) / 1000 });
+      } else {
+        const fallbackRes = points.length ? (points.at(-1)!.v - tp.v) : (processedData.effectiveOffset ?? 0.5);
+        points.push({ t: tp.t, v: Math.round((tp.v + fallbackRes) * 1000) / 1000 });
       }
     }
 
@@ -233,12 +234,12 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     const futureTides = processedData.predictedPoints.filter(p => +p.t > chalEndMs);
     if (futureTides.length > 0) {
       const baselineResidual = Number.isFinite(processedData.effectiveOffset) ? processedData.effectiveOffset : 0.5;
-      const endResidual = interpolate(anchoredChallengerResidual, new Date(chalEndMs)) ?? baselineResidual;
+      const endResidual = interpolate(anchoredChallengerResidual, new Date(chalEndMs), FORECAST_INTERPOLATE_GAP_MS) ?? baselineResidual;
       const lastNearVal = points.length ? points.at(-1)!.v : (futureTides[0].v + endResidual);
 
       for (const tp of futureTides) {
         const hoursPast = (+tp.t - chalEndMs) / 3600_000;
-        const selectedPt = interpolate(selectedForecast.totalPoints, tp.t);
+        const selectedPt = interpolate(selectedForecast.totalPoints, tp.t, FORECAST_INTERPOLATE_GAP_MS);
         if (selectedPt !== null) {
           const firstLongVal = selectedForecast.totalPoints.find(p => +p.t > chalEndMs)?.v ?? selectedPt;
           const offset = lastNearVal - firstLongVal;
@@ -268,9 +269,12 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     // 1. High-resolution 6-minute surge in TimesFM/ETSS window
     const tideInWindow = processedData?.predictedPoints?.filter(p => +p.t > startMs && +p.t <= chalEndMs) || [];
     for (const tp of tideInWindow) {
-      const res = interpolate(anchoredChallengerResidual, tp.t);
+      const res = interpolate(anchoredChallengerResidual, tp.t, FORECAST_INTERPOLATE_GAP_MS);
       if (res !== null) {
         surge.push({ t: tp.t, v: Math.round(res * 1000) / 1000 });
+      } else {
+        const fallbackRes = surge.length ? surge.at(-1)!.v : (processedData?.effectiveOffset ?? 0.5);
+        surge.push({ t: tp.t, v: Math.round(fallbackRes * 1000) / 1000 });
       }
     }
     if (surge.length <= 1) {
@@ -281,11 +285,11 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > chalEndMs);
     if (futureTides.length > 0) {
       const baselineResidual = Number.isFinite(processedData?.effectiveOffset) ? processedData!.effectiveOffset : 0.5;
-      const endResidual = interpolate(anchoredChallengerResidual, new Date(chalEndMs)) ?? baselineResidual;
+      const endResidual = interpolate(anchoredChallengerResidual, new Date(chalEndMs), FORECAST_INTERPOLATE_GAP_MS) ?? baselineResidual;
 
       for (const tp of futureTides) {
         const hoursPast = (+tp.t - chalEndMs) / 3600_000;
-        const selectedRes = interpolate(selectedForecast.residualPoints, tp.t);
+        const selectedRes = interpolate(selectedForecast.residualPoints, tp.t, FORECAST_INTERPOLATE_GAP_MS);
         if (selectedRes !== null) {
           const offset = endResidual - selectedRes;
           const decay = Math.exp(-hoursPast / 24);
@@ -316,12 +320,13 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     }
     const chalEndMs = +challengerLowerPoints.at(-1)!.t;
     const bounds: Point[] = [...anchoredChallengerLower];
+    const totalMap = new Map(operationalForecastPoints.map(p => [+p.t, p.v]));
 
     const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > chalEndMs);
     for (const tp of futureTides) {
       const hoursPast = (+tp.t - chalEndMs) / 3600_000;
       const uncertainty = Math.min(1.2, 0.8 + 0.001 * hoursPast);
-      const estTotal = operationalForecastPoints.find(p => +p.t === +tp.t)?.v ?? tp.v;
+      const estTotal = totalMap.get(+tp.t) ?? tp.v;
       bounds.push({ t: tp.t, v: Math.round((estTotal - uncertainty) * 1000) / 1000 });
     }
     return bounds;
@@ -333,12 +338,13 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     }
     const chalEndMs = +challengerUpperPoints.at(-1)!.t;
     const bounds: Point[] = [...anchoredChallengerUpper];
+    const totalMap = new Map(operationalForecastPoints.map(p => [+p.t, p.v]));
 
     const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > chalEndMs);
     for (const tp of futureTides) {
       const hoursPast = (+tp.t - chalEndMs) / 3600_000;
       const uncertainty = Math.min(1.2, 0.8 + 0.001 * hoursPast);
-      const estTotal = operationalForecastPoints.find(p => +p.t === +tp.t)?.v ?? tp.v;
+      const estTotal = totalMap.get(+tp.t) ?? tp.v;
       bounds.push({ t: tp.t, v: Math.round((estTotal + uncertainty) * 1000) / 1000 });
     }
     return bounds;
