@@ -11,6 +11,7 @@ import { FloodOutlook } from 'src/components/dashboard/FloodOutlook';
 import { useFloodOutlook } from 'src/components/dashboard/useFloodOutlook';
 import { useChallengerOutlook } from 'src/components/dashboard/useChallengerOutlook';
 import type { Point } from 'src/components/Tab2/types';
+import { fitResidualHarmonics } from 'src/utils/residualHarmonics';
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   IonContent,
@@ -205,55 +206,21 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   }), [outlook, forecastCompatible, outlookComparison, processedData, config.offset.mode]);
   const isTimesFmPrimary = Boolean(challenger && (challengerTotalPoints.length > 0 || challengerResidualPoints.length > 0));
 
-  // High-resolution 6-minute TimesFM AI + NOAA ETSS operational forecast
-  // that seamlessly extends to the full NOAA prediction horizon (up to 21 days)
-  const operationalForecastPoints = useMemo(() => {
-    if (!isTimesFmPrimary || !challengerResidualPoints.length || !processedData?.predictedPoints?.length) {
-      return selectedForecast.totalPoints;
-    }
-    const chalEndMs = +challengerResidualPoints.at(-1)!.t;
-    const anchor = processedData.observedPoints.findLast(p => !p.estimated);
-    const startMs = anchor ? +anchor.t : Date.now();
+  // Dynamic estuarine tidal harmonics (M2 12.4206h lunar semi-diurnal & S1 24h diurnal)
+  // calibrated from recent observed water level residuals.
+  const estuarineHarmonicDelta = useMemo(() => {
+    if (!processedData?.deltaPoints?.length) return () => 0;
+    const anchor = processedData.deltaPoints.at(-1);
+    if (!anchor) return () => 0;
+    return fitResidualHarmonics(processedData.deltaPoints, anchor.t);
+  }, [processedData?.deltaPoints]);
 
-    const points: Point[] = [];
-    if (anchor) points.push(anchor);
-
-    // 1. High-resolution 6-minute operational points within the TimesFM/ETSS window
-    const tideInWindow = processedData.predictedPoints.filter(p => +p.t > startMs && +p.t <= chalEndMs);
-    for (const tp of tideInWindow) {
-      const res = interpolate(anchoredChallengerResidual, tp.t, FORECAST_INTERPOLATE_GAP_MS);
-      if (res !== null) {
-        points.push({ t: tp.t, v: Math.round((tp.v + res) * 1000) / 1000 });
-      } else {
-        const fallbackRes = points.length ? (points.at(-1)!.v - tp.v) : (processedData.effectiveOffset ?? 0.5);
-        points.push({ t: tp.t, v: Math.round((tp.v + fallbackRes) * 1000) / 1000 });
-      }
-    }
-
-    // 2. Beyond TimesFM horizon, seamlessly extend across the entire NOAA astronomical prediction horizon (up to 21 days)
-    const futureTides = processedData.predictedPoints.filter(p => +p.t > chalEndMs);
-    if (futureTides.length > 0) {
-      const baselineResidual = Number.isFinite(processedData.effectiveOffset) ? processedData.effectiveOffset : 0.5;
-      const endResidual = interpolate(anchoredChallengerResidual, new Date(chalEndMs), FORECAST_INTERPOLATE_GAP_MS) ?? baselineResidual;
-      const lastNearVal = points.length ? points.at(-1)!.v : (futureTides[0].v + endResidual);
-
-      for (const tp of futureTides) {
-        const hoursPast = (+tp.t - chalEndMs) / 3600_000;
-        const selectedPt = interpolate(selectedForecast.totalPoints, tp.t, FORECAST_INTERPOLATE_GAP_MS);
-        if (selectedPt !== null) {
-          const firstLongVal = selectedForecast.totalPoints.find(p => +p.t > chalEndMs)?.v ?? selectedPt;
-          const offset = lastNearVal - firstLongVal;
-          const decay = Math.exp(-hoursPast / 24);
-          points.push({ t: tp.t, v: Math.round((selectedPt + offset * decay) * 1000) / 1000 });
-        } else {
-          const res = baselineResidual + (endResidual - baselineResidual) * Math.exp(-hoursPast / 48);
-          points.push({ t: tp.t, v: Math.round((tp.v + res) * 1000) / 1000 });
-        }
-      }
-    }
-
-    return points;
-  }, [isTimesFmPrimary, challengerResidualPoints, anchoredChallengerResidual, processedData, selectedForecast.totalPoints]);
+  const challengerHasHarmonics = useMemo(() => {
+    if (anchoredChallengerResidual.length < 6) return false;
+    const vals = anchoredChallengerResidual.map(p => p.v);
+    const range = Math.max(...vals) - Math.min(...vals);
+    return range >= 0.18;
+  }, [anchoredChallengerResidual]);
 
   const operationalSurgePoints = useMemo(() => {
     if (!isTimesFmPrimary || !challengerResidualPoints.length) {
@@ -269,9 +236,10 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     // 1. High-resolution 6-minute surge in TimesFM/ETSS window
     const tideInWindow = processedData?.predictedPoints?.filter(p => +p.t > startMs && +p.t <= chalEndMs) || [];
     for (const tp of tideInWindow) {
-      const res = interpolate(anchoredChallengerResidual, tp.t, FORECAST_INTERPOLATE_GAP_MS);
-      if (res !== null) {
-        surge.push({ t: tp.t, v: Math.round(res * 1000) / 1000 });
+      const baseRes = interpolate(anchoredChallengerResidual, tp.t, FORECAST_INTERPOLATE_GAP_MS);
+      if (baseRes !== null) {
+        const h = challengerHasHarmonics ? 0 : estuarineHarmonicDelta(tp.t);
+        surge.push({ t: tp.t, v: Math.round((baseRes + h) * 1000) / 1000 });
       } else {
         const fallbackRes = surge.length ? surge.at(-1)!.v : (processedData?.effectiveOffset ?? 0.5);
         surge.push({ t: tp.t, v: Math.round(fallbackRes * 1000) / 1000 });
@@ -281,28 +249,54 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
       surge.push(...anchoredChallengerResidual);
     }
 
-    // 2. Beyond TimesFM horizon, extend surge across full NOAA tide horizon
+    // 2. Beyond TimesFM horizon, extend surge independently across full NOAA tide horizon (up to 21 days)
+    // Decoupled from selectedForecast.residualPoints so legacy comparison remains completely separate and distinct!
     const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > chalEndMs);
     if (futureTides.length > 0) {
       const baselineResidual = Number.isFinite(processedData?.effectiveOffset) ? processedData!.effectiveOffset : 0.5;
-      const endResidual = interpolate(anchoredChallengerResidual, new Date(chalEndMs), FORECAST_INTERPOLATE_GAP_MS) ?? baselineResidual;
+      const lastNearRes = surge.length ? surge.at(-1)!.v : baselineResidual;
 
       for (const tp of futureTides) {
         const hoursPast = (+tp.t - chalEndMs) / 3600_000;
-        const selectedRes = interpolate(selectedForecast.residualPoints, tp.t, FORECAST_INTERPOLATE_GAP_MS);
-        if (selectedRes !== null) {
-          const offset = endResidual - selectedRes;
-          const decay = Math.exp(-hoursPast / 24);
-          surge.push({ t: tp.t, v: Math.round((selectedRes + offset * decay) * 1000) / 1000 });
-        } else {
-          const res = baselineResidual + (endResidual - baselineResidual) * Math.exp(-hoursPast / 48);
-          surge.push({ t: tp.t, v: Math.round(res * 1000) / 1000 });
-        }
+        const decay = Math.exp(-hoursPast / 48);
+        const harmonicDamping = Math.exp(-hoursPast / 72);
+        const backgroundRes = baselineResidual + (lastNearRes - baselineResidual) * decay;
+        const h = estuarineHarmonicDelta(tp.t) * harmonicDamping;
+        const res = backgroundRes + h;
+        surge.push({ t: tp.t, v: Math.round(res * 1000) / 1000 });
       }
     }
 
     return surge;
-  }, [isTimesFmPrimary, challengerResidualPoints, anchoredChallengerResidual, processedData, selectedForecast.residualPoints]);
+  }, [isTimesFmPrimary, challengerResidualPoints, anchoredChallengerResidual, processedData, selectedForecast.residualPoints, challengerHasHarmonics, estuarineHarmonicDelta]);
+
+  // High-resolution 6-minute TimesFM AI + NOAA ETSS operational forecast
+  // that seamlessly extends to the full NOAA prediction horizon (up to 21 days)
+  const operationalForecastPoints = useMemo(() => {
+    if (!isTimesFmPrimary || !challengerResidualPoints.length || !processedData?.predictedPoints?.length) {
+      return selectedForecast.totalPoints;
+    }
+    const anchor = processedData.observedPoints.findLast(p => !p.estimated);
+    const startMs = anchor ? +anchor.t : Date.now();
+
+    const points: Point[] = [];
+    if (anchor) points.push(anchor);
+
+    const futureTides = processedData.predictedPoints.filter(p => +p.t > startMs);
+    const surgeMap = new Map(operationalSurgePoints.map(p => [+p.t, p.v]));
+
+    for (const tp of futureTides) {
+      const surgeVal = surgeMap.get(+tp.t) ?? interpolate(operationalSurgePoints, tp.t, FORECAST_INTERPOLATE_GAP_MS);
+      if (surgeVal !== null) {
+        points.push({ t: tp.t, v: Math.round((tp.v + surgeVal) * 1000) / 1000 });
+      } else {
+        const fallbackRes = processedData.effectiveOffset ?? 0.5;
+        points.push({ t: tp.t, v: Math.round((tp.v + fallbackRes) * 1000) / 1000 });
+      }
+    }
+
+    return points;
+  }, [isTimesFmPrimary, challengerResidualPoints, processedData, selectedForecast.totalPoints, operationalSurgePoints]);
 
   const weatherSelected = selectedForecast.method === 'weather' || selectedForecast.method === 'learned';
   const selectedBounds = useMemo(() => {
@@ -319,8 +313,19 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
       return selectedBounds.lower;
     }
     const chalEndMs = +challengerLowerPoints.at(-1)!.t;
-    const bounds: Point[] = [...anchoredChallengerLower];
+    const bounds: Point[] = [];
     const totalMap = new Map(operationalForecastPoints.map(p => [+p.t, p.v]));
+
+    const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
+    const startMs = anchor ? +anchor.t : Date.now();
+    const tideInWindow = (processedData?.predictedPoints || []).filter(p => +p.t > startMs && +p.t <= chalEndMs);
+    for (const tp of tideInWindow) {
+      const estTotal = totalMap.get(+tp.t) ?? tp.v;
+      const rawLow = interpolate(anchoredChallengerLower, tp.t, FORECAST_INTERPOLATE_GAP_MS);
+      const rawTot = interpolate(anchoredChallengerTotal, tp.t, FORECAST_INTERPOLATE_GAP_MS);
+      const spread = rawLow !== null && rawTot !== null ? Math.max(0.2, rawTot - rawLow) : 0.35;
+      bounds.push({ t: tp.t, v: Math.round((estTotal - spread) * 1000) / 1000 });
+    }
 
     const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > chalEndMs);
     for (const tp of futureTides) {
@@ -330,15 +335,26 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
       bounds.push({ t: tp.t, v: Math.round((estTotal - uncertainty) * 1000) / 1000 });
     }
     return bounds;
-  }, [isTimesFmPrimary, challengerLowerPoints, anchoredChallengerLower, selectedBounds.lower, processedData?.predictedPoints, operationalForecastPoints]);
+  }, [isTimesFmPrimary, challengerLowerPoints, anchoredChallengerLower, anchoredChallengerTotal, selectedBounds.lower, processedData?.predictedPoints, operationalForecastPoints]);
 
   const operationalUpper = useMemo(() => {
     if (!isTimesFmPrimary || !challengerUpperPoints.length) {
       return selectedBounds.upper;
     }
     const chalEndMs = +challengerUpperPoints.at(-1)!.t;
-    const bounds: Point[] = [...anchoredChallengerUpper];
+    const bounds: Point[] = [];
     const totalMap = new Map(operationalForecastPoints.map(p => [+p.t, p.v]));
+
+    const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
+    const startMs = anchor ? +anchor.t : Date.now();
+    const tideInWindow = (processedData?.predictedPoints || []).filter(p => +p.t > startMs && +p.t <= chalEndMs);
+    for (const tp of tideInWindow) {
+      const estTotal = totalMap.get(+tp.t) ?? tp.v;
+      const rawUp = interpolate(anchoredChallengerUpper, tp.t, FORECAST_INTERPOLATE_GAP_MS);
+      const rawTot = interpolate(anchoredChallengerTotal, tp.t, FORECAST_INTERPOLATE_GAP_MS);
+      const spread = rawUp !== null && rawTot !== null ? Math.max(0.2, rawUp - rawTot) : 0.35;
+      bounds.push({ t: tp.t, v: Math.round((estTotal + spread) * 1000) / 1000 });
+    }
 
     const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > chalEndMs);
     for (const tp of futureTides) {
@@ -348,11 +364,11 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
       bounds.push({ t: tp.t, v: Math.round((estTotal + uncertainty) * 1000) / 1000 });
     }
     return bounds;
-  }, [isTimesFmPrimary, challengerUpperPoints, anchoredChallengerUpper, selectedBounds.upper, processedData?.predictedPoints, operationalForecastPoints]);
+  }, [isTimesFmPrimary, challengerUpperPoints, anchoredChallengerUpper, anchoredChallengerTotal, selectedBounds.upper, processedData?.predictedPoints, operationalForecastPoints]);
 
   const operationalForecastLabel = isTimesFmPrimary ? 'Forecast (TimesFM AI + NOAA)' : selectedForecast.tailMethod || selectedForecast.extensionMethod ? 'Extended outlook' : selectedForecast.method === 'weather' ? 'Weather forecast' : selectedForecast.method === 'learned' ? 'Short-range forecast' : selectedForecast.method === 'steady' ? 'Steady forecast' : 'Tide only';
   const operationalForecastDescription = isTimesFmPrimary
-    ? 'Solid blue line shows the primary operational forecast powered by Google TimesFM foundation model combined with NOAA ETSS storm surge guidance.'
+    ? 'Solid blue line shows the primary operational forecast powered by Google TimesFM foundation model combined with NOAA ETSS storm surge guidance and localized estuarine harmonics.'
     : selectedForecast.reason;
 
   // One selected physical forecast drives both charts and every hazard calculation.

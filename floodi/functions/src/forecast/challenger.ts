@@ -279,17 +279,19 @@ export async function runTimesFmChallenger(
       };
     }
 
-    // 5. Reconstruct total forecasted water level curve
+    // 5. Reconstruct total forecasted water level curve with shallow-water estuarine harmonics
     const challengerPoints: ChallengerPoint[] = [];
     let peakPoint: ChallengerPoint | null = null;
+    const harmonicDelta = fitResidualHarmonics(historyPoints, issuedAt);
 
     for (let i = 0; i < horizonSteps; i++) {
       const t = futureDates[i].toISOString();
       const tideFt = futureTide[i];
-      const residualFt = Math.round(prediction.mean[i] * 1000) / 1000;
+      const hDelta = harmonicDelta(futureDates[i]);
+      const residualFt = Math.round((prediction.mean[i] + hDelta) * 1000) / 1000;
       const totalFt = Math.round((tideFt + residualFt) * 1000) / 1000;
-      const lowerFt = prediction.q10 ? Math.round((tideFt + prediction.q10[i]) * 1000) / 1000 : undefined;
-      const upperFt = prediction.q90 ? Math.round((tideFt + prediction.q90[i]) * 1000) / 1000 : undefined;
+      const lowerFt = prediction.q10 ? Math.round((tideFt + prediction.q10[i] + hDelta) * 1000) / 1000 : undefined;
+      const upperFt = prediction.q90 ? Math.round((tideFt + prediction.q90[i] + hDelta) * 1000) / 1000 : undefined;
       const noaaSurgeFt = noaaPoints.length ? futureNoaaSurge[i] : undefined;
 
       const pt: ChallengerPoint = {
