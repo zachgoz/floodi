@@ -84,14 +84,21 @@ export function resampleResidualGrid(
  */
 export function fitResidualHarmonics(
   history: Array<{ t: string; v: number }>,
-  anchorTime: Date
+  anchorTime: Date,
+  lookbackHours = 48
 ): (targetTime: Date) => number {
-  if (history.length < 12) {
+  const origin = anchorTime.getTime();
+  const windowStart = origin - lookbackHours * 3600_000;
+  const recent = history.filter(pt => {
+    const ms = new Date(pt.t).getTime();
+    return Number.isFinite(ms) && Number.isFinite(pt.v) && ms >= windowStart && ms <= origin + 60_000;
+  });
+  const pts = recent.length >= 12 ? recent : history;
+  if (pts.length < 12) {
     return () => 0;
   }
   const count = 6;
   const matrix = Array.from({ length: count }, () => Array(count + 1).fill(0));
-  const origin = anchorTime.getTime();
 
   const cols = (tMs: number) => {
     const h = (tMs - origin) / 3600_000;
@@ -105,7 +112,7 @@ export function fitResidualHarmonics(
     ];
   };
 
-  for (const pt of history) {
+  for (const pt of pts) {
     const tMs = new Date(pt.t).getTime();
     const x = cols(tMs);
     for (let i = 0; i < count; i++) {
@@ -113,7 +120,8 @@ export function fitResidualHarmonics(
       matrix[i][count] += x[i] * pt.v;
     }
   }
-  // Ridge regularization for numerical stability
+  // Regularize linear drift slope and harmonic terms for numerical stability
+  matrix[1][1] += 5.0;
   for (let i = 2; i < count; i++) matrix[i][i] += 0.05;
 
   // Gaussian elimination with partial pivoting

@@ -125,7 +125,6 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
   streetCalibration,
   forecastHorizon,
   upperForecastPoints = [],
-  planningOutlookStart,
 }) => {
   const [selectedEvent, setSelectedEvent] = useState<UpcomingFloodEvent | null>(null);
   const [showAllEvents, setShowAllEvents] = useState(false);
@@ -208,7 +207,6 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
                         </IonBadge>
                       </div>
                       <p className="event-flood-window">{floodWindowLabel(event, now)}</p>
-                      {planningOutlookStart && event.peakTime >= planningOutlookStart && <span className="event-outlook-label">Planning outlook</span>}
                       <div className="event-level-metrics">
                         <div><span>Peak Water Level</span><strong>{event.peakValue.toFixed(2)} <small>ft</small></strong></div>
                         <div><span>Max Street Flooding</span><strong>{inundation(event.peakValue, thresholds.minor, 'MLLW', streetCalibration).inches.toFixed(1)} <small>in</small><small className="event-estimate-label" aria-label="Estimated">Estimated</small></strong></div>

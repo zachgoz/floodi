@@ -1067,8 +1067,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
           />
         )}
 
-        {experimentalPoints.length > 1 && <polyline role="img" aria-label="Comparison total water level" fill="none" stroke="#8462bf" strokeWidth={3} strokeDasharray="7 5" points={buildPolyline(experimentalPoints, xOf, yOf)} />}
-        {[experimentalLower, experimentalUpper].map((series,i) => series.length > 1 && <polyline role="img" key={`bound-${i}`} aria-label={i === 0 ? 'Forecast lower error bound' : 'Forecast upper error bound'} fill="none" stroke={experimentalPoints.length ? '#8462bf' : '#637b86'} opacity={0.6} strokeWidth={1} strokeDasharray="3 5" points={buildPolyline(series, xOf, yOf)} />)}
+        {experimentalPoints.length > 1 && <polyline role="img" aria-label="Comparison total water level" clipPath={`url(#${forecastClipId})`} fill="none" stroke="#8462bf" strokeWidth={3} strokeDasharray="7 5" points={buildPolyline(experimentalPoints, xOf, yOf)} />}
+        {[experimentalLower, experimentalUpper].map((series,i) => series.length > 1 && <polyline role="img" key={`bound-${i}`} aria-label={i === 0 ? 'Forecast lower error bound' : 'Forecast upper error bound'} clipPath={`url(#${forecastClipId})`} fill="none" stroke={experimentalPoints.length ? '#8462bf' : '#637b86'} opacity={0.6} strokeWidth={1} strokeDasharray="3 5" points={buildPolyline(series, xOf, yOf)} />)}
         {/* Surge offset trend */}
         {showDelta && deltaPoints.length > 1 && (
           <g>

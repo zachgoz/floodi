@@ -326,14 +326,33 @@ export const floodChallenger = onRequest(
         const outlookData = outlookSnap.data();
         if (outlookSnap.exists && outlookData && Array.isArray(outlookData.points) && outlookData.points.length > 0) {
           const now = new Date();
-          const tidePoints = outlookData.points.map((p: any) => ({ t: new Date(p.t), v: Number(p.tideFt) }));
+          const futureTidePoints = outlookData.points.map((p: any) => ({ t: new Date(p.t), v: Number(p.tideFt) }));
           const currentResidual = Number(outlookData.currentResidualFt ?? 0.5);
 
-          // Reconstruct realistic recent residual history
+          // Reconstruct realistic recent residual history using past + future phase-aligned NOAA tides
           const historyStart = new Date(now.getTime() - 48 * 3600_000);
+          let tidePoints = futureTidePoints;
           let historyResidual: WaterPoint[] = [];
           try {
-            const sensor = await fetchFimanData(SITE.retrievalPlatform, historyStart, now, SITE.offsetFt);
+            const [sensor, rawHistoricalTide] = await Promise.all([
+              fetchFimanData(SITE.retrievalPlatform, historyStart, now, SITE.offsetFt),
+              fetchNoaaPredictions(
+                SITE.tideStation,
+                new Date(historyStart.getTime() - 2 * 3600_000),
+                new Date(now.getTime() + 4 * 24 * 3600_000)
+              ).catch(() => ({} as Record<string, number>)),
+            ]);
+            if (rawHistoricalTide && Object.keys(rawHistoricalTide).length > 0) {
+              const shiftedTide = points(rawHistoricalTide).map(p => ({
+                ...p,
+                t: new Date(+p.t + SITE.phaseMinutes * 60_000),
+              }));
+              const mergedMap = new Map<number, WaterPoint>();
+              for (const pt of [...shiftedTide, ...futureTidePoints]) {
+                mergedMap.set(+pt.t, pt);
+              }
+              tidePoints = [...mergedMap.values()].sort((a, b) => +a.t - +b.t);
+            }
             if (sensor?.waterLevels?.length) {
               const reference = { station: SITE.sensor, datum: SITE.datum, units: SITE.units };
               historyResidual = residuals(points(sensor.waterLevels), tidePoints, reference, reference);
@@ -344,8 +363,10 @@ export const floodChallenger = onRequest(
 
           if (historyResidual.length < 24) {
             historyResidual = Array.from({ length: 97 }, (_, idx) => {
-              const t = new Date(now.getTime() - (96 - idx) * 30 * 60_000);
-              return { t, v: currentResidual };
+              const hoursAgo = (96 - idx) * 0.5;
+              const t = new Date(now.getTime() - hoursAgo * 3600_000);
+              const m2Wave = -0.32 * Math.sin((2 * Math.PI * hoursAgo) / 12.4206);
+              return { t, v: Math.round((currentResidual + m2Wave) * 1000) / 1000 };
             });
           }
 
