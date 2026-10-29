@@ -141,6 +141,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   const {
     challenger,
     totalPoints: challengerTotalPoints,
+    lowerPoints: challengerLowerPoints,
     upperPoints: challengerUpperPoints,
     residualPoints: challengerResidualPoints,
   } = useChallengerOutlook(config.locationId);
@@ -162,6 +163,13 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     const futureChallenger = challengerTotalPoints.filter(p => +p.t > +anchor.t);
     return futureChallenger.length ? [anchor, ...futureChallenger] : [anchor];
   }, [challengerTotalPoints, processedData]);
+  const anchoredChallengerLower = useMemo(() => {
+    if (!challengerLowerPoints.length) return [];
+    const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
+    if (!anchor) return challengerLowerPoints;
+    const futureChallenger = challengerLowerPoints.filter(p => +p.t > +anchor.t);
+    return futureChallenger.length ? [anchor, ...futureChallenger] : [anchor];
+  }, [challengerLowerPoints, processedData]);
   const anchoredChallengerUpper = useMemo(() => {
     if (!challengerUpperPoints.length) return [];
     const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
@@ -182,7 +190,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     });
     const anchor = processedData.deltaPoints.at(-1);
     return estimates.length ? [...(anchor ? [anchor] : []), ...estimates] : [];
-  }, [processedData, FORECAST_INTERPOLATE_GAP_MS]);
+  }, [processedData]);
   const outlookComparison = useMemo(() => alignForecastComparison(outlook, processedData?.predictedPoints || [], { station: processedData?.observationStation || '', tideStation: LOCATIONS[config.locationId]?.noaaStationId || '', datum: 'MLLW', units: 'ft', thresholdFt: config.thresholds.minor }), [outlook, processedData, config.locationId, config.thresholds.minor]);
   const forecastCompatible = outlookComparison.compatible;
   const selectedForecast = useMemo(() => selectWaterForecast({
@@ -305,6 +313,35 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
 
     return points;
   }, [isTimesFmPrimary, challengerResidualPoints, processedData, selectedForecast.totalPoints, operationalSurgePoints, decomposedHarmonics, FORECAST_INTERPOLATE_GAP_MS]);
+
+  const operationalLower = useMemo(() => {
+    if (!isTimesFmPrimary || !challengerLowerPoints.length) {
+      return selectedBounds.lower;
+    }
+    const chalEndMs = +challengerLowerPoints.at(-1)!.t;
+    const bounds: Point[] = [];
+    const totalMap = new Map(operationalForecastPoints.map(p => [+p.t, p.v]));
+
+    const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
+    const startMs = anchor ? +anchor.t : Date.now();
+    const tideInWindow = (processedData?.predictedPoints || []).filter(p => +p.t > startMs && +p.t <= chalEndMs);
+    for (const tp of tideInWindow) {
+      const estTotal = totalMap.get(+tp.t) ?? tp.v;
+      const rawLow = interpolate(anchoredChallengerLower, tp.t, FORECAST_INTERPOLATE_GAP_MS);
+      const rawTot = interpolate(anchoredChallengerTotal, tp.t, FORECAST_INTERPOLATE_GAP_MS);
+      const spread = rawLow !== null && rawTot !== null ? Math.max(0.2, rawTot - rawLow) : 0.35;
+      bounds.push({ t: tp.t, v: Math.round((estTotal - spread) * 1000) / 1000 });
+    }
+
+    const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > chalEndMs);
+    for (const tp of futureTides) {
+      const hoursPast = (+tp.t - chalEndMs) / 3600_000;
+      const uncertainty = Math.min(1.2, 0.8 + 0.001 * hoursPast);
+      const estTotal = totalMap.get(+tp.t) ?? tp.v;
+      bounds.push({ t: tp.t, v: Math.round((estTotal - uncertainty) * 1000) / 1000 });
+    }
+    return bounds;
+  }, [isTimesFmPrimary, challengerLowerPoints, anchoredChallengerLower, anchoredChallengerTotal, selectedBounds.lower, processedData?.observedPoints, processedData?.predictedPoints, operationalForecastPoints, FORECAST_INTERPOLATE_GAP_MS]);
 
   const operationalUpper = useMemo(() => {
     if (!isTimesFmPrimary || !challengerUpperPoints.length) {
@@ -749,8 +786,16 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                             ? processedData?.adjustedPoints || []
                             : []
                         }
-                        experimentalLower={[]}
-                        experimentalUpper={[]}
+                        experimentalLower={
+                          showChallengerComparison
+                            ? (isTimesFmPrimary ? selectedBounds.lower : anchoredChallengerLower)
+                            : []
+                        }
+                        experimentalUpper={
+                          showChallengerComparison
+                            ? (isTimesFmPrimary ? selectedBounds.upper : anchoredChallengerUpper)
+                            : []
+                        }
                         experimentalLabel={
                           showChallengerComparison
                             ? (isTimesFmPrimary ? 'Legacy Baseline Model' : 'TimesFM-3 + ETSS (Challenger)')

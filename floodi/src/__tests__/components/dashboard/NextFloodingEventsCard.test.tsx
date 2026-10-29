@@ -68,11 +68,11 @@ describe('compact next flooding events', () => {
     }
   });
 
-  it('does not render a Planning outlook label on flood events', () => {
+  it('marks only events at or after the historical-pattern tail as planning outlooks', () => {
     const { container } = render(<NextFloodingEventsCard {...props} planningOutlookStart={new Date(+now + 20 * 60_000)} />);
     const rows = container.querySelectorAll('.next-flood-item');
-    expect(within(rows[0] as HTMLElement).queryByText(/Planning outlook/i)).not.toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).queryByText(/Planning outlook/i)).not.toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).queryByText('Planning outlook')).not.toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText('Planning outlook')).toBeInTheDocument();
     fireEvent.click(rows[0]);
     expect(screen.getByLabelText('Close flood insight')).toBeInTheDocument();
   });
