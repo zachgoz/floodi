@@ -25,8 +25,8 @@ export interface CitizenHttpDependencies {
   status(account: CitizenAccount, configuration: DeliveryConfiguration): Promise<CitizenStatusResponse>;
   action(account: CitizenAccount, configuration: DeliveryConfiguration, request: CitizenActionRequest): Promise<void>;
   unsubscribe(token: string): Promise<void>;
-  publicFeed?(): Promise<PublicAlertFeedDocument>;
-  chartPng?(highlightPeakIso?: string | null): Promise<Buffer>;
+  publicFeed?(locationId?: string): Promise<PublicAlertFeedDocument>;
+  chartPng?(highlightPeakIso?: string | null, locationId?: string): Promise<Buffer>;
   logFailure(): void;
   now?: () => number;
 }
@@ -63,7 +63,10 @@ export function createCitizenHttpHandler(dependencies: CitizenHttpDependencies) 
       // Public 48-hour hydrograph PNG image endpoint for email <img> & previews
       if (req.method === 'GET' && req.query?.chart === '1' && dependencies.chartPng) {
         const rawPeak = typeof req.query.peak === 'string' && req.query.peak.length <= 40 ? req.query.peak : null;
-        const png = await dependencies.chartPng(rawPeak);
+        const targetLoc = typeof req.query.locationId === 'string' && /^[a-z0-9-]{1,50}$/.test(req.query.locationId)
+          ? req.query.locationId
+          : 'carolina-beach';
+        const png = await dependencies.chartPng(rawPeak, targetLoc);
         res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
         res.set('Content-Type', 'image/png');
         if (res.type) res.type('image/png');
@@ -73,7 +76,10 @@ export function createCitizenHttpHandler(dependencies: CitizenHttpDependencies) 
 
       // Public unauthenticated in-app live advisories & bulletins feed
       if (req.method === 'GET' && req.query?.feed === '1' && dependencies.publicFeed) {
-        const feed = await dependencies.publicFeed();
+        const targetLoc = typeof req.query.locationId === 'string' && /^[a-z0-9-]{1,50}$/.test(req.query.locationId)
+          ? req.query.locationId
+          : 'carolina-beach';
+        const feed = await dependencies.publicFeed(targetLoc);
         res.set('Cache-Control', 'public, max-age=30, s-maxage=60');
         res.status(200).json(feed);
         return;

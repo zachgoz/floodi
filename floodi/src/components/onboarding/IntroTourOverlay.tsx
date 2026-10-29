@@ -44,7 +44,7 @@ const tourSteps: TourStep[] = [
     label: 'Events',
     targetId: 'events',
     title: 'Jump to the next flooding windows',
-    summary: 'See expected flooding windows and peak water levels. Longer-range events are marked as planning outlooks.',
+    summary: 'See expected flooding windows, peak timing, and estimated street water depths based on physical basin modeling.',
   },
   {
     icon: cameraOutline,

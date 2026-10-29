@@ -12,6 +12,7 @@
 import { Redirect, Route, useLocation } from 'react-router-dom';
 import {
   IonApp,
+  IonBadge,
   IonContent,
   IonPage,
   IonIcon,
@@ -27,6 +28,7 @@ import { waterOutline, informationCircleOutline, notificationsOutline } from 'io
 import React, { Suspense, lazy } from 'react';
 import Tab2 from './pages/Tab2';
 import { PrivateRoute, AdminRoute } from 'src/components/routing';
+import { useActiveAdvisoryCount } from './components/alerts/useActiveAdvisoryCount';
 
 import { markPerf } from 'src/lib/perfLogger';
 import { trackScreenView } from 'src/lib/analytics';
@@ -133,6 +135,7 @@ const applyTheme = (mode: 'auto' | 'light' | 'dark') => {
 const AppTabs: React.FC = () => {
   const location = useLocation();
   const showTabBar = location.pathname !== '/intro';
+  const { count: advisoryCount, highestSeverity } = useActiveAdvisoryCount();
 
   React.useEffect(() => {
     trackScreenView(location.pathname);
@@ -157,10 +160,16 @@ const AppTabs: React.FC = () => {
           <DeferredRoute><ResetPassword /></DeferredRoute>
         </Route>
         {/* Primary FloodCast functionality - tide and flood data visualization */}
+        <Route exact path="/forecast">
+          <Tab2 />
+        </Route>
         <Route exact path="/tab2">
           <Tab2 />
         </Route>
         {/* App information and about page */}
+        <Route path="/guide">
+          <DeferredRoute><Tab3 /></DeferredRoute>
+        </Route>
         <Route path="/tab3">
           <DeferredRoute><Tab3 /></DeferredRoute>
         </Route>
@@ -196,6 +205,14 @@ const AppTabs: React.FC = () => {
           <IonTabButton tab="alerts" href="/alerts">
             <IonIcon aria-hidden="true" icon={notificationsOutline} />
             <IonLabel>Alerts</IonLabel>
+            {advisoryCount > 0 && (
+              <IonBadge
+                color={highestSeverity === 'major' || highestSeverity === 'extreme' ? 'danger' : 'warning'}
+                className="alerts-tab-badge"
+              >
+                {advisoryCount}
+              </IonBadge>
+            )}
           </IonTabButton>
           {/* About and methodology remain available under Help. */}
           <IonTabButton tab="tab3" href="/tab3">

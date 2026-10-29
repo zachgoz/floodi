@@ -248,14 +248,17 @@ export const floodChallenger = onRequest(
     }
     try {
       const force = req.query.force === 'true' || req.query.fresh === '1' || req.query.refresh === '1';
-      const snap = await db.doc(`locations/${SITE.id}/forecast_challengers/timesfm-3/outlook/current`).get();
+      const targetSiteId = typeof req.query.locationId === 'string' && /^[a-z0-9-]{1,50}$/.test(req.query.locationId)
+        ? req.query.locationId
+        : SITE.id;
+      const snap = await db.doc(`locations/${targetSiteId}/forecast_challengers/timesfm-3/outlook/current`).get();
       let data = snap.data() as ChallengerOutlookDocument | undefined;
 
       if (
-        force ||
+        (force ||
         !snap.exists ||
         !isCurrentOperationalOutlook(data, new Date()) ||
-        data.points.length < 100
+        data.points.length < 100) && targetSiteId === SITE.id
       ) {
         const now = new Date();
         const { tide, recentResidual, forecastWeather } = await fetchOperationalInputs(now, 48);

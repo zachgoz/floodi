@@ -53,8 +53,8 @@ export const citizenAlerts = onRequest({ maxInstances: 3, timeoutSeconds: 60, se
   status: (current, configuration) => getCitizenStatus(db(), current, configuration),
   action: (current, configuration, request) => applyCitizenAction(db(), current, configuration, request),
   unsubscribe: token => unsubscribeWithToken(db(), token),
-  publicFeed: () => getPublicAlertFeed(db()),
-  chartPng: highlightPeakIso => renderPublicAlertChartPng(db(), highlightPeakIso),
+  publicFeed: locationId => getPublicAlertFeed(db(), locationId),
+  chartPng: (highlightPeakIso, locationId) => renderPublicAlertChartPng(db(), highlightPeakIso, locationId),
   // Auth tokens, email addresses, request bodies and unsubscribe capabilities
   // must never enter application error logs.
   logFailure: () => logger.error('Citizen alert request failed', { event: 'citizen_alert_request_failed' }),

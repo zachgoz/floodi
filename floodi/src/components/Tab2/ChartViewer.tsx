@@ -539,24 +539,22 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     const svg = svgRef.current;
     if (!svg) return;
 
-    // On touch devices, suppress hover crosshair/tooltip – it doesn't make sense without a cursor
-    if (!isTouchDeviceRef.current || event.pointerType === 'mouse') {
-      const overWeather = (event.target as Element).closest?.('[data-testid="weather-timeline"]');
-      const hoverTime = overWeather ? null : computeTimeAtPointer(event);
-      if (hoverTime) {
-        setHoverT(hoverTime);
-        onHoverTimeChange?.(hoverTime);
-      } else {
-        setHoverT(null);
-        onHoverTimeChange?.(null);
-        onChartInteraction?.(null);
-      }
+    // On pointer move, update hover crosshair/tooltip for mouse and touch scrubbing
+    const overWeather = (event.target as Element).closest?.('[data-testid="weather-timeline"]');
+    const hoverTime = overWeather ? null : computeTimeAtPointer(event);
+    if (hoverTime) {
+      setHoverT(hoverTime);
+      onHoverTimeChange?.(hoverTime);
+    } else if (event.pointerType === 'mouse') {
+      setHoverT(null);
+      onHoverTimeChange?.(null);
+      onChartInteraction?.(null);
+    }
 
-      if (onChartInteraction && hoverTime) {
-        const nearestDelta = findNearestPoint(deltaPoints, hoverTime);
-        const nearestObs = findNearestPoint(observedPoints, hoverTime);
-        onChartInteraction(nearestObs?.point || nearestDelta?.point || null);
-      }
+    if (onChartInteraction && hoverTime) {
+      const nearestDelta = findNearestPoint(deltaPoints, hoverTime);
+      const nearestObs = findNearestPoint(observedPoints, hoverTime);
+      onChartInteraction(nearestObs?.point || nearestDelta?.point || null);
     }
 
     // ─── Mouse Pan ───
@@ -638,6 +636,15 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
     const t = computeTimeAtPointer(event);
     if (!t) return;
+
+    // Activate hover readout on touch or mouse press
+    setHoverT(t);
+    onHoverTimeChange?.(t);
+    if (onChartInteraction) {
+      const nearestDelta = findNearestPoint(deltaPoints, t);
+      const nearestObs = findNearestPoint(observedPoints, t);
+      onChartInteraction(nearestObs?.point || nearestDelta?.point || null);
+    }
 
     // For mouse, we start panning immediately
     if (event.pointerType === 'mouse') {
@@ -1142,35 +1149,43 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                   opacity={0.3}
                 />
                 {showPeakLabel && (() => {
-                  // Clearance: -18px for high peaks, +24px for low peaks
                   const compactLabel = size.w < 600;
-                  let finalY = isHigh ? yOf(extremum.v) - (compactLabel ? 0 : 18) : yOf(extremum.v) + 24;
+                  let finalY = isHigh ? yOf(extremum.v) - 16 : yOf(extremum.v) + 26;
+
+                  // De-collision check against flood thresholds
+                  const thresholdValues = Object.values(thresholds).filter((val): val is number => typeof val === 'number');
+                  for (const thresh of thresholdValues) {
+                    const threshY = yOf(thresh);
+                    if (Math.abs(finalY - threshY) < 14) {
+                      finalY = isHigh ? threshY - 15 : threshY + 15;
+                    }
+                  }
 
                   // Safety: keep labels within SVG bounds (plus some padding)
                   const minVisibleY = margins.t - 5;
                   const maxVisibleY = margins.t + innerH + 30;
-                  if (finalY < minVisibleY) finalY = minVisibleY + 12;
+                  if (finalY < minVisibleY) finalY = minVisibleY + 14;
                   if (finalY > maxVisibleY) finalY = maxVisibleY - 5;
 
                   return (
                     <g key={`plabel-${i}`}>
                       <text
                         x={x}
-                        y={finalY - 12}
+                        y={finalY - 11}
                         textAnchor="middle"
                         fill={isHigh ? "var(--ion-color-danger)" : "var(--ion-color-primary)"}
-                        fontSize="12"
+                        fontSize={compactLabel ? "11" : "12"}
                         fontWeight="600"
                         style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3px' }}
                       >
                         {isHigh ? 'High' : 'Low'} {extremum.v.toFixed(2)} ft
                       </text>
-                      {!compactLabel && <text
+                      <text
                         x={x}
-                        y={finalY}
+                        y={finalY + 1}
                         textAnchor="middle"
                         fill="var(--chart-axis-text)"
-                        fontSize="12"
+                        fontSize={compactLabel ? "10" : "12"}
                         fontWeight="500"
                         style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3.1px' }}
                       >
@@ -1180,7 +1195,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                           hour12: true,
                           timeZone: timezone === 'gmt' ? 'UTC' : 'America/New_York'
                         }).format(tick).replace(/\s?[AP]M$/, (m) => m.trim().toLowerCase())}
-                      </text>}
+                      </text>
                     </g>
                   );
                 })()}
@@ -1257,8 +1272,8 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
 
 
-        {/* Interactive tooltip – suppressed on touch devices (no cursor hover) */}
-        {!isTouchDeviceRef.current && (tooltipData || (showComments && comments.length > 0)) && hoverT && (
+        {/* Interactive tooltip (active on hover and touch scrubbing) */}
+        {Boolean(tooltipData || (showComments && comments.length > 0)) && hoverT && (
           <g>
             {/* Crosshair */}
             <line

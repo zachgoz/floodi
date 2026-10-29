@@ -97,22 +97,27 @@ export function guestCitizenStatus(configuration: DeliveryConfiguration): Citize
     consentVersion: CITIZEN_CONSENT_VERSION, email: null, emailVerified: false, subscription: null, history: [] };
 }
 
-export async function getPublicAlertFeed(db: Firestore, now = new Date()): Promise<PublicAlertFeedDocument> {
-  const feedRef = db.doc('locations/carolina-beach/forecast_challengers/timesfm-3/alerts/current');
+export async function getPublicAlertFeed(
+  db: Firestore,
+  locationId = 'carolina-beach',
+  now = new Date()
+): Promise<PublicAlertFeedDocument> {
+  const feedRef = db.doc(`locations/${locationId}/forecast_challengers/timesfm-3/alerts/current`);
   const feedSnap = await feedRef.get();
   if (feedSnap.exists && feedSnap.data()?.version === 2) {
     return feedSnap.data() as PublicAlertFeedDocument;
   }
-  const outlookSnap = await db.doc('locations/carolina-beach/forecast_challengers/timesfm-3/outlook/current').get();
+  const outlookSnap = await db.doc(`locations/${locationId}/forecast_challengers/timesfm-3/outlook/current`).get();
   const outlook = outlookSnap.exists ? (outlookSnap.data() as ChallengerOutlookDocument) : null;
   return evaluateOperationalAlertStep(null, outlook, now, CAROLINA_BEACH_THRESHOLDS).feed;
 }
 
 export async function renderPublicAlertChartPng(
   db: Firestore,
-  highlightPeakIso?: string | null
+  highlightPeakIso?: string | null,
+  locationId = 'carolina-beach'
 ): Promise<Buffer> {
-  const outlookSnap = await db.doc('locations/carolina-beach/forecast_challengers/timesfm-3/outlook/current').get();
+  const outlookSnap = await db.doc(`locations/${locationId}/forecast_challengers/timesfm-3/outlook/current`).get();
   const outlook = outlookSnap.exists ? (outlookSnap.data() as ChallengerOutlookDocument) : null;
   return renderHydrographPng({
     points: outlook?.points ?? [],

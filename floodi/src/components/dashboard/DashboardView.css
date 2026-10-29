@@ -94,6 +94,8 @@
 .dashboard-current-conditions .condition-elevated { color:var(--ion-color-danger-shade); font-weight:600; }
 .dashboard-current-conditions small { font-size:12px; margin-top:3px; }
 .dashboard-current-conditions button { min-height:32px; padding:4px 8px; border:1px solid var(--ion-color-primary); border-radius:8px; color:var(--ion-color-primary); background:transparent; font-size:12px; }
+.dashboard-current-conditions .location-select { background:var(--chart-plot-bg, rgba(255,255,255,0.06)); border:1px solid var(--chart-plot-stroke, rgba(255,255,255,0.15)); border-radius:6px; color:var(--chart-label-text, inherit); font-size:13px; font-weight:700; padding:4px 8px; cursor:pointer; }
+.dashboard-current-conditions .location-select:focus-visible { outline:2px solid var(--ion-color-primary); }
 @media (min-width:992px) {
   .dashboard-alert-invitation { grid-column:1 / -1; grid-row:2; }
   .dashboard-hydrograph-card, .dashboard-webcam-card { grid-row:3; }

@@ -62,6 +62,15 @@ export default defineConfig({
   build: {
     target: 'es2020',
     sourcemap: 'hidden',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-ionic': ['@ionic/react', '@ionic/react-router', 'ionicons'],
+          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+        },
+      },
+    },
   },
   plugins: [
     react(),

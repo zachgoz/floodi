@@ -679,10 +679,15 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
             </IonButton>
           </IonButtons>
         </IonToolbar>
-        <CurrentConditions location={`${LOCATIONS[config.locationId]?.name || config.location.name}, ${config.location.state}`}
-          points={processedData?.observedPoints || []} thresholdFt={LOCATIONS[config.locationId]?.thresholds.minor ?? 5.6}
+        <CurrentConditions
+          location={`${LOCATIONS[config.locationId]?.name || config.location.name}, ${config.location.state}`}
+          locationId={config.locationId}
+          points={processedData?.observedPoints || []}
+          thresholdFt={LOCATIONS[config.locationId]?.thresholds.minor ?? 5.6}
           customView={config.offset.mode === 'manual' || config.display.dataSource === 'noaa' || Object.entries(config.thresholds).some(([key, value]) => value !== LOCATIONS[config.locationId]?.thresholds[key as keyof typeof config.thresholds])}
-          onSettings={() => setShowSettings(true)} />
+          onSettings={() => setShowSettings(true)}
+          onLocationChange={updateLocation}
+        />
       </IonHeader>
 
       <IonContent className="floodcast-content">
@@ -697,9 +702,48 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
         {/* Main dashboard — always render the shell once we have a station or are loading */}
         {(processedData || error || loading) && (
           <div className="dashboard-scroll-container">
+            {/* Quick jump navigation pill bar for rapid mobile exploration */}
+            <nav className="dashboard-jump-nav" aria-label="Dashboard sections">
+              <button
+                type="button"
+                className="jump-chip"
+                onClick={() => document.getElementById('dashboard-section-events')?.scrollIntoView({ behavior: 'smooth' })}
+              >
+                Overview
+              </button>
+              <button
+                type="button"
+                className="jump-chip"
+                onClick={() => document.getElementById('dashboard-section-chart')?.scrollIntoView({ behavior: 'smooth' })}
+              >
+                Tide Chart
+              </button>
+              <button
+                type="button"
+                className="jump-chip"
+                onClick={() => document.getElementById('dashboard-section-outlook')?.scrollIntoView({ behavior: 'smooth' })}
+              >
+                Factors
+              </button>
+              <button
+                type="button"
+                className="jump-chip"
+                onClick={() => document.getElementById('dashboard-section-cams')?.scrollIntoView({ behavior: 'smooth' })}
+              >
+                Live Cams
+              </button>
+              <button
+                type="button"
+                className="jump-chip"
+                onClick={() => document.getElementById('dashboard-section-map')?.scrollIntoView({ behavior: 'smooth' })}
+              >
+                Street Map
+              </button>
+            </nav>
+
             <div className="dashboard-grid">
               {(processedData || loading) && (
-                <div className="dashboard-sidebar">
+                <div className="dashboard-sidebar" id="dashboard-section-events">
                   <div className="dashboard-next-events" data-tour-id="events">
                     <NextFloodingEventsCard
                       adjustedPoints={operationalForecastPoints}
@@ -763,7 +807,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                   </div>
                 ) : (processedData || loading) ? (
                   <>
-                    <div className="dashboard-hydrograph-card" data-tour-id="hydrograph">
+                    <div className="dashboard-hydrograph-card" id="dashboard-section-chart" data-tour-id="hydrograph">
                       <HydrographChart
                         onResetView={() => {
                           updateTimeRange({ mode: 'relative', lookbackH: 36, lookaheadH: 48 });
@@ -879,18 +923,20 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                     />
                       </HydrographChart>
                     </div>
-                    <FloodOutlook
-                      selection={isTimesFmPrimary ? { ...selectedForecast, totalPoints: operationalForecastPoints, residualPoints: operationalSurgePoints, horizonEnd: operationalForecastPoints.at(-1)?.t ?? selectedForecast.horizonEnd, reason: operationalForecastDescription } : selectedForecast}
-                      thresholdFt={config.thresholds.minor}
-                      thresholds={config.thresholds}
-                      currentSurgeFt={processedData?.deltaPoints.at(-1)?.v ?? challenger?.currentResidualFt ?? null}
-                      now={processedData?.timeDomain.now || new Date()}
-                      floodExpected={hasUpcomingFlooding(operationalForecastPoints, config.thresholds.minor, processedData?.timeDomain.now || new Date())}
-                      floodPossible={hasUpcomingFlooding(operationalUpper, config.thresholds.minor, processedData?.timeDomain.now || new Date())}
-                      challenger={challenger}
-                      isTimesFmPrimary={isTimesFmPrimary}
-                    />
-                  <div className="dashboard-webcam-card" data-tour-id="webcam">
+                    <div id="dashboard-section-outlook">
+                      <FloodOutlook
+                        selection={isTimesFmPrimary ? { ...selectedForecast, totalPoints: operationalForecastPoints, residualPoints: operationalSurgePoints, horizonEnd: operationalForecastPoints.at(-1)?.t ?? selectedForecast.horizonEnd, reason: operationalForecastDescription } : selectedForecast}
+                        thresholdFt={config.thresholds.minor}
+                        thresholds={config.thresholds}
+                        currentSurgeFt={processedData?.deltaPoints.at(-1)?.v ?? challenger?.currentResidualFt ?? null}
+                        now={processedData?.timeDomain.now || new Date()}
+                        floodExpected={hasUpcomingFlooding(operationalForecastPoints, config.thresholds.minor, processedData?.timeDomain.now || new Date())}
+                        floodPossible={hasUpcomingFlooding(operationalUpper, config.thresholds.minor, processedData?.timeDomain.now || new Date())}
+                        challenger={challenger}
+                        isTimesFmPrimary={isTimesFmPrimary}
+                      />
+                    </div>
+                  <div className="dashboard-webcam-card" id="dashboard-section-cams" data-tour-id="webcam">
                     <WebcamFeedCard
                       cameraId={selectedCameraId}
                       locationName={WEBCAMS.find(c => c.id === selectedCameraId)?.name || ''}
@@ -903,7 +949,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                       loading={loading}
                     />
                   </div>
-                    <div className="dashboard-map-card" data-tour-id="map" ref={mapContainerRef}>
+                    <div className="dashboard-map-card" id="dashboard-section-map" data-tour-id="map" ref={mapContainerRef}>
                       {mapRequested ? <React.Suspense fallback={mapPlaceholder}>
                         <DeferredInundationMap
                           waterLevelFt={simulationLevel}
