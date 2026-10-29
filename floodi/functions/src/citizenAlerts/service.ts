@@ -1,6 +1,29 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { Firestore } from 'firebase-admin/firestore';
-import { CITIZEN_CONSENT_VERSION, CITIZEN_COVERAGE, SUBSCRIPTIONS, OUTBOX, CitizenAccount, CitizenActionRequest, CitizenDelivery, CitizenHistory, CitizenStatusResponse, CitizenSubscription, DeliveryConfiguration, SubscriptionStatus } from './types';
+import {
+  CITIZEN_CONSENT_VERSION,
+  CITIZEN_COVERAGE,
+  SUBSCRIPTIONS,
+  OUTBOX,
+  CitizenAccount,
+  CitizenActionRequest,
+  CitizenDelivery,
+  CitizenHistory,
+  CitizenStatusResponse,
+  CitizenSubscription,
+  DeliveryConfiguration,
+  SubscriptionStatus,
+} from './types';
+import {
+  CAROLINA_BEACH_THRESHOLDS,
+  PublicAlertFeedDocument,
+  evaluateOperationalAlertStep,
+  normalizeCitizenPreferences,
+  resolveEffectivePreferences,
+} from './operationalAlerts';
+import { renderHydrographPng } from './chartPng';
+import { buildRichTestAlertEmail } from './emailTemplate';
+import type { ChallengerOutlookDocument } from '../forecast/challenger';
 
 const HOUR = 3600_000;
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -11,10 +34,30 @@ export class CitizenRequestError extends Error {
 export function parseCitizenAction(value: unknown): CitizenActionRequest | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const request = value as Record<string, unknown>;
-  if (Object.keys(request).some(key => !['action', 'consentVersion'].includes(key)) || typeof request.action !== 'string' ||
-      !['enroll', 'resume', 'pause', 'unsubscribe', 'test'].includes(request.action) ||
-      request.consentVersion !== undefined && request.consentVersion !== CITIZEN_CONSENT_VERSION) return null;
-  if (['enroll', 'resume'].includes(request.action) && request.consentVersion !== CITIZEN_CONSENT_VERSION) return null;
+  if (
+    Object.keys(request).some(key => !['action', 'consentVersion', 'preferences'].includes(key)) ||
+    typeof request.action !== 'string' ||
+    !['enroll', 'resume', 'pause', 'unsubscribe', 'test', 'update_preferences'].includes(request.action) ||
+    (request.consentVersion !== undefined && request.consentVersion !== CITIZEN_CONSENT_VERSION)
+  ) {
+    return null;
+  }
+  if (['enroll', 'resume'].includes(request.action) && request.consentVersion !== CITIZEN_CONSENT_VERSION) {
+    return null;
+  }
+  if (request.action === 'update_preferences' && request.preferences === undefined) {
+    return null;
+  }
+  if (request.preferences !== undefined) {
+    const normalized = normalizeCitizenPreferences(request.preferences);
+    if (!normalized) return null;
+    const out: CitizenActionRequest = {
+      action: request.action as CitizenActionRequest['action'],
+      ...(request.consentVersion !== undefined ? { consentVersion: CITIZEN_CONSENT_VERSION } : {}),
+      preferences: normalized,
+    };
+    return out;
+  }
   return request as unknown as CitizenActionRequest;
 }
 
@@ -35,9 +78,17 @@ export function publicSubscription(subscription: CitizenSubscription | null, acc
   // early-access registration into live delivery. The resident confirms resume.
   let status = subscription.status;
   if (status === 'active' && !isDeliveryEligible(subscription, account, configuration)) status = !account.emailVerified || subscription.email !== account.email ? 'verification-required' : 'early-access';
-  return { status, email: account.email, emailVerified: account.emailVerified,
-    coverage: subscription.coverage, channel: subscription.channel, consentVersion: subscription.consentVersion,
-    createdAt: subscription.createdAt, updatedAt: subscription.updatedAt };
+  return {
+    status,
+    email: account.email,
+    emailVerified: account.emailVerified,
+    coverage: subscription.coverage,
+    channel: subscription.channel,
+    consentVersion: subscription.consentVersion,
+    createdAt: subscription.createdAt,
+    updatedAt: subscription.updatedAt,
+    preferences: resolveEffectivePreferences(subscription.preferences),
+  };
 }
 
 export function guestCitizenStatus(configuration: DeliveryConfiguration): CitizenStatusResponse {
@@ -46,49 +97,116 @@ export function guestCitizenStatus(configuration: DeliveryConfiguration): Citize
     consentVersion: CITIZEN_CONSENT_VERSION, email: null, emailVerified: false, subscription: null, history: [] };
 }
 
+export async function getPublicAlertFeed(db: Firestore, now = new Date()): Promise<PublicAlertFeedDocument> {
+  const feedRef = db.doc('locations/carolina-beach/forecast_challengers/timesfm-3/alerts/current');
+  const feedSnap = await feedRef.get();
+  if (feedSnap.exists && feedSnap.data()?.version === 2) {
+    return feedSnap.data() as PublicAlertFeedDocument;
+  }
+  const outlookSnap = await db.doc('locations/carolina-beach/forecast_challengers/timesfm-3/outlook/current').get();
+  const outlook = outlookSnap.exists ? (outlookSnap.data() as ChallengerOutlookDocument) : null;
+  return evaluateOperationalAlertStep(null, outlook, now, CAROLINA_BEACH_THRESHOLDS).feed;
+}
+
+export async function renderPublicAlertChartPng(
+  db: Firestore,
+  highlightPeakIso?: string | null
+): Promise<Buffer> {
+  const outlookSnap = await db.doc('locations/carolina-beach/forecast_challengers/timesfm-3/outlook/current').get();
+  const outlook = outlookSnap.exists ? (outlookSnap.data() as ChallengerOutlookDocument) : null;
+  return renderHydrographPng({
+    points: outlook?.points ?? [],
+    thresholds: CAROLINA_BEACH_THRESHOLDS,
+    highlightPeakIso: highlightPeakIso ?? outlook?.peak?.t ?? null,
+  });
+}
+
 export async function getCitizenStatus(db: Firestore, account: CitizenAccount, configuration: DeliveryConfiguration): Promise<CitizenStatusResponse> {
   const ref = db.collection(SUBSCRIPTIONS).doc(account.uid);
-  const [snapshot, events] = await Promise.all([ref.get(), ref.collection('history').orderBy('createdAt', 'desc').limit(20).get()]);
-  return { ...guestCitizenStatus(configuration), email: account.email, emailVerified: account.emailVerified,
-    subscription: publicSubscription(snapshot.exists ? snapshot.data() as CitizenSubscription : null, account, configuration),
+  const [snapshot, events, feed] = await Promise.all([
+    ref.get(),
+    ref.collection('history').orderBy('createdAt', 'desc').limit(20).get(),
+    getPublicAlertFeed(db).catch(() => null),
+  ]);
+  return {
+    ...guestCitizenStatus(configuration),
+    email: account.email,
+    emailVerified: account.emailVerified,
+    subscription: publicSubscription(snapshot.exists ? (snapshot.data() as CitizenSubscription) : null, account, configuration),
     history: events.docs.map(event => {
       const data = event.data();
-      return { id: event.id, kind: data.kind, state: data.state, createdAt: data.createdAt, updatedAt: data.updatedAt, subject: data.subject } as CitizenHistory;
-    }) };
+      return {
+        id: event.id,
+        kind: data.kind,
+        state: data.state,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        subject: data.subject,
+        ...(data.severity ? { severity: data.severity } : {}),
+        ...(data.category ? { category: data.category } : {}),
+        ...(typeof data.peakFt === 'number' ? { peakFt: data.peakFt } : {}),
+      } as CitizenHistory;
+    }),
+    feed,
+  };
 }
 
 /** Client contact/entitlement fields never enter this path. Email and verification
  * come from a fresh Admin Auth read, and every opt-out revokes queued generations. */
 export async function applyCitizenAction(db: Firestore, account: CitizenAccount, configuration: DeliveryConfiguration, request: CitizenActionRequest, now = new Date()): Promise<void> {
   if (account.disabled || !account.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account.email)) throw new CitizenRequestError(400, 'email-account-required');
-  if (!parseCitizenAction(request)) throw new CitizenRequestError(400, 'invalid-request');
+  const parsed = parseCitizenAction(request);
+  if (!parsed) throw new CitizenRequestError(400, 'invalid-request');
   const at = now.toISOString();
   const ref = db.collection(SUBSCRIPTIONS).doc(account.uid);
+
+  let liveOutlook: ChallengerOutlookDocument | null = null;
+  if (parsed.action === 'test') {
+    const snap = await db.doc('locations/carolina-beach/forecast_challengers/timesfm-3/outlook/current').get().catch(() => null);
+    liveOutlook = snap && snap.exists ? (snap.data() as ChallengerOutlookDocument) : null;
+  }
+
   // Tokens are random, server created and independent of Firebase credentials.
   // Only their hash is retained on enrollment; a delivery stores its own token.
   const token = randomBytes(32).toString('hex');
   await db.runTransaction(async transaction => {
     const snapshot = await transaction.get(ref);
     const previous = snapshot.exists ? snapshot.data() as CitizenSubscription : null;
-    if (request.action === 'pause' || request.action === 'unsubscribe') {
-      if (!previous || previous.status === (request.action === 'pause' ? 'paused' : 'unsubscribed')) return;
-      const state = request.action === 'pause' ? 'paused' : 'unsubscribed';
+    if (parsed.action === 'update_preferences') {
+      if (!previous || previous.status === 'unsubscribed') {
+        throw new CitizenRequestError(409, 'enrollment-required');
+      }
+      transaction.update(ref, {
+        preferences: resolveEffectivePreferences(parsed.preferences),
+        updatedAt: at,
+      });
+      return;
+    }
+    if (parsed.action === 'pause' || parsed.action === 'unsubscribe') {
+      if (!previous || previous.status === (parsed.action === 'pause' ? 'paused' : 'unsubscribed')) return;
+      const state = parsed.action === 'pause' ? 'paused' : 'unsubscribed';
       transaction.update(ref, { status: state, generation: previous.generation + 1, updatedAt: at, catchupPending: false });
-      const event: CitizenHistory = { id: `${request.action}-${+now}`, kind: request.action === 'pause' ? 'pause' : 'unsubscribe', state, createdAt: at, updatedAt: at, subject: request.action === 'pause' ? 'Flood alerts paused' : 'Flood alerts unsubscribed' };
+      const event: CitizenHistory = { id: `${parsed.action}-${+now}`, kind: parsed.action === 'pause' ? 'pause' : 'unsubscribe', state, createdAt: at, updatedAt: at, subject: parsed.action === 'pause' ? 'Flood alerts paused' : 'Flood alerts unsubscribed' };
       transaction.set(ref.collection('history').doc(event.id), event);
       return;
     }
-    if (request.action === 'test') {
+    if (parsed.action === 'test') {
       if (!isDeliveryEligible(previous, account, configuration)) throw new CitizenRequestError(409, configuration.enabled ? 'verified-active-subscription-required' : 'delivery-not-enabled');
       if (previous!.lastTestAt && +now - Date.parse(previous!.lastTestAt) < HOUR) throw new CitizenRequestError(429, 'test-rate-limited');
       const id = `test-${hash(`${account.uid}|${Math.floor(+now / HOUR)}`)}`;
       const queued = await transaction.get(db.doc(`${OUTBOX}/${id}`));
       if (queued.exists) throw new CitizenRequestError(429, 'test-rate-limited');
+      const renderedTest = buildRichTestAlertEmail(
+        configuration.publicBaseUrl || 'https://floodcastwebapp.web.app',
+        liveOutlook?.peak?.totalFt ?? null,
+        liveOutlook?.peak?.t ?? null,
+        liveOutlook?.currentResidualFt ?? null
+      );
       const delivery: CitizenDelivery = {
         version: 1, uid: account.uid, email: account.email!, subscriptionGeneration: previous!.generation,
-        kind: 'test', state: 'queued', createdAt: at, updatedAt: at, expiresAt: new Date(+now + 15 * 60_000).toISOString(),
+        kind: 'test', deliveryEngine: 'operational_v2', state: 'queued', createdAt: at, updatedAt: at, expiresAt: new Date(+now + 15 * 60_000).toISOString(),
         nextAttemptAt: at, attempts: 0, leaseId: null, leaseUntil: null, providerMessageId: null,
-        subject: 'Your FloodCast test alert', text: 'Your email flood alerts are connected for Carolina Beach. This is a test, not a flooding forecast. Coverage uses the Carolina Beach water-level gauge; street depth and road status are not established.',
+        subject: renderedTest.subject, text: renderedTest.text, html: renderedTest.html,
         unsubscribeToken: token, sourceIntentId: null, sourceEpisodeId: null, sourceRevisionId: null,
       };
       transaction.create(db.doc(`${OUTBOX}/${id}`), delivery);
@@ -110,6 +228,7 @@ export async function applyCitizenAction(db: Firestore, account: CitizenAccount,
       createdAt: previous?.createdAt ?? at, updatedAt: at, generation: (previous?.generation ?? 0) + 1,
       catchupPending: status === 'active',
       unsubscribeHash: hash(token), lastTestAt: previous?.lastTestAt ?? null,
+      preferences: resolveEffectivePreferences(parsed.preferences ?? previous?.preferences),
     };
     transaction.set(ref, subscription);
     transaction.set(quotaRef, { hour, count: count + 1 });

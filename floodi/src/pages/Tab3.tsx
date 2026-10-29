@@ -176,24 +176,29 @@ const Tab3: React.FC = () => {
           {/* Methodology Section */}
           <IonCard className="methodology-card">
             <IonCardHeader>
-              <IonCardTitle>Scientific Methodology</IonCardTitle>
+              <IonCardTitle>Scientific Methodology &amp; Flood Stages</IonCardTitle>
             </IonCardHeader>
             <IonCardContent>
               <div className="method-item">
-                <h4>Surge Analysis</h4>
+                <h4>Multi-Regime Estuarine Surge &amp; AI Forecasting</h4>
                 <p>
-                  The residual is observed water level minus the aligned astronomical tide.
-                  Forecasts combine recent residual behavior with supported weather relationships;
-                  longer-range outlooks use historical patterns. Residuals include non-tidal
-                  influences and measurement error, and are not always storm surge.
+                  FloodCast synthesizes NOAA astronomical tide predictions (Station 8658163) with
+                  NOAA Extratropical Storm Surge ocean guidance (Wrightsville Beach) and Cape Fear
+                  River surge (Wilmington), directional N/NE Myrtle Grove Sound wind-fetch setup
+                  (25° axial + 70° onshore), USGS Cape Fear River Lock #1 discharge (02105769)
+                  entering via Snow&apos;s Cut, Google TimesFM foundation-model inference, and
+                  48-hour shallow-water estuarine tidal harmonics (M₂, S₁, M₄).
                 </p>
               </div>
               <div className="method-item">
-                <h4>Datum Alignment</h4>
+                <h4>Carolina Beach Flood Thresholds (ft MLLW)</h4>
                 <p>
-                  Water-level charts use feet relative to <strong>MLLW (Mean Lower Low Water)</strong>.
-                  Local sensor data is converted using the configured datum and timing alignment.
-                  Street-impact estimates still require local elevation calibration.
+                  All water-level charts and FloodCast Alerts 2.0 advisories are referenced to{' '}
+                  <strong>MLLW (Mean Lower Low Water)</strong> at Carolina Beach Canal Gauge 30046:{' '}
+                  <strong>5.6 ft Minor</strong> (Canal Dr &amp; Florida Ave nuisance flooding),{' '}
+                  <strong>7.0 ft Moderate</strong> (road closures &amp; structural threat),{' '}
+                  <strong>7.7 ft Major</strong> (widespread inundation &amp; property hazard), and{' '}
+                  <strong>8.5 ft Extreme</strong> (severe coastal &amp; hurricane storm surge).
                 </p>
               </div>
             </IonCardContent>

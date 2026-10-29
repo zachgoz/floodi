@@ -1,405 +1,304 @@
-import * as admin from "firebase-admin";
-import * as logger from "firebase-functions/logger";
-import { recordJobOutcome, safeError } from "../utils/observability";
-import { onSchedule } from "firebase-functions/v2/scheduler";
-import { onRequest } from "firebase-functions/v2/https";
-import { buildGaugeForecast, explanationIsDue, GAUGE_FORECAST_MODEL_VERSION, restoreGaugeModel, serializeGaugeModel } from "./gaugePipeline";
-import { collectHistory, FORECAST_TIDE_DAYS, points, SITE, weatherForecast } from "./sources";
-import { explainWithGemini } from "./gemini";
-import { ForecastDocument, validateForecast, validateExplanation } from "./schema";
-import { fetchFimanData } from "../etl/fiman";
-import { fetchNoaaPredictions } from "../etl/noaa";
-import { residuals, WaterPoint } from "./water";
-import { trainWeatherResponse } from "./weatherResponse";
-import { publishForecastExplanation, publishNumericalForecast } from './publication';
+import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { onRequest } from 'firebase-functions/v2/https';
+import { recordJobOutcome, safeError } from '../utils/observability';
+import { FORECAST_TIDE_DAYS, points, SITE, weatherForecast } from './sources';
+import { fetchFimanData } from '../etl/fiman';
+import { fetchNoaaPredictions } from '../etl/noaa';
+import { residuals, WaterPoint } from './water';
 import { encodeJsonResponse } from '../utils/jsonResponse';
-import { runTimesFmChallenger } from './challenger';
+import { ChallengerOutlookDocument, runTimesFmChallenger } from './challenger';
+import { runOperationalAlertsForForecast } from '../citizenAlerts/operationalAlerts';
+
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
-const plainJson = <T>(value: T): T => JSON.parse(JSON.stringify(value));
-const isCurrentOutlook = (value: unknown, now: Date): value is ForecastDocument =>
-  validateForecast(value) && value.locationId === SITE.id && value.sensor === SITE.sensor &&
-  value.phaseMinutes === SITE.phaseMinutes && value.thresholdFt === SITE.thresholdFt &&
-  Date.parse(value.generatedAt) <= +now && Date.parse(value.expiresAt) > +now;
+
+export function isCurrentOperationalOutlook(
+  value: unknown,
+  now: Date
+): value is ChallengerOutlookDocument {
+  if (!value || typeof value !== 'object') return false;
+  const doc = value as Partial<ChallengerOutlookDocument>;
+  return (
+    doc.status === 'available' &&
+    doc.locationId === SITE.id &&
+    typeof doc.generatedAt === 'string' &&
+    typeof doc.expiresAt === 'string' &&
+    Array.isArray(doc.points) &&
+    doc.points.length >= 24 &&
+    Date.parse(doc.generatedAt) <= +now &&
+    Date.parse(doc.expiresAt) > +now
+  );
+}
+
+/**
+ * Retired daily ridge-regression training schedule.
+ * Kept as a zero-cost telemetry stub so existing Cloud Scheduler bindings succeed
+ * without running 90-day scraping or legacy 72-lead ridge fitting.
+ */
 export const refreshResidualHistory = onSchedule(
   {
-    schedule: "every 24 hours",
-    timeoutSeconds: 540,
-    memory: "1GiB",
+    schedule: 'every 24 hours',
+    timeoutSeconds: 60,
+    memory: '256MiB',
     maxInstances: 1,
     concurrency: 1,
   },
   async () => {
     const attemptedAt = new Date().toISOString();
-    let stage = 'history';
-    try {
-    const end = new Date(Date.now() - 7 * 24 * 3600_000);
-    const start = new Date(+end - 90 * 24 * 3600_000);
-    const result = await collectHistory(start, end);
-    const serialized = {
-      ...result,
-      history: result.history.map((p) => ({ t: p.t.toISOString(), v: p.v })),
-      tide: result.tide.map((p) => ({ t: p.t.toISOString(), v: p.v })),
-      weather: result.weather.map((w) => ({ ...w, t: w.t.toISOString() })),
-      updatedAt: new Date().toISOString(),
-    };
-    const path = `forecast-training/${SITE.id}/${serialized.updatedAt}/history.json`;
-    await admin
-      .storage()
-      .bucket()
-      .file(path)
-      .save(JSON.stringify(serialized), { contentType: "application/json", preconditionOpts: { ifGenerationMatch: 0 } });
-    await db.doc(`forecast_training/${SITE.id}`).set({
-      path,
-      updatedAt: serialized.updatedAt,
-      metadata: result.metadata,
-      failures: result.failures,
+    await recordJobOutcome(db, 'refreshResidualHistory', SITE.id, {
+      attemptedAt,
+      status: 'ok',
+      retired: true,
+      activeEngine: 'timesfm-3-basin-physics',
     });
-    const reference = { station: SITE.sensor, datum: SITE.datum, units: SITE.units };
-    stage = 'training';
-    const model = trainWeatherResponse(result.history, result.tide, result.weather, reference, reference);
-    const modelCache = serializeGaugeModel(model, new Date(), path);
-    if (!restoreGaugeModel(modelCache, new Date())) throw new Error("Daily history cannot support a valid model; retaining the previous model pointer");
-    const modelPath = `forecast_model_archive/${SITE.id}/models/${modelCache.createdAt}`;
-    // Existing rules expose only locations/*; model coefficients and input
-    // snapshots live outside that public namespace and are server-only.
-    await db.doc(modelPath).create(plainJson({ ...modelCache, trainingMetadata: result.metadata }));
-    await db.doc(`forecast_models/${SITE.id}`).set(plainJson({ ...modelCache, archivePath: modelPath }));
-    await recordJobOutcome(db, 'refreshResidualHistory', SITE.id, { attemptedAt, status: result.failures.length ? 'partial' : 'ok', modelCreatedAt: modelCache.createdAt, historyCount: result.history.length, missingIntervals: result.failures.length });
-    } catch (error) {
-      await recordJobOutcome(db, 'refreshResidualHistory', SITE.id, { attemptedAt, status: 'failed', stage, error: safeError(error) });
-      throw error;
-    }
-  },
+  }
 );
+
+async function fetchOperationalInputs(now: Date, lookbackHours = 72) {
+  const start = new Date(+now - lookbackHours * 3600_000);
+  const end = new Date(+now + FORECAST_TIDE_DAYS * 24 * 3600_000);
+  let weatherDegraded = false;
+
+  const [sensor, rawTide, forecastWeather] = await Promise.all([
+    fetchFimanData(SITE.retrievalPlatform, start, now, SITE.offsetFt),
+    fetchNoaaPredictions(SITE.tideStation, new Date(+start - 2 * 3600_000), end),
+    weatherForecast().catch(error => {
+      weatherDegraded = true;
+      logger.warn('Open-Meteo weather unavailable; Basin Physics continues with NOAA ETSS + Harmonics', {
+        event: 'forecast_weather_failed',
+        provider: 'open_meteo',
+        error: safeError(error),
+      });
+      return [];
+    }),
+  ]);
+
+  const tide: WaterPoint[] = points(rawTide).map(p => ({
+    ...p,
+    t: new Date(+p.t + SITE.phaseMinutes * 60_000),
+  }));
+  const reference = {
+    station: SITE.sensor,
+    datum: SITE.datum,
+    units: SITE.units,
+  };
+  const recentResidual = residuals(points(sensor.waterLevels), tide, reference, reference);
+
+  return {
+    tide,
+    recentResidual,
+    forecastWeather,
+    weatherDegraded,
+  };
+}
+
+/**
+ * Primary 10-minute standalone Operational Forecast & Alerts 2.0 job.
+ * Completely decoupled from legacy `forecast_models`, `buildGaugeForecast`, and `gemini-3.8-flash`.
+ */
 export const generateFloodOutlook = onSchedule(
   {
-    schedule: "every 10 minutes",
+    schedule: 'every 10 minutes',
     timeoutSeconds: 300,
-    memory: "1GiB",
+    memory: '512MiB',
     maxInstances: 1,
     concurrency: 1,
   },
   async () => {
     const now = new Date();
-    const ref = db.doc(`locations/${SITE.id}/outlook/current`);
-    const cached = await ref.get();
-    const cachedDocument = cached.data();
+    const currentRef = db.doc(`locations/${SITE.id}/forecast_challengers/timesfm-3/outlook/current`);
+    const cachedSnap = await currentRef.get();
+    const cachedDoc = cachedSnap.data();
+
     if (
-      cached.exists &&
-      isCurrentOutlook(cachedDocument, now) &&
-      Date.parse(cachedDocument.generatedAt) > +now - 8 * 60_000
-    )
+      cachedSnap.exists &&
+      isCurrentOperationalOutlook(cachedDoc, now) &&
+      Date.parse(cachedDoc.generatedAt) > +now - 8 * 60_000
+    ) {
       return;
-    let document: ForecastDocument;
-    let stage = 'model';
-    let numericalError: unknown;
-    let degraded = false;
-    let inputPath: string | null = null;
-    let modelPath: string | null = null;
-    let challengerResiduals: WaterPoint[] = [];
-    let challengerTide: WaterPoint[] = [];
-    let challengerWeather: Array<{ t: Date; windSpeedMph?: number; surfacePressureHpa?: number }> = [];
+    }
+
+    let stage = 'sources';
     try {
-      const modelSnapshot = await db.doc(`forecast_models/${SITE.id}`).get();
-      const modelCache = modelSnapshot.data();
-      const model = restoreGaugeModel(modelCache, now);
-      if (!modelSnapshot.exists || !model) throw new Error("Daily model cache missing, stale or incompatible");
-      const start = new Date(+now - 3 * 24 * 3600_000);
-      const end = new Date(+now + FORECAST_TIDE_DAYS * 24 * 3600_000);
-      stage = 'sources';
-      const [sensor, rawTide, forecastWeather] = await Promise.all([
-        fetchFimanData(SITE.retrievalPlatform, start, now, SITE.offsetFt),
-        fetchNoaaPredictions(
-          SITE.tideStation,
-          new Date(+start - 2 * 3600_000),
-          end,
-        ),
-        weatherForecast().catch(error => {
-          degraded = true;
-          logger.warn('Issued weather unavailable; numerical fallback remains independent', { event: 'forecast_weather_failed', provider: 'open_meteo', error: safeError(error) });
-          return [];
-        }),
-      ]);
+      const { tide, recentResidual, forecastWeather, weatherDegraded } = await fetchOperationalInputs(now, 72);
       const issuedAt = new Date();
-      const tide = points(rawTide).map((p) => ({
-        ...p,
-        t: new Date(+p.t + SITE.phaseMinutes * 60_000),
-      }));
-      const reference = {
-        station: SITE.sensor,
-        datum: SITE.datum,
-        units: SITE.units,
-      };
-      const recent = residuals(
-        points(sensor.waterLevels),
-        tide,
-        reference,
-        reference,
-      );
-      challengerResiduals = recent;
-      challengerTide = tide;
-      challengerWeather = forecastWeather;
-      stage = 'numerical';
-      document = buildGaugeForecast(
-        recent,
-        [],
-        forecastWeather.filter(w => w.t <= issuedAt),
+
+      stage = 'forecast';
+      const operationalDoc = await runTimesFmChallenger({
+        db,
+        siteId: SITE.id,
+        thresholdFt: SITE.thresholdFt,
+        issuedAt,
+        recentResidual,
         tide,
         forecastWeather,
-        issuedAt,
-        { model },
-      );
-      if (!forecastWeather.length) document.limitations.push('Issued weather is unavailable; only measured residual and astronomical-tide methods are used.');
-      // Preserve the exact inputs AS ISSUED before publishing the forecast.
-      // Firestore create is immutable; no later reanalysis overwrites weather.
-      // The bounded three-day gauge and full-horizon tide/weather inputs
-      // are checked below against a 512KB private archive limit.
-      const snapshot = plainJson({
-        version: 1, issuedAt: issuedAt.toISOString(), modelVersion: GAUGE_FORECAST_MODEL_VERSION,
-        modelPath: modelCache!.archivePath, modelCreatedAt: modelCache!.createdAt,
-        model: modelCache!.model, trainingPath: modelCache!.trainingPath,
-        reference: { ...reference, tideStation: SITE.tideStation, phaseMinutes: SITE.phaseMinutes, offsetFt: SITE.offsetFt, thresholdFt: SITE.thresholdFt },
-        sources: { gauge: SITE.sensor, retrievalPlatform: SITE.retrievalPlatform, tide: 'NOAA CO-OPS', weather: 'Open-Meteo issued forecast and past-days weather-model fields', weatherRetrievedAt: forecastWeather.length ? issuedAt.toISOString() : null, weatherAvailable: forecastWeather.length > 0 },
-        measuredWater: sensor.waterLevels,
-        recentResidual: recent.map(p => ({ t: p.t.toISOString(), v: p.v })),
-        tide: tide.map(p => ({ t: p.t.toISOString(), v: p.v })),
-        weather: forecastWeather.map(w => ({ ...w, t: w.t.toISOString() })),
+        horizonSteps: 144,
+        extendFullTideHorizon: true,
       });
-      if (Buffer.byteLength(JSON.stringify(snapshot), 'utf8') > 512_000) throw new Error("Forecast input snapshot exceeds the private archive size limit");
-      stage = 'archive';
-      inputPath = `forecast_input_archive/${SITE.id}/issues/${issuedAt.toISOString()}`;
-      modelPath = typeof modelCache?.archivePath === 'string' ? modelCache.archivePath : null;
-      await db.doc(inputPath).create(snapshot);
-      if (document.status === "available" && isCurrentOutlook(cachedDocument, issuedAt) &&
-          cachedDocument.explanationSource === 'gemini-3.8-flash' &&
-          Date.parse(cachedDocument.generatedAt) >= +issuedAt - 65 * 60_000 &&
-          cachedDocument.explanation.headline === document.explanation.headline &&
-          validateExplanation(cachedDocument.explanation, document.evidence) &&
-          cachedDocument.explanation.evidenceIds.includes('availability')) {
-        // Gemini selects evidence IDs, not prose or numbers. Reusing a valid
-        // selection binds it to this issue's freshly calculated evidence text.
-        document.explanation = cachedDocument.explanation;
-        document.explanationSource = 'gemini-3.8-flash';
+
+      if (!operationalDoc || operationalDoc.status !== 'available') {
+        throw new Error('Operational forecast engine could not produce an available forecast');
       }
-    } catch (error) {
-      numericalError = error;
-      logger.error('Numerical forecast update failed', { event: 'forecast_generation_failed', stage, error: safeError(error) });
-      document = buildGaugeForecast([], [], [], [], [], now, { model: null });
-      document.limitations.push(
-        "One or more required backend data sources is unavailable.",
-      );
-    }
-    if (!validateForecast(document))
-      throw new Error("Forecast schema rejected generated result");
-    // A temporary upstream outage must not erase a usable calculated issue or
-    // manufacture a new freshness timestamp for it. Its original expiry stands.
-    if (document.status === "unavailable" && isCurrentOutlook(cachedDocument, new Date()) && cachedDocument.status === "available") {
-      await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, { attemptedAt: now.toISOString(), status: 'failed', stage, retainedGeneratedAt: cachedDocument.generatedAt, ...(numericalError ? { error: safeError(numericalError) } : { error: { message: 'Required observations unavailable or stale' } }) });
-      throw new Error('Numerical update failed; existing outlook retained until its original expiry');
-    }
-    try {
-      const published = await publishNumericalForecast(db, document, { inputPath: document.status === 'unavailable' ? null : inputPath, modelPath: document.status === 'unavailable' ? null : modelPath });
-      if (!published) {
-        // A newer concurrent issue or an idempotent retry already won. Never
-        // renew its expiry or emit a second readiness marker.
-        await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, { attemptedAt: now.toISOString(), status: 'partial', stage: 'publish', skippedIssue: document.generatedAt, reason: 'Current publication retained' });
-        return;
-      }
-    } catch (error) {
-      await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, { attemptedAt: now.toISOString(), status: 'failed', stage: 'publish', error: safeError(error) });
-      throw error;
-    }
-    // Numeric availability is now committed independently of optional AI work.
-    // The immutable archive/marker cannot be changed by a slow or failed reply.
-    if (document.status === 'available') try {
-      const issuedAt = new Date(document.generatedAt);
-      const stateRef = db.doc(`forecast_explanation_state/${SITE.id}`);
-      const reserved = await db.runTransaction(async transaction => {
-        const state = await transaction.get(stateRef);
-        if (!explanationIsDue(state.data()?.lastAttemptAt, issuedAt)) return false;
-        transaction.set(stateRef, { lastAttemptAt: issuedAt.toISOString(), forecastIssue: document.generatedAt });
-        return true;
-      });
-      if (reserved) try {
-        const explained: ForecastDocument = { ...document, explanation: await explainWithGemini(document), explanationSource: 'gemini-3.8-flash' };
-        await publishForecastExplanation(db, explained);
-        document = explained;
-      } catch (error) {
-        degraded = true;
-        logger.warn('Gemini explanation unavailable; calculated forecast remains intact', { event: 'gemini_explanation_failed', provider: 'vertex', model: 'gemini-3.8-flash', error: safeError(error) });
-      }
-    } catch (error) {
-      degraded = true;
-      logger.warn('Explanation scheduling unavailable', { event: 'gemini_schedule_failed', error: safeError(error) });
-    }
-    // Generate and publish TimesFM-3 + NOAA ETSS operational forecast
-    if (document.status === 'available') {
+
+      stage = 'alerts';
+      let alertSummary = { activeCount: 0, notificationsEmitted: 0 };
       try {
-        const challengerDoc = await runTimesFmChallenger({
-          db,
+        alertSummary = await runOperationalAlertsForForecast(db, operationalDoc, issuedAt);
+      } catch (alertErr) {
+        logger.error('Operational alert evaluation failed after forecast publication', {
+          event: 'operational_alerts_failed',
           siteId: SITE.id,
-          thresholdFt: SITE.thresholdFt,
-          issuedAt: new Date(document.generatedAt),
-          recentResidual: challengerResiduals,
-          tide: challengerTide,
-          forecastWeather: challengerWeather,
-          horizonSteps: 144,
-        });
-        if (challengerDoc && challengerDoc.status === 'available') {
-          logger.info('TimesFM operational forecast generated and published successfully', {
-            event: 'timesfm_operational_published',
-            siteId: SITE.id,
-            engine: challengerDoc.engine,
-            peakFt: challengerDoc.peak?.totalFt,
-            steps: challengerDoc.points.length,
-          });
-        }
-      } catch (err) {
-        logger.warn('TimesFM generation failed; legacy forecast preserved', {
-          event: 'timesfm_operational_fallback',
-          error: safeError(err),
+          error: safeError(alertErr),
         });
       }
+
+      await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, {
+        attemptedAt: now.toISOString(),
+        status: weatherDegraded ? 'partial' : 'ok',
+        stage,
+        engine: operationalDoc.engine,
+        numericalGeneratedAt: operationalDoc.generatedAt,
+        observationAt: operationalDoc.observationAt ?? null,
+        pointsCount: operationalDoc.points.length,
+        activeAdvisories: alertSummary.activeCount,
+        notificationsEmitted: alertSummary.notificationsEmitted,
+      });
+    } catch (error) {
+      logger.error('Operational forecast update failed', {
+        event: 'forecast_generation_failed',
+        stage,
+        error: safeError(error),
+      });
+
+      if (cachedSnap.exists && isCurrentOperationalOutlook(cachedDoc, new Date())) {
+        await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, {
+          attemptedAt: now.toISOString(),
+          status: 'failed',
+          stage,
+          retainedGeneratedAt: cachedDoc.generatedAt,
+          error: safeError(error),
+        });
+        throw new Error('Operational update failed; existing forecast retained until its original expiry');
+      }
+
+      await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, {
+        attemptedAt: now.toISOString(),
+        status: 'failed',
+        stage,
+        error: safeError(error),
+      });
+      throw new Error('No current operational outlook could be generated');
     }
-    await recordJobOutcome(db, 'generateFloodOutlook', SITE.id, { attemptedAt: now.toISOString(), status: document.status === 'unavailable' ? 'failed' : degraded ? 'partial' : 'ok', stage, numericalGeneratedAt: document.generatedAt, observationAt: document.observationAt, explanationSource: document.explanationSource, ...(numericalError ? { error: safeError(numericalError) } : {}) });
-    if (document.status === 'unavailable') throw new Error('No current numerical outlook could be generated');
-  },
+  }
 );
-/** Public cached read; visitors cannot trigger training or Gemini spending. */
+
+/** Compatibility endpoint serving the authoritative Operational Forecast. */
 export const floodOutlook = onRequest(
   { cors: true, maxInstances: 5 },
   async (req, res) => {
-    // Error responses must never inherit a cached success policy. Vary also
-    // keeps CDN/browser caches from serving compressed bytes to other clients.
-    res.set("Cache-Control", "no-store");
+    res.set('Cache-Control', 'no-store');
     res.vary('Accept-Encoding');
-    if (req.method !== "GET") {
+    if (req.method !== 'GET') {
       res.set('Allow', 'GET');
-      res.status(405).json({ error: "Method not allowed" });
+      res.status(405).json({ error: 'Method not allowed' });
       return;
     }
     try {
-      const snap = await db.doc(`locations/${SITE.id}/outlook/current`).get();
+      const snap = await db.doc(`locations/${SITE.id}/forecast_challengers/timesfm-3/outlook/current`).get();
       const data = snap.data();
-      if (
-        !snap.exists ||
-        !isCurrentOutlook(data, new Date())
-      ) {
-        res
-          .status(503)
-          .json({ error: "Current evaluated outlook unavailable" });
+      if (!snap.exists || !isCurrentOperationalOutlook(data, new Date())) {
+        res.status(503).json({ error: 'Current evaluated outlook unavailable' });
         return;
       }
       const encoded = await encodeJsonResponse(data, req.get('Accept-Encoding'));
-      if (encoded.notAcceptable) { res.status(406).send(); return; }
+      if (encoded.notAcceptable) {
+        res.status(406).send();
+        return;
+      }
       const remaining = Math.floor((Date.parse(data.expiresAt) - Date.now()) / 1000);
-      if (remaining > 0) res.set("Cache-Control", `public, max-age=${Math.min(60, remaining)}, s-maxage=${Math.min(300, remaining)}`);
+      if (remaining > 0) {
+        res.set('Cache-Control', `public, max-age=${Math.min(60, remaining)}, s-maxage=${Math.min(300, remaining)}`);
+      }
       if (encoded.contentEncoding) res.set('Content-Encoding', encoded.contentEncoding);
       res.type('application/json').send(encoded.body);
     } catch (error) {
       res.set('Cache-Control', 'no-store');
       res.removeHeader('Content-Encoding');
-      logger.error('Cached outlook read failed', { event: 'forecast_read_failed', error: safeError(error) });
-      res.status(503).json({ error: "Outlook unavailable" });
+      logger.error('Cached operational outlook read failed', {
+        event: 'forecast_read_failed',
+        error: safeError(error),
+      });
+      res.status(503).json({ error: 'Outlook unavailable' });
     }
-  },
+  }
 );
 
-/** Public cached read for TimesFM-3 shadow challenger outlook. */
+/** Primary public HTTP endpoint (`/api/challenger`) for the Operational Forecast. */
 export const floodChallenger = onRequest(
   { cors: true, maxInstances: 5 },
   async (req, res) => {
-    res.set("Cache-Control", "no-store");
+    res.set('Cache-Control', 'no-store');
     res.vary('Accept-Encoding');
-    if (req.method !== "GET") {
+    if (req.method !== 'GET') {
       res.set('Allow', 'GET');
-      res.status(405).json({ error: "Method not allowed" });
+      res.status(405).json({ error: 'Method not allowed' });
       return;
     }
     try {
-      const force = req.query.force === 'true' || req.query.fresh === '1';
+      const force = req.query.force === 'true' || req.query.fresh === '1' || req.query.refresh === '1';
       const snap = await db.doc(`locations/${SITE.id}/forecast_challengers/timesfm-3/outlook/current`).get();
-      let data = snap.data();
-      if (force || !snap.exists || !data || data.status !== 'available' || !Array.isArray(data.points) || data.points.length < 100 || Date.parse(data.expiresAt) <= Date.now()) {
-        const outlookSnap = await db.doc(`locations/${SITE.id}/outlook/current`).get();
-        const outlookData = outlookSnap.data();
-        if (outlookSnap.exists && outlookData && Array.isArray(outlookData.points) && outlookData.points.length > 0) {
-          const now = new Date();
-          const futureTidePoints = outlookData.points.map((p: any) => ({ t: new Date(p.t), v: Number(p.tideFt) }));
-          const currentResidual = Number(outlookData.currentResidualFt ?? 0.5);
+      let data = snap.data() as ChallengerOutlookDocument | undefined;
 
-          // Reconstruct realistic recent residual history using past + future phase-aligned NOAA tides
-          const historyStart = new Date(now.getTime() - 48 * 3600_000);
-          let tidePoints = futureTidePoints;
-          let historyResidual: WaterPoint[] = [];
-          try {
-            const [sensor, rawHistoricalTide] = await Promise.all([
-              fetchFimanData(SITE.retrievalPlatform, historyStart, now, SITE.offsetFt),
-              fetchNoaaPredictions(
-                SITE.tideStation,
-                new Date(historyStart.getTime() - 2 * 3600_000),
-                new Date(now.getTime() + 4 * 24 * 3600_000)
-              ).catch(() => ({} as Record<string, number>)),
-            ]);
-            if (rawHistoricalTide && Object.keys(rawHistoricalTide).length > 0) {
-              const shiftedTide = points(rawHistoricalTide).map(p => ({
-                ...p,
-                t: new Date(+p.t + SITE.phaseMinutes * 60_000),
-              }));
-              const mergedMap = new Map<number, WaterPoint>();
-              for (const pt of [...shiftedTide, ...futureTidePoints]) {
-                mergedMap.set(+pt.t, pt);
-              }
-              tidePoints = [...mergedMap.values()].sort((a, b) => +a.t - +b.t);
-            }
-            if (sensor?.waterLevels?.length) {
-              const reference = { station: SITE.sensor, datum: SITE.datum, units: SITE.units };
-              historyResidual = residuals(points(sensor.waterLevels), tidePoints, reference, reference);
-            }
-          } catch {
-            // Sensor fetch failure will fall back to harmonic reconstruction below
-          }
-
-          if (historyResidual.length < 24) {
-            historyResidual = Array.from({ length: 97 }, (_, idx) => {
-              const hoursAgo = (96 - idx) * 0.5;
-              const t = new Date(now.getTime() - hoursAgo * 3600_000);
-              const m2Wave = -0.32 * Math.sin((2 * Math.PI * hoursAgo) / 12.4206);
-              return { t, v: Math.round((currentResidual + m2Wave) * 1000) / 1000 };
-            });
-          }
-
-          const generated = await runTimesFmChallenger({
-            db,
-            siteId: SITE.id,
-            thresholdFt: SITE.thresholdFt,
-            issuedAt: now,
-            recentResidual: historyResidual,
-            tide: tidePoints,
-            horizonSteps: 144,
-          });
-          if (generated) {
-            data = generated as any;
-          }
+      if (
+        force ||
+        !snap.exists ||
+        !isCurrentOperationalOutlook(data, new Date()) ||
+        data.points.length < 100
+      ) {
+        const now = new Date();
+        const { tide, recentResidual, forecastWeather } = await fetchOperationalInputs(now, 48);
+        const generated = await runTimesFmChallenger({
+          db,
+          siteId: SITE.id,
+          thresholdFt: SITE.thresholdFt,
+          issuedAt: now,
+          recentResidual,
+          tide,
+          forecastWeather,
+          horizonSteps: 144,
+          extendFullTideHorizon: true,
+        });
+        if (generated && generated.status === 'available') {
+          data = generated;
+          await runOperationalAlertsForForecast(db, generated, now).catch(() => undefined);
         }
       }
+
       if (!data || data.status !== 'available') {
-        res.status(503).json({ error: "Current challenger outlook unavailable" });
+        res.status(503).json({ error: 'Current operational outlook unavailable' });
         return;
       }
       const encoded = await encodeJsonResponse(data, req.get('Accept-Encoding'));
-      if (encoded.notAcceptable) { res.status(406).send(); return; }
+      if (encoded.notAcceptable) {
+        res.status(406).send();
+        return;
+      }
       const remaining = Math.floor((Date.parse(data.expiresAt) - Date.now()) / 1000);
-      if (remaining > 0) res.set("Cache-Control", `public, max-age=${Math.min(60, remaining)}, s-maxage=${Math.min(300, remaining)}`);
+      if (remaining > 0) {
+        res.set('Cache-Control', `public, max-age=${Math.min(60, remaining)}, s-maxage=${Math.min(300, remaining)}`);
+      }
       if (encoded.contentEncoding) res.set('Content-Encoding', encoded.contentEncoding);
       res.type('application/json').send(encoded.body);
     } catch (error) {
       res.set('Cache-Control', 'no-store');
       res.removeHeader('Content-Encoding');
-      logger.error('Cached challenger read failed', { event: 'challenger_read_failed', error: safeError(error) });
-      res.status(503).json({ error: "Challenger outlook unavailable" });
+      logger.error('Operational forecast read failed', {
+        event: 'challenger_read_failed',
+        error: safeError(error),
+      });
+      res.status(503).json({ error: 'Operational outlook unavailable' });
     }
-  },
+  }
 );
-

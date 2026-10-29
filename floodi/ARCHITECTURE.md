@@ -113,20 +113,32 @@ This architecture provides a scalable, modular foundation that separates complex
 
 This architecture provides a solid foundation for FloodCast's current functionality while supporting future enhancements and scaling requirements.
 
-## Residual forecasting and explanation boundary
+## Unified Multi-Regime Operational Forecasting (`basinPhysics` + TimesFM)
 
-`functions/src/forecast/water.ts` shares timestamp, datum, crossing, depth and viewport calculations. `weatherResponse.ts` fits screened gauge30046 weather, six-hour measured-change and compatibility48/72-hour residual/tide regressions. `historicalOutlook.ts` preserves the approved6/24-hour prefix, fades the measured departure into a tide-phase historical baseline, and adds a separately screened sustained-weather response while weather coverage is compatible. Its public pattern summary supports the same deterministic historical-only extension in the browser when more NOAA tides are loaded; private weather weights stay server-side. Separate baseline/skill flags prevent the failed14-day historical comparison from becoming a false accuracy claim. `gaugePipeline.ts` combines residuals with tides through the source endpoint and publishes growing error bounds. `src/utils/selectWaterForecast.ts` chooses one physical forecast for all dashboard hazards and plots. Physical observations remain unchanged. `pattern.ts` retains a separate cycle diagnostic; a visually repeating wave is not automatically an operational predictor.
+`functions/src/forecast/basinPhysics.ts` and `functions/src/forecast/challenger.ts` power a single unified physical water-level and surge forecast across the backend, public dashboard (`Tab2.tsx`, `FloodOutlook.tsx`, `SurgeChart.tsx`), and FloodCast Alerts 2.0 (`operationalAlerts.ts`):
 
-Daily jobs fit/cache private versioned models. Ten-minute numerical jobs use real recent inputs without refitting and preserve immutable private issue snapshots. Gemini selects supplied calculated evidence through server ADC, at most hourly; it never creates measurements or predictions. Public dashboard reads are cached only. See [analysis](docs/SURGE_ANALYSIS.md) and [implementation](docs/FLOOD_FORECASTING.md) for measured results, limited confidence, calibration and runtime IAM requirements.
+1. **Five Lossless Physical Surge Drivers** (`oceanSurgeFt + windSetupFt + riverFlowFt + rainfallRunoffFt + estuarineHarmonicFt === residualFt`):
+   - **Ocean Storm Surge**: 12-hour tidal-cycle smoothed NOAA MDL Extratropical Storm Surge (`ncwrit` Wrightsville Beach).
+   - **Directional N/NE Wind Setup**: Quadratic directional wind-fetch stress ($\tau = W^2 \max(0, \cos(\theta - \theta_{\text{fetch}}))$) along Myrtle Grove Sound's `25°` NNE longitudinal axis and `70°` ENE onshore shelf Ekman setup, plus inverse-barometer pressure anomaly.
+   - **Cape Fear River / Snow's Cut Hydraulic Head**: Upstream Wilmington River NOAA ETSS (`ncwilm` / `8658120`) and lagged USGS Cape Fear River Lock #1 discharge (`02105769`, cfs) entering the northern Carolina Beach basin through Snow's Cut.
+   - **Rainfall Runoff**: Exponentially accumulated local basin precipitation.
+   - **Estuarine Tide Harmonics**: Regularized 48-hour least-squares fit of $M_2$ (`12.4206h`), $S_1$ (`24.0000h`), and shallow-water overtide $M_4$ (`6.2103h`) residuals anchored smoothly at $t = 0$ to Carolina Beach Canal Gauge `30046` (ft MLLW).
+   - **AI Residual Refinement**: Google TimesFM foundation model forecasts the de-harmonized subtidal residual error ($0\text{–}48\text{h}$), preventing univariate smoothing from flattening estuarine tidal harmonics.
 
+2. **Three Seamless Forecast Horizon Regimes (0 to 21 Days)**:
+   - **Regime A (`0–102h`)**: Full NOAA Ocean + River ETSS + Directional N/NE Wind + USGS River Flow + TimesFM AI + 48h Estuarine Harmonics.
+   - **Regime B (`Days 5–16`)**: Extended NWS / Open-Meteo Wind-Stress + Inverse Barometer + River Flow Decay + Estuarine Harmonics.
+   - **Regime C (`Days 17–21`)**: NOAA Astronomical Tide + damped Estuarine Harmonic Baseline with monotonically widening 80% uncertainty bounds.
 
-The October 16 dashboard startup and selected-time forecast explanation changes are documented in [startup and factors](docs/STARTUP-AND-FORECAST-FACTORS-2026-10-16.md), with [public factor metadata](docs/FORECAST-FACTORS.md) and [sampled browser timings](docs/FRONTEND-ERROR-COLLECTION.md). Public forecast values are unchanged by attribution.
+3. **Out-of-Sample Empirical Validation & Multi-Region Scalability (`MULTI_REGION_BASIN_SPECS`)**:
+   - Across a 60-day (`1,428` aligned hours) Carolina Beach out-of-sample backtest, the unified model reduced 24-hour MAE by **43.9%** versus raw Wrightsville Beach ETSS (`0.145 ft` vs `0.258 ft`), **47.9%** during N/NE wind events (`0.157 ft` vs `0.302 ft`), and **46.4%** during elevated Cape Fear River head events (`0.155 ft` vs `0.289 ft`).
+   - Parameterized `BasinPhysicsSpec` configurations extend directly across both **Tidal Inlets / Lagoons** (**Carolina Beach, NC** `~95%` fit; **Beaufort, NC** `~94%` fit; **Garden City, SC** `~95%` fit) and **Wind Sounds & River Estuaries** (**New Bern, NC** `~88%` fit via Neuse/Pamlico directional fetch + Kinston USGS `02089500`; **Wilmington, NC** `~92%` fit via `8658120` + Lock #1 `02105769`; **Charleston, SC** `~93%` fit via `8665530` + Cooper River USGS `02172002`; **Savannah, GA** `~91%` fit via `8670870` + Clyo USGS `02198500`).
+   - Legacy `forecast_models` ridge refitting (`refreshResidualHistory`) and hourly Gemini explanation generation are retired.
 
+## FloodCast Alerts 2.0 & Resident UX
 
-## Citizen alert pilot and launch UX
+Canonical Carolina Beach flood thresholds are enforced across backend alerts, charts, maps, and resident guides: **`5.6 ft Minor / 7.0 ft Moderate / 7.7 ft Major / 8.5 ft Extreme` (ft MLLW)**.
 
-`/alerts` is the resident enrollment/preferences route, promoted after Next Flooding Events and in navigation. Public forecast startup does not wait for account setup. Secondary account/help routes load on demand. Both plots retain one synchronized viewport and keyboard/touch controls; the selected forecast still drives every hazard calculation.
-
-`functions/src/citizenAlerts` keeps verified consent, private history, fan-out and a leased delivery queue separate from the existing shadow alert evaluator and immutable forecast publications. Resend is server-only and default-disabled. Stable message identifiers, enrollment generations, freshness/supersession checks, expiry and retries protect delivery. Gemini cannot enqueue alerts or supply numerical trigger values. Provider acceptance is not evidence of inbox delivery.
-
-The new release also negotiates public forecast gzip, trusts daily observation coverage only after explicit server certification, defers enabled ads until needed, and collects sampled bounded LCP/CLS/INP values. See [release validation](docs/qa/LAUNCH-IMPLEMENTATION-2026-10-19.md), [provider setup](docs/CITIZEN-ALERTS-SETUP.md), and [daily coverage contract](docs/DAILY-OBSERVATION-STORAGE.md).
+- **Public In-App Advisories (`/alerts` & `GET /api/alerts?feed=1`)**: Unauthenticated visitors and residents can inspect active/upcoming 48-hour flood windows, live 48-hour server-rendered PNG hydrographs (`GET /api/alerts?chart=1`), physical surge driver chips, recent issued bulletins, and deep-links (`/tab2?t=<iso>`) without creating an account.
+- **Anti-Spam Alert State Machine (`functions/src/citizenAlerts/operationalAlerts.ts`)**: Evaluates the unified 48-hour operational forecast with a right-edge `endClipped` horizon guard, `0.15 ft` downward hysteresis (`5.45 / 6.85 / 7.55 / 8.35 ft` clear thresholds), `6-hour` same-tier cooldown with immediate tier-escalation bypass, `<= 3.5h` imminent flood warnings, transient-outage freeze (eliminating `forecast_restored` spam), and multi-tide digest consolidation.
+- **Configurable Subscriber Preferences & Rich Multipart Emails**: Verified subscribers configure severity tiers (`minor`, `moderate`, `major`, `extreme`) and lifecycle categories (`upcomingWatch`, `imminentWarning`, `forecastChange`, `allClear`) via `POST /api/alerts` (`action: 'update_preferences'`). Resend delivers multipart HTML + plain-text emails containing severity badges, peak MLLW, flood window/duration, street depth inches, peak wind speed/compass & rain, physical surge drivers, `"What Changed"` delta summaries, an embedded 48-hour hydrograph PNG, one-click RFC 8058 `List-Unsubscribe` headers, and `#token=` fragment unsubscribe links.

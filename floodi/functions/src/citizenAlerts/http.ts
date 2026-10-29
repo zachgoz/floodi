@@ -1,12 +1,20 @@
 import { CitizenAccount, CitizenActionRequest, CitizenStatusResponse, DeliveryConfiguration } from './types';
+import { PublicAlertFeedDocument } from './operationalAlerts';
 import { CitizenRequestError, guestCitizenStatus, parseCitizenAction } from './service';
 
-interface CitizenHttpRequest { method: string; get(name: string): string | undefined; rawBody?: Buffer; body: unknown }
+interface CitizenHttpRequest {
+  method: string;
+  query?: Record<string, unknown>;
+  get(name: string): string | undefined;
+  rawBody?: Buffer;
+  body: unknown;
+}
 interface CitizenHttpResponse {
   set(name: string, value: string): unknown;
+  type?(mime: string): CitizenHttpResponse;
   status(code: number): CitizenHttpResponse;
   json(value: unknown): unknown;
-  send(): unknown;
+  send(body?: unknown): unknown;
 }
 export interface CitizenHttpDependencies {
   configuration(): DeliveryConfiguration;
@@ -17,6 +25,8 @@ export interface CitizenHttpDependencies {
   status(account: CitizenAccount, configuration: DeliveryConfiguration): Promise<CitizenStatusResponse>;
   action(account: CitizenAccount, configuration: DeliveryConfiguration, request: CitizenActionRequest): Promise<void>;
   unsubscribe(token: string): Promise<void>;
+  publicFeed?(): Promise<PublicAlertFeedDocument>;
+  chartPng?(highlightPeakIso?: string | null): Promise<Buffer>;
   logFailure(): void;
   now?: () => number;
 }
@@ -50,6 +60,25 @@ export function createCitizenHttpHandler(dependencies: CitizenHttpDependencies) 
     if ((req.rawBody?.byteLength ?? 0) > 4096 || Number(req.get('Content-Length') ?? 0) > 4096) { res.status(413).json({ error: 'request-too-large' }); return; }
     if (req.method === 'POST' && !/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.get('Content-Type') ?? '')) { res.status(415).json({ error: 'json-required' }); return; }
     try {
+      // Public 48-hour hydrograph PNG image endpoint for email <img> & previews
+      if (req.method === 'GET' && req.query?.chart === '1' && dependencies.chartPng) {
+        const rawPeak = typeof req.query.peak === 'string' && req.query.peak.length <= 40 ? req.query.peak : null;
+        const png = await dependencies.chartPng(rawPeak);
+        res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+        res.set('Content-Type', 'image/png');
+        if (res.type) res.type('image/png');
+        res.status(200).send(png);
+        return;
+      }
+
+      // Public unauthenticated in-app live advisories & bulletins feed
+      if (req.method === 'GET' && req.query?.feed === '1' && dependencies.publicFeed) {
+        const feed = await dependencies.publicFeed();
+        res.set('Cache-Control', 'public, max-age=30, s-maxage=60');
+        res.status(200).json(feed);
+        return;
+      }
+
       const configuration = dependencies.configuration();
       const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body as Record<string, unknown> : null;
       if (req.method === 'POST' && body?.action === 'unsubscribe' && 'token' in body) {
@@ -58,7 +87,16 @@ export function createCitizenHttpHandler(dependencies: CitizenHttpDependencies) 
         res.status(200).json({ unsubscribed: true }); return;
       }
       const authorization = req.get('Authorization');
-      if (!authorization && req.method === 'GET') { res.status(200).json(guestCitizenStatus(configuration)); return; }
+      if (!authorization && req.method === 'GET') {
+        const base = guestCitizenStatus(configuration);
+        if (dependencies.publicFeed) {
+          const feed = await dependencies.publicFeed().catch(() => null);
+          res.status(200).json(feed ? { ...base, feed } : base);
+          return;
+        }
+        res.status(200).json(base);
+        return;
+      }
       if (!authorization?.startsWith('Bearer ') || authorization.length > 8192) throw new CitizenRequestError(401, 'sign-in-required');
       let current: CitizenAccount;
       try {

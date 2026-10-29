@@ -3,22 +3,49 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { safeError } from '../utils/observability';
 import { WaterPoint, interpolate } from './water';
 import { TimesFmVertexClient, TimesFmPredictionResult } from './timesfmClient';
-import { fetchNoaaSurgeForecast, NoaaSurgeForecast } from './noaaSurge';
+import {
+  fetchNoaaSurgeForecast,
+  NoaaSurgeForecast,
+  WRIGHTSVILLE_ETSS_CONFIG,
+  WILMINGTON_RIVER_ETSS_CONFIG,
+} from './noaaSurge';
+import {
+  fetchUsgsRiverTelemetry,
+  UsgsRiverTelemetry,
+  CAPE_FEAR_LOCK1_CONFIG,
+} from './usgsRiver';
+import {
+  CAROLINA_BEACH_BASIN_SPEC,
+  MULTI_REGION_BASIN_SPECS,
+  CoastalRegime,
+  SurgeDriversBreakdown,
+  BasinWeatherSample,
+  fitBasinHarmonics,
+  synthesizeOperationalForecast,
+} from './basinPhysics';
 
 export interface ChallengerPoint {
   t: string;          // ISO 8601 UTC
   totalFt: number;    // Astronomical tide + predicted residual
   tideFt: number;     // Astronomical tide
-  residualFt: number; // Foundation model predicted residual
-  noaaSurgeFt?: number; // NOAA ETSS hydrodynamic surge guidance
+  residualFt: number; // Synthesized operational surge residual (exact sum of drivers)
+  noaaSurgeFt?: number; // NOAA ETSS primary ocean surge guidance (e.g. Wrightsville ncwrit)
+  riverSurgeFt?: number; // NOAA ETSS river-mouth surge guidance (e.g. Wilmington Cape Fear ncwilm)
   lowerFt?: number;   // 10th percentile bound
   upperFt?: number;   // 90th percentile bound
+  windSpeedMph?: number;
+  windDirectionDeg?: number;
+  precipIn?: number;
+  drivers?: SurgeDriversBreakdown;
 }
 
 export interface ChallengerOutlookDocument {
   challengerId: string;
   locationId: string;
+  regime?: CoastalRegime;
   generatedAt: string;
+  observationAt?: string;
+  currentResidualFt?: number;
   expiresAt: string;
   status: 'available' | 'unavailable';
   engine: TimesFmPredictionResult['engine'] | 'none';
@@ -36,9 +63,24 @@ export interface ChallengerOutlookDocument {
   metadata: {
     historyPointsCount: number;
     noaaSurgeAvailable: boolean;
+    riverSurgeAvailable?: boolean;
+    usgsDischargeCfs?: number | null;
+    weatherAvailable?: boolean;
     retrievedAt: string;
   };
   error?: string;
+}
+
+export interface ChallengerWeatherInput {
+  t: Date | string;
+  windSpeedMph?: number;
+  windSpeed?: number;
+  windDirectionDeg?: number;
+  windDirection?: number;
+  surfacePressureHpa?: number;
+  pressure?: number;
+  precipIn?: number;
+  precip?: number;
 }
 
 export interface ChallengerRunOptions {
@@ -48,10 +90,14 @@ export interface ChallengerRunOptions {
   issuedAt: Date;
   recentResidual: WaterPoint[];
   tide: WaterPoint[];
-  forecastWeather?: Array<{ t: Date; windSpeedMph?: number; surfacePressureHpa?: number }>;
-  horizonSteps?: number; // defaults to 48 (24 hours at 30-min steps)
+  forecastWeather?: ChallengerWeatherInput[];
+  horizonSteps?: number; // defaults to 48 (24 hours at 30-min steps) for TimesFM inference
+  /** When true, synthesizes the full future astronomical tide horizon (up to 21 days at 30-min steps) */
+  extendFullTideHorizon?: boolean;
   timesfmClient?: TimesFmVertexClient;
   noaaForecastProvider?: () => Promise<NoaaSurgeForecast | null>;
+  riverForecastProvider?: () => Promise<NoaaSurgeForecast | null>;
+  usgsTelemetryProvider?: () => Promise<UsgsRiverTelemetry | null>;
 }
 
 /** Resamples irregular residual points onto a strict 30-minute grid */
@@ -62,9 +108,9 @@ export function resampleResidualGrid(
 ): Array<{ t: string; v: number }> {
   if (!series.length) return [];
   const points = [...series].sort((a, b) => a.t.getTime() - b.t.getTime());
-  
+
   const endMs = Math.floor(endTime.getTime() / (30 * 60_000)) * (30 * 60_000);
-  const startMs = endMs - (hoursBack * 3600_000);
+  const startMs = endMs - hoursBack * 3600_000;
 
   const resampled: Array<{ t: string; v: number }> = [];
   for (let ms = startMs; ms <= endMs; ms += 30 * 60_000) {
@@ -78,94 +124,53 @@ export function resampleResidualGrid(
 }
 
 /**
- * Fits tidal harmonic components (M2: 12.4206h lunar semi-diurnal, S1: 24h diurnal)
- * from recent observed residual points using ridge regression.
- * Returns a function that maps any target timestamp to its shallow-water harmonic deviation relative to anchorTime.
+ * Fits tidal harmonic components (M2: 12.4206h, S1: 24h, M4: 6.2103h) from recent
+ * observed residual points and returns deviation relative to anchorTime.
  */
 export function fitResidualHarmonics(
   history: Array<{ t: string; v: number }>,
   anchorTime: Date,
   lookbackHours = 48
 ): (targetTime: Date) => number {
-  const origin = anchorTime.getTime();
-  const windowStart = origin - lookbackHours * 3600_000;
-  const recent = history.filter(pt => {
-    const ms = new Date(pt.t).getTime();
-    return Number.isFinite(ms) && Number.isFinite(pt.v) && ms >= windowStart && ms <= origin + 60_000;
+  const originMs = anchorTime.getTime();
+  const model = fitBasinHarmonics(history, originMs, {
+    lookbackHours,
+    includeM4: true,
+    maxClampFt: 1.5,
   });
-  const pts = recent.length >= 12 ? recent : history;
-  if (pts.length < 12) {
-    return () => 0;
-  }
-  const count = 6;
-  const matrix = Array.from({ length: count }, () => Array(count + 1).fill(0));
-
-  const cols = (tMs: number) => {
-    const h = (tMs - origin) / 3600_000;
-    return [
-      1,
-      h / 72,
-      Math.sin(2 * Math.PI * h / 12.4206),
-      Math.cos(2 * Math.PI * h / 12.4206),
-      Math.sin(2 * Math.PI * h / 24),
-      Math.cos(2 * Math.PI * h / 24),
-    ];
-  };
-
-  for (const pt of pts) {
-    const tMs = new Date(pt.t).getTime();
-    const x = cols(tMs);
-    for (let i = 0; i < count; i++) {
-      for (let j = 0; j < count; j++) matrix[i][j] += x[i] * x[j];
-      matrix[i][count] += x[i] * pt.v;
-    }
-  }
-  // Regularize linear drift slope and harmonic terms for numerical stability
-  matrix[1][1] += 5.0;
-  for (let i = 2; i < count; i++) matrix[i][i] += 0.05;
-
-  // Gaussian elimination with partial pivoting
-  for (let col = 0; col < count; col++) {
-    let pivot = col;
-    for (let row = col + 1; row < count; row++) {
-      if (Math.abs(matrix[row][col]) > Math.abs(matrix[pivot][col])) pivot = row;
-    }
-    [matrix[pivot], matrix[col]] = [matrix[col], matrix[pivot]];
-    const div = matrix[col][col];
-    if (Math.abs(div) < 1e-10) return () => 0;
-    for (let j = col; j <= count; j++) matrix[col][j] /= div;
-    for (let row = 0; row < count; row++) {
-      if (row === col) continue;
-      const scale = matrix[row][col];
-      for (let j = col; j <= count; j++) matrix[row][j] -= scale * matrix[col][j];
-    }
-  }
-
-  const coeffs = matrix.map(r => r[count]);
-  if (!coeffs.every(Number.isFinite)) return () => 0;
-
-  const harmonicAt = (tMs: number) => {
-    const x = cols(tMs);
-    return x.slice(2).reduce((s, v, i) => s + v * coeffs[i + 2], 0);
-  };
-
-  const hAnchor = harmonicAt(origin);
-
+  const hOrigin = model.evalHarmonic(originMs);
   return (targetTime: Date) => {
-    const raw = harmonicAt(targetTime.getTime()) - hAnchor;
-    // Bounded within physical canal anomaly range [-1.2 ft, +1.2 ft]
-    return Math.max(-1.2, Math.min(1.2, raw));
+    const raw = model.evalHarmonic(targetTime.getTime()) - hOrigin;
+    return Math.max(-1.5, Math.min(1.5, raw));
   };
 }
 
+function normalizeWeatherSamples(inputs: ChallengerWeatherInput[]): BasinWeatherSample[] {
+  const out: BasinWeatherSample[] = [];
+  for (const w of inputs || []) {
+    if (!w) continue;
+    const tMs = new Date(w.t).getTime();
+    if (!Number.isFinite(tMs)) continue;
+    out.push({
+      t: new Date(tMs),
+      windSpeedMph: w.windSpeedMph ?? w.windSpeed,
+      windDirectionDeg: w.windDirectionDeg ?? w.windDirection,
+      pressureHpa: w.surfacePressureHpa ?? w.pressure,
+      precipIn: w.precipIn ?? w.precip,
+    });
+  }
+  return out;
+}
+
 /**
- * Runs the TimesFM-3 + NOAA ETSS shadow challenger.
- * Designed to execute asynchronously alongside primary forecast publication.
- * Under NO circumstances does this function throw into the primary forecast pipeline.
+ * Runs the unified Operational Forecast Engine:
+ *   TimesFM-3 Subtidal AI + NOAA Ocean ETSS (ncwrit) + Cape Fear River ETSS (ncwilm)
+ *   + USGS Lock #1 Discharge (02105769) + Directional N/NE Wind-Fetch Stress + M2/S1/M4 Estuarine Harmonics.
  */
 export async function runTimesFmChallenger(
   options: ChallengerRunOptions
 ): Promise<ChallengerOutlookDocument | null> {
+  const hasCustomNoaaProvider = options.noaaForecastProvider !== undefined;
   const {
     db,
     siteId,
@@ -175,176 +180,262 @@ export async function runTimesFmChallenger(
     tide,
     forecastWeather = [],
     horizonSteps = 48,
+    extendFullTideHorizon = false,
     timesfmClient = new TimesFmVertexClient(),
-    noaaForecastProvider = fetchNoaaSurgeForecast,
+    noaaForecastProvider = () => fetchNoaaSurgeForecast(10_000, WRIGHTSVILLE_ETSS_CONFIG),
+    riverForecastProvider = hasCustomNoaaProvider
+      ? async () => null
+      : () => fetchNoaaSurgeForecast(10_000, WILMINGTON_RIVER_ETSS_CONFIG),
+    usgsTelemetryProvider = hasCustomNoaaProvider
+      ? async () => null
+      : () => fetchUsgsRiverTelemetry(CAPE_FEAR_LOCK1_CONFIG),
   } = options;
 
   try {
     // 1. Resample recent residual to strict 30-minute intervals (48h back)
     const historyPoints = resampleResidualGrid(recentResidual, issuedAt, 48);
     if (historyPoints.length < 24) {
-      logger.info('TimesFM shadow challenger skipped: insufficient residual history', {
+      logger.info('Operational forecast skipped: insufficient residual history', {
         pointsAvailable: historyPoints.length,
         required: 24,
       });
       return null;
     }
 
-    const targetHistory = historyPoints.map(p => p.v);
+    const spec = MULTI_REGION_BASIN_SPECS[siteId] ?? CAROLINA_BEACH_BASIN_SPEC;
+    const originMs = issuedAt.getTime();
+    const harmonics = fitBasinHarmonics(historyPoints, originMs, spec.harmonics);
+
+    // De-harmonize observed residual before feeding TimesFM so harmonics are never double-counted
+    const subtidalTargetHistory = historyPoints.map(p =>
+      Math.round((p.v - harmonics.evalHarmonic(Date.parse(p.t))) * 1000) / 1000
+    );
     const timestamps = historyPoints.map(p => p.t);
 
-    // 2. Fetch NOAA ETSS storm surge guidance
-    let noaaSurge: NoaaSurgeForecast | null = null;
-    try {
-      noaaSurge = await noaaForecastProvider();
-    } catch (e) {
-      logger.warn('NOAA ETSS fetch failed; proceeding with pure TimesFM zero-shot', { error: safeError(e) });
-    }
+    // 2. Fetch NOAA Ocean ETSS, NOAA River ETSS (Wilmington Cape Fear), and USGS Lock #1 discharge in parallel
+    const [noaaSurge, riverSurge, usgsTelemetry] = await Promise.all([
+      noaaForecastProvider().catch(e => {
+        logger.warn('NOAA Ocean ETSS fetch failed', { error: safeError(e) });
+        return null;
+      }),
+      riverForecastProvider().catch(e => {
+        logger.warn('NOAA River ETSS fetch failed', { error: safeError(e) });
+        return null;
+      }),
+      usgsTelemetryProvider().catch(e => {
+        logger.warn('USGS river telemetry fetch failed', { error: safeError(e) });
+        return null;
+      }),
+    ]);
 
-    // 3. Build future covariate vectors
+    const normalizedWeather = normalizeWeatherSamples(forecastWeather);
+
+    // 3. Build future covariate vectors for the TimesFM inference window (horizonSteps)
     const futureTide: number[] = [];
     const futureNoaaSurge: number[] = [];
     const futureWind: number[] = [];
+    const futureWindDir: number[] = [];
     const futurePressure: number[] = [];
+    const futurePrecip: number[] = [];
     const futureDates: Date[] = [];
 
     const noaaPoints = noaaSurge?.points.map(p => ({ t: new Date(p.t), v: p.surgeFt })) || [];
-    const weatherWind = forecastWeather.map(w => ({ t: w.t, v: w.windSpeedMph ?? 0 }));
-    const weatherPressure = forecastWeather.map(w => ({ t: w.t, v: w.surfacePressureHpa ?? 1013.25 }));
+    const riverPoints = riverSurge?.points.map(p => ({ t: new Date(p.t), v: p.surgeFt })) || [];
+    const weatherWind = normalizedWeather
+      .filter(w => typeof w.windSpeedMph === 'number')
+      .map(w => ({ t: new Date(w.t), v: w.windSpeedMph! }));
+    const weatherWindDir = normalizedWeather
+      .filter(w => typeof w.windDirectionDeg === 'number')
+      .map(w => ({ t: new Date(w.t), v: w.windDirectionDeg! }));
+    const weatherPressure = normalizedWeather
+      .filter(w => typeof w.pressureHpa === 'number')
+      .map(w => ({ t: new Date(w.t), v: w.pressureHpa! }));
+    const weatherPrecip = normalizedWeather
+      .filter(w => typeof w.precipIn === 'number')
+      .map(w => ({ t: new Date(w.t), v: w.precipIn! }));
 
     for (let step = 1; step <= horizonSteps; step++) {
-      const stepTime = new Date(issuedAt.getTime() + step * 30 * 60_000);
+      const stepTime = new Date(originMs + step * 30 * 60_000);
       futureDates.push(stepTime);
 
       const tideVal = interpolate(tide, stepTime, 45 * 60_000) ?? 3.5;
       futureTide.push(Math.round(tideVal * 1000) / 1000);
 
-      const surgeVal = noaaPoints.length ? (interpolate(noaaPoints, stepTime, 90 * 60_000) ?? 0) : 0;
+      const surgeVal = noaaPoints.length ? interpolate(noaaPoints, stepTime, 90 * 60_000) ?? 0 : 0;
       futureNoaaSurge.push(Math.round(surgeVal * 1000) / 1000);
 
-      const windVal = weatherWind.length ? (interpolate(weatherWind, stepTime, 90 * 60_000) ?? 0) : 0;
+      const windVal = weatherWind.length ? interpolate(weatherWind, stepTime, 90 * 60_000) ?? 0 : 0;
       futureWind.push(Math.round(windVal * 10) / 10);
 
-      const pressVal = weatherPressure.length ? (interpolate(weatherPressure, stepTime, 90 * 60_000) ?? 1013.25) : 1013.25;
+      const dirVal = weatherWindDir.length ? interpolate(weatherWindDir, stepTime, 90 * 60_000) ?? 0 : 0;
+      futureWindDir.push(Math.round(dirVal));
+
+      const pressVal = weatherPressure.length ? interpolate(weatherPressure, stepTime, 90 * 60_000) ?? 1013.25 : 1013.25;
       futurePressure.push(Math.round(pressVal * 10) / 10);
+
+      const precipVal = weatherPrecip.length ? interpolate(weatherPrecip, stepTime, 90 * 60_000) ?? 0 : 0;
+      futurePrecip.push(Math.round(precipVal * 100) / 100);
     }
 
-    // 4. Request TimesFM prediction
-    const covariatesUsed = ['astronomical_tide'];
+    // 4. Request TimesFM subtidal prediction
+    const covariatesUsed = ['astronomical_tide', 'estuarine_harmonics_m2_s1_m4'];
     if (noaaSurge && noaaPoints.length > 0) covariatesUsed.push('noaa_etss_surge');
+    if (riverSurge && riverPoints.length > 0) covariatesUsed.push('cape_fear_river_etss_head');
+    if (usgsTelemetry && usgsTelemetry.points.length > 0) covariatesUsed.push('usgs_lock1_discharge');
     if (weatherWind.length > 0) covariatesUsed.push('surface_wind_speed');
+    if (weatherWindDir.length > 0) covariatesUsed.push('directional_nne_wind_stress');
     if (weatherPressure.length > 0) covariatesUsed.push('surface_pressure');
+    if (weatherPrecip.length > 0) covariatesUsed.push('precipitation_runoff');
 
-    let prediction: TimesFmPredictionResult;
+    let engine: TimesFmPredictionResult['engine'] = 'noaa-etss-hybrid';
+    let timesFmSubtidal: Array<{ t: Date; v: number }> = [];
+    let timesFmSpread: Array<{ t: Date; v: number }> = [];
+
     try {
-      prediction = await timesfmClient.forecast({
-        targetHistory,
+      const prediction = await timesfmClient.forecast({
+        targetHistory: subtidalTargetHistory,
         timestamps,
         horizon: horizonSteps,
         futureTide,
         futureNoaaSurge: noaaPoints.length ? futureNoaaSurge : undefined,
         futureWeather: {
           windSpeed: futureWind,
+          windDirection: futureWindDir,
           pressure: futurePressure,
+          precipitation: futurePrecip,
         },
         quantiles: [0.1, 0.5, 0.9],
       });
+      engine = prediction.engine;
+      timesFmSubtidal = futureDates.map((d, idx) => ({ t: d, v: prediction.mean[idx] }));
+      if (prediction.q10 && prediction.q90) {
+        timesFmSpread = futureDates.map((d, idx) => ({
+          t: d,
+          v: Math.max(0.18, (prediction.q90![idx] - prediction.q10![idx]) / 2),
+        }));
+      }
     } catch (modelErr) {
       if (!noaaPoints.length) {
         throw new Error('Both TimesFM inference and NOAA ETSS surge guidance are unavailable');
       }
-      logger.warn('TimesFM remote inference failed, activating NOAA ETSS hybrid fallback', {
+      logger.warn('TimesFM remote inference failed, activating NOAA ETSS + Basin Physics hybrid engine', {
         event: 'timesfm_fallback_etss',
         error: safeError(modelErr),
       });
-
-      // Hybrid Fallback: Blend latest measured residual with NOAA ETSS guidance
-      const anchorResidual = targetHistory.at(-1) ?? 0.5;
-      const mean: number[] = [];
-      const q10: number[] = [];
-      const q90: number[] = [];
-
-      for (let i = 0; i < horizonSteps; i++) {
-        const noaaVal = noaaPoints.length ? futureNoaaSurge[i] : anchorResidual;
-        // Exponential blending: weight decays over 6 hours (12 steps of 30 mins)
-        // smoothly bridging from measured gauge residual to NOAA ETSS hydrodynamic surge guidance
-        const alpha = Math.exp(-i / 12);
-        const blended = alpha * anchorResidual + (1 - alpha) * noaaVal;
-        mean.push(blended);
-
-        // Calibrated empirical error growth for storm surge
-        const uncertainty = 0.25 + 0.005 * i;
-        q10.push(blended - uncertainty);
-        q90.push(blended + uncertainty);
-      }
-
-      prediction = {
-        mean,
-        q10,
-        q50: mean,
-        q90,
-        engine: 'noaa-etss-hybrid',
-      };
+      engine = 'noaa-etss-hybrid';
     }
 
-    // 5. Reconstruct total forecasted water level curve with shallow-water estuarine harmonics
-    const challengerPoints: ChallengerPoint[] = [];
+    // 5. Build target future tide evaluation grid (30-min steps across horizonSteps or full 21-day tide horizon)
+    const sortedInputTide = [...tide].sort((a, b) => +a.t - +b.t);
+    const maxTideMs = sortedInputTide.length ? +sortedInputTide[sortedInputTide.length - 1].t : originMs;
+    const minEndMs = originMs + horizonSteps * 30 * 60_000;
+    const targetEndMs = extendFullTideHorizon ? Math.max(minEndMs, maxTideMs) : minEndMs;
+
+    const targetTideGrid: Array<{ t: Date; v: number }> = [];
+    for (let ms = originMs + 30 * 60_000; ms <= targetEndMs; ms += 30 * 60_000) {
+      const d = new Date(ms);
+      const tv = interpolate(sortedInputTide, d, 65 * 60_000);
+      if (tv !== null && Number.isFinite(tv)) {
+        targetTideGrid.push({ t: d, v: tv });
+      } else if (ms <= minEndMs) {
+        targetTideGrid.push({ t: d, v: 3.5 });
+      }
+    }
+
+    const usgsDischargeSeries =
+      usgsTelemetry?.points
+        .filter(p => typeof p.dischargeCfs === 'number' && Number.isFinite(p.dischargeCfs))
+        .map(p => ({ t: p.t, v: p.dischargeCfs! })) ?? [];
+
+    // Ensure Ocean ETSS covers origin if NOAA ETSS had a single anchor point or TimesFM zero-shot ran without ETSS
+    const effectiveOceanEtss =
+      noaaPoints.length >= 2
+        ? noaaPoints
+        : noaaPoints.length === 1
+          ? [noaaPoints[0], { t: new Date(minEndMs), v: noaaPoints[0].v }]
+          : timesFmSubtidal;
+
+    const synthesized = synthesizeOperationalForecast({
+      spec,
+      issuedAt,
+      recentResidual: historyPoints,
+      tide: targetTideGrid,
+      oceanEtss: effectiveOceanEtss,
+      riverEtss: riverPoints,
+      usgsDischargeCfs: usgsDischargeSeries,
+      weather: normalizedWeather,
+      timesFmSubtidal,
+      timesFmSpread,
+    });
+
+    const challengerPoints: ChallengerPoint[] = synthesized.map(pt => ({
+      t: pt.t,
+      totalFt: pt.totalFt,
+      tideFt: pt.tideFt,
+      residualFt: pt.residualFt,
+      ...(pt.noaaSurgeFt !== undefined ? { noaaSurgeFt: pt.noaaSurgeFt } : {}),
+      ...(pt.riverSurgeFt !== undefined ? { riverSurgeFt: pt.riverSurgeFt } : {}),
+      lowerFt: pt.lowerFt,
+      upperFt: pt.upperFt,
+      ...(pt.windSpeedMph !== undefined ? { windSpeedMph: pt.windSpeedMph } : {}),
+      ...(pt.windDirectionDeg !== undefined ? { windDirectionDeg: pt.windDirectionDeg } : {}),
+      ...(pt.precipIn !== undefined ? { precipIn: pt.precipIn } : {}),
+      drivers: pt.drivers,
+    }));
+
+    // Compute peak within the primary 72h operational outlook window (or full series if shorter)
+    const primaryCutoffMs = originMs + Math.max(horizonSteps, 144) * 30 * 60_000;
     let peakPoint: ChallengerPoint | null = null;
-    const harmonicDelta = fitResidualHarmonics(historyPoints, issuedAt);
-
-    for (let i = 0; i < horizonSteps; i++) {
-      const t = futureDates[i].toISOString();
-      const tideFt = futureTide[i];
-      const hDelta = harmonicDelta(futureDates[i]);
-      const residualFt = Math.round((prediction.mean[i] + hDelta) * 1000) / 1000;
-      const totalFt = Math.round((tideFt + residualFt) * 1000) / 1000;
-      const lowerFt = prediction.q10 ? Math.round((tideFt + prediction.q10[i] + hDelta) * 1000) / 1000 : undefined;
-      const upperFt = prediction.q90 ? Math.round((tideFt + prediction.q90[i] + hDelta) * 1000) / 1000 : undefined;
-      const noaaSurgeFt = noaaPoints.length ? futureNoaaSurge[i] : undefined;
-
-      const pt: ChallengerPoint = {
-        t,
-        totalFt,
-        tideFt,
-        residualFt,
-        noaaSurgeFt,
-        lowerFt,
-        upperFt,
-      };
-      challengerPoints.push(pt);
-
-      if (!peakPoint || pt.totalFt > peakPoint.totalFt) {
-        peakPoint = pt;
+    for (const pt of challengerPoints) {
+      if (Date.parse(pt.t) <= primaryCutoffMs) {
+        if (!peakPoint || pt.totalFt > peakPoint.totalFt) {
+          peakPoint = pt;
+        }
       }
     }
+    if (!peakPoint && challengerPoints.length) {
+      peakPoint = challengerPoints[0];
+    }
 
-    const expiresAt = new Date(issuedAt.getTime() + 45 * 60_000).toISOString();
+    const latestObs = [...recentResidual].sort((a, b) => +a.t - +b.t).at(-1);
+    const currentResidualFt = latestObs ? Math.round(latestObs.v * 1000) / 1000 : harmonics.anchorObs;
+    const observationAt = latestObs ? latestObs.t.toISOString() : historyPoints.at(-1)?.t;
+
+    const expiresAt = new Date(originMs + 45 * 60_000).toISOString();
     const challengerDoc: ChallengerOutlookDocument = {
       challengerId: 'timesfm-3',
       locationId: siteId,
+      regime: spec.regime,
       generatedAt: issuedAt.toISOString(),
+      ...(observationAt ? { observationAt } : {}),
+      currentResidualFt,
       expiresAt,
       status: 'available',
-      engine: prediction.engine,
-      horizonSteps,
+      engine,
+      horizonSteps: challengerPoints.length,
       thresholdFt,
       points: challengerPoints,
-      peak: peakPoint ? {
-        t: peakPoint.t,
-        totalFt: peakPoint.totalFt,
-        tideFt: peakPoint.tideFt,
-        residualFt: peakPoint.residualFt,
-        exceedsThreshold: peakPoint.totalFt >= thresholdFt,
-      } : null,
+      peak: peakPoint
+        ? {
+            t: peakPoint.t,
+            totalFt: peakPoint.totalFt,
+            tideFt: peakPoint.tideFt,
+            residualFt: peakPoint.residualFt,
+            exceedsThreshold: peakPoint.totalFt >= thresholdFt,
+          }
+        : null,
       covariatesUsed,
       metadata: {
         historyPointsCount: historyPoints.length,
         noaaSurgeAvailable: !!(noaaSurge && noaaPoints.length > 0),
+        riverSurgeAvailable: !!(riverSurge && riverPoints.length > 0),
+        usgsDischargeCfs: usgsTelemetry?.latestDischargeCfs ?? null,
+        weatherAvailable: normalizedWeather.length > 0,
         retrievedAt: new Date().toISOString(),
       },
     };
 
-    // 6. Write asynchronously to Firestore
+    // 6. Write operational forecast atomically to Firestore
     const issuePath = `locations/${siteId}/forecast_challengers/timesfm-3/issues/${issuedAt.toISOString()}`;
     const currentPath = `locations/${siteId}/forecast_challengers/timesfm-3/outlook/current`;
     const publicationMarker = `forecast_challenger_publications/timesfm-3/${siteId}/issues/${issuedAt.toISOString()}`;
@@ -357,23 +448,27 @@ export async function runTimesFmChallenger(
         locationId: siteId,
         issueId: issuedAt.toISOString(),
         publishedAt: FieldValue.serverTimestamp(),
-        engine: prediction.engine,
+        engine,
         peakFt: challengerDoc.peak?.totalFt ?? null,
         peakTime: challengerDoc.peak?.t ?? null,
       }),
     ]);
 
-    logger.info('TimesFM shadow challenger forecast published successfully', {
+    logger.info('Operational Basin Physics + TimesFM forecast published successfully', {
       event: 'timesfm_challenger_published',
       locationId: siteId,
-      engine: prediction.engine,
+      regime: spec.regime,
+      engine,
+      pointsCount: challengerPoints.length,
       peakFt: challengerDoc.peak?.totalFt,
       peakTime: challengerDoc.peak?.t,
+      riverSurgeAvailable: challengerDoc.metadata.riverSurgeAvailable,
+      usgsDischargeCfs: challengerDoc.metadata.usgsDischargeCfs,
     });
 
     return challengerDoc;
   } catch (err) {
-    logger.warn('TimesFM shadow challenger execution failed; primary forecast unaffected', {
+    logger.warn('Operational forecast execution failed', {
       event: 'timesfm_challenger_failed',
       locationId: siteId,
       error: safeError(err),

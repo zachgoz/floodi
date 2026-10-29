@@ -1,3 +1,10 @@
+import type {
+  CitizenAlertPreferences,
+  FloodSeverityTier,
+  OperationalAlertCategory,
+  PublicAlertFeedDocument,
+} from './operationalAlerts';
+
 export const CITIZEN_CONSENT_VERSION = 'citizen-email-v1';
 export const CITIZEN_COVERAGE = 'carolina-beach-gauge';
 export const SUBSCRIPTIONS = 'citizen_alert_subscriptions';
@@ -23,6 +30,7 @@ export interface CitizenSubscription {
   catchupPending?: boolean;
   unsubscribeHash: string;
   lastTestAt: string | null;
+  preferences?: CitizenAlertPreferences;
 }
 export interface DeliveryConfiguration {
   enabled: boolean;
@@ -31,15 +39,22 @@ export interface DeliveryConfiguration {
   publicBaseUrl: string | null;
   apiKey: string | null;
 }
-export type CitizenAction = 'enroll' | 'resume' | 'pause' | 'unsubscribe' | 'test';
-export interface CitizenActionRequest { action: CitizenAction; consentVersion?: string }
+export type CitizenAction = 'enroll' | 'resume' | 'pause' | 'unsubscribe' | 'test' | 'update_preferences';
+export interface CitizenActionRequest {
+  action: CitizenAction;
+  consentVersion?: string;
+  preferences?: CitizenAlertPreferences;
+}
 export interface CitizenHistory {
   id: string;
-  kind: 'enrollment' | 'pause' | 'unsubscribe' | 'test' | 'flood';
+  kind: 'enrollment' | 'pause' | 'unsubscribe' | 'test' | 'flood' | 'preferences';
   state: string;
   createdAt: string;
   updatedAt: string;
   subject: string;
+  severity?: FloodSeverityTier;
+  category?: OperationalAlertCategory;
+  peakFt?: number;
 }
 export interface CitizenStatusResponse {
   version: 1;
@@ -59,8 +74,10 @@ export interface CitizenStatusResponse {
     consentVersion: string;
     createdAt: string;
     updatedAt: string;
+    preferences?: CitizenAlertPreferences;
   };
   history: CitizenHistory[];
+  feed?: PublicAlertFeedDocument | null;
 }
 export interface CitizenDelivery {
   version: 1;
@@ -68,6 +85,7 @@ export interface CitizenDelivery {
   subscriptionGeneration: number;
   email: string;
   kind: 'test' | 'flood';
+   deliveryEngine?: 'operational_v2' | 'legacy_shadow';
   state: 'queued' | 'leased' | 'retry' | 'sent' | 'expired' | 'cancelled' | 'failed';
   createdAt: string;
   updatedAt: string;
@@ -79,6 +97,7 @@ export interface CitizenDelivery {
   providerMessageId: string | null;
   subject: string;
   text: string;
+  html?: string;
   unsubscribeToken: string;
   sourceIntentId: string | null;
   sourceEpisodeId: string | null;

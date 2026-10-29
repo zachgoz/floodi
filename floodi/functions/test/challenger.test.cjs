@@ -147,11 +147,22 @@ test('runTimesFmChallenger succeeds with mocked TimesFM and NOAA ETSS guidance',
   assert.equal(doc.covariatesUsed.includes('noaa_etss_surge'), true);
   assert.equal(doc.covariatesUsed.includes('astronomical_tide'), true);
 
-  // Exact math assertions: totalFt = tideFt + residualFt
+  // Exact math assertions: totalFt = tideFt + residualFt and lossless 5-driver attribution
   for (const pt of doc.points) {
     assert.equal(Math.round((pt.tideFt + pt.residualFt) * 1000) / 1000, pt.totalFt);
     assert.equal(pt.upperFt >= pt.lowerFt, true);
-    assert.equal(pt.residualFt, 1.35);
+    assert.ok(pt.drivers, 'Each point must carry physical drivers breakdown');
+    const sumDrivers =
+      Math.round(
+        (pt.drivers.oceanSurgeFt +
+          pt.drivers.windSetupFt +
+          pt.drivers.riverFlowFt +
+          pt.drivers.rainfallRunoffFt +
+          pt.drivers.estuarineHarmonicFt) *
+          1000
+      ) / 1000;
+    assert.equal(sumDrivers, pt.residualFt);
+    assert.ok(pt.residualFt >= 1.1 && pt.residualFt <= 1.4);
   }
 
   // Peak check

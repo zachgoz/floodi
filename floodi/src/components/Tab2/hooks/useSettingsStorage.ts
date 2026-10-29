@@ -14,6 +14,7 @@ const STORAGE_KEYS = {
   LOOKBACK_H: 'floodi.hist.lookbackH',
   LOOKAHEAD_H: 'floodi.hist.lookaheadH',
   RANGE_MODE: 'floodi.hist.rangeMode',
+  RANGE_SAVED_AT: 'floodi.hist.rangeSavedAt',
   ABS_START: 'floodi.hist.absStart',
   ABS_END: 'floodi.hist.absEnd',
   TIMEZONE: 'floodi.tz',
@@ -22,6 +23,12 @@ const STORAGE_KEYS = {
   VIEW_MODE: 'floodi.view_mode',
   DATA_SOURCE: 'floodi.data_source',
 } as const;
+
+/**
+ * Maximum age (30 minutes) for a persisted absolute chart viewport before
+ * returning residents are automatically restored to the Live relative window.
+ */
+export const STALE_ABSOLUTE_VIEWPORT_MS = 30 * 60_000;
 
 /**
  * Default configuration values
@@ -93,6 +100,16 @@ function safeSetStorageItem(key: string, value: string): void {
   }
 }
 
+function safeRemoveStorageItem(key: string): void {
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Silently fail - storage may be unavailable
+  }
+}
+
 /**
  * Custom hook for managing application configuration with localStorage persistence
  * 
@@ -113,8 +130,9 @@ export function useSettingsStorage() {
           thresholds = validThresholds(candidate) ? candidate : DEFAULT_CONFIG.thresholds;
           // Migration: if the stored value is an old default for Carolina Beach, update it
           if (locationId === 'carolina-beach') {
-            const staleValues = [3.5, 4.0, 6.1]; // Known historical or incorrect values
-            if (staleValues.includes(thresholds.minor)) {
+            const staleMinorValues = [3.5, 4.0, 6.1];
+            const hasStaleLegacyTiers = thresholds.moderate === 6.2 || thresholds.major === 6.8;
+            if (staleMinorValues.includes(thresholds.minor) || hasStaleLegacyTiers) {
               thresholds = { ...LOCATIONS['carolina-beach'].thresholds };
             }
           }
@@ -124,9 +142,40 @@ export function useSettingsStorage() {
     
     const storedLookback = safeGetStorageItem(STORAGE_KEYS.LOOKBACK_H, String(DEFAULT_CONFIG.timeRange.lookbackH));
     const lookbackH = parseInt(storedLookback, 10);
+    const effectiveLookbackH = Number.isFinite(lookbackH) && lookbackH > 0 ? lookbackH : DEFAULT_CONFIG.timeRange.lookbackH;
     
     const storedLookahead = safeGetStorageItem(STORAGE_KEYS.LOOKAHEAD_H, String(DEFAULT_CONFIG.timeRange.lookaheadH));
     const lookaheadH = parseInt(storedLookahead, 10);
+    const effectiveLookaheadH = Number.isFinite(lookaheadH) && lookaheadH > 0 ? lookaheadH : DEFAULT_CONFIG.timeRange.lookaheadH;
+
+    const nowMs = Date.now();
+    const rawRangeMode = safeGetStorageItem(STORAGE_KEYS.RANGE_MODE, DEFAULT_CONFIG.timeRange.mode);
+    const storedAbsStart = safeGetStorageItem(STORAGE_KEYS.ABS_START, '');
+    const storedAbsEnd = safeGetStorageItem(STORAGE_KEYS.ABS_END, '');
+    const storedSavedAt = safeGetStorageItem(STORAGE_KEYS.RANGE_SAVED_AT, '');
+    const savedAtMs = storedSavedAt ? Number(storedSavedAt) : Number.NaN;
+    const absStartMs = Date.parse(storedAbsStart);
+    const absEndMs = Date.parse(storedAbsEnd);
+    const isFreshAbsolute =
+      rawRangeMode === 'absolute' &&
+      Number.isFinite(savedAtMs) &&
+      savedAtMs <= nowMs + 60_000 &&
+      nowMs - savedAtMs <= STALE_ABSOLUTE_VIEWPORT_MS &&
+      Number.isFinite(absStartMs) &&
+      Number.isFinite(absEndMs) &&
+      absEndMs > absStartMs;
+
+    if (rawRangeMode === 'absolute' && !isFreshAbsolute) {
+      safeRemoveStorageItem(STORAGE_KEYS.RANGE_SAVED_AT);
+    }
+
+    const resolvedRangeMode: 'relative' | 'absolute' = isFreshAbsolute ? 'absolute' : 'relative';
+    const resolvedAbsStart = isFreshAbsolute
+      ? storedAbsStart
+      : new Date(nowMs - effectiveLookbackH * 3600_000).toISOString();
+    const resolvedAbsEnd = isFreshAbsolute
+      ? storedAbsEnd
+      : new Date(nowMs + effectiveLookaheadH * 3600_000).toISOString();
     
     return {
       locationId,
@@ -141,11 +190,11 @@ export function useSettingsStorage() {
         value: safeGetStorageItem(STORAGE_KEYS.OFFSET_VALUE, DEFAULT_CONFIG.offset.value),
       },
       timeRange: {
-        mode: safeGetStorageItem(STORAGE_KEYS.RANGE_MODE, DEFAULT_CONFIG.timeRange.mode) as 'relative' | 'absolute',
-        lookbackH: Number.isFinite(lookbackH) && lookbackH > 0 ? lookbackH : DEFAULT_CONFIG.timeRange.lookbackH,
-        lookaheadH: Number.isFinite(lookaheadH) && lookaheadH > 0 ? lookaheadH : DEFAULT_CONFIG.timeRange.lookaheadH,
-        absStart: safeGetStorageItem(STORAGE_KEYS.ABS_START, DEFAULT_CONFIG.timeRange.absStart),
-        absEnd: safeGetStorageItem(STORAGE_KEYS.ABS_END, DEFAULT_CONFIG.timeRange.absEnd),
+        mode: resolvedRangeMode,
+        lookbackH: effectiveLookbackH,
+        lookaheadH: effectiveLookaheadH,
+        absStart: resolvedAbsStart,
+        absEnd: resolvedAbsEnd,
       },
       display: {
         timezone: safeGetStorageItem(STORAGE_KEYS.TIMEZONE, DEFAULT_CONFIG.display.timezone) as 'local' | 'gmt',
@@ -235,10 +284,18 @@ export function useSettingsStorage() {
   }, []);
 
   const updateTimeRange = useCallback((timeRange: Partial<TimeRange>) => {
-    setConfig(prev => ({
-      ...prev,
-      timeRange: { ...prev.timeRange, ...timeRange },
-    }));
+    setConfig(prev => {
+      const nextTimeRange = { ...prev.timeRange, ...timeRange };
+      if (nextTimeRange.mode === 'absolute') {
+        safeSetStorageItem(STORAGE_KEYS.RANGE_SAVED_AT, String(Date.now()));
+      } else {
+        safeRemoveStorageItem(STORAGE_KEYS.RANGE_SAVED_AT);
+      }
+      return {
+        ...prev,
+        timeRange: nextTimeRange,
+      };
+    });
   }, []);
 
   const updateDisplay = useCallback((display: Partial<AppConfiguration['display']>) => {
@@ -249,11 +306,15 @@ export function useSettingsStorage() {
   }, []);
 
   const resetToLive = useCallback(() => {
+    safeRemoveStorageItem(STORAGE_KEYS.RANGE_SAVED_AT);
+    const nowMs = Date.now();
     setConfig(prev => ({
       ...prev,
       timeRange: {
         ...prev.timeRange,
-        mode: 'relative'
+        mode: 'relative',
+        absStart: new Date(nowMs - prev.timeRange.lookbackH * 3600_000).toISOString(),
+        absEnd: new Date(nowMs + prev.timeRange.lookaheadH * 3600_000).toISOString(),
       }
     }));
   }, []);

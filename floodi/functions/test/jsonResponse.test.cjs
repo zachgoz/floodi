@@ -56,7 +56,7 @@ function response() {
 }
 
 test('public handler compresses cached success, preserves CORS Vary and respects forecast expiry', async () => {
-  const document = { valid: true, locationId: 'carolina-beach', sensor: '30046', phaseMinutes: 40, thresholdFt: 5.6, generatedAt: new Date(Date.now() - 60_000).toISOString(), expiresAt: new Date(Date.now() + 30_000).toISOString(), points: Array(1000).fill({ totalFt: 4.123456 }) };
+  const document = { valid: true, status: 'available', locationId: 'carolina-beach', sensor: '30046', phaseMinutes: 40, thresholdFt: 5.6, generatedAt: new Date(Date.now() - 60_000).toISOString(), expiresAt: new Date(Date.now() + 30_000).toISOString(), points: Array(1000).fill({ totalFt: 4.123456 }) };
   const handler = cachedHandler(async () => ({ exists: true, data: () => document }));
   const res = response();
   await handler({ method: 'GET', get: () => 'gzip' }, res);

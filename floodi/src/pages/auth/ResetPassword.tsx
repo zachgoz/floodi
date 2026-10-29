@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import {
+  IonBackButton,
   IonButton,
+  IonButtons,
   IonContent,
   IonHeader,
   IonInput,
@@ -44,6 +46,9 @@ const ResetPassword: React.FC = () => {
     <IonPage>
       <IonHeader>
         <IonToolbar>
+          <IonButtons slot="start">
+            <IonBackButton defaultHref="/tab2" />
+          </IonButtons>
           <IonTitle>Reset Password</IonTitle>
         </IonToolbar>
       </IonHeader>

@@ -145,4 +145,31 @@ describe('fitResidualHarmonics and decomposeResidualHarmonics utilities', () => 
     expect(Number.isFinite(fn('invalid-target'))).toBe(true);
     expect(fn('invalid-target')).toBe(0);
   });
+
+  it('captures M4 (6.2103h) shallow-water overtide asymmetry and respects configurable maxClampFt', () => {
+    const asymmetricHistory = Array.from({ length: 97 }, (_, i) => {
+      const tMs = now.getTime() - (96 - i) * 30 * 60_000;
+      const h = (tMs - now.getTime()) / 3600_000;
+      const m2 = 0.35 * Math.cos((2 * Math.PI * h) / 12.4206);
+      const m4 = 0.14 * Math.sin((2 * Math.PI * h) / 6.2103);
+      return { t: new Date(tMs), v: 0.8 + m2 + m4 };
+    });
+
+    const withM4 = decomposeResidualHarmonics(asymmetricHistory, now, { lookbackHours: 48, includeM4: true });
+    const withoutM4 = decomposeResidualHarmonics(asymmetricHistory, now, { lookbackHours: 48, includeM4: false });
+
+    const quarterM2Plus = new Date(now.getTime() + 1.5525 * 3600_000);
+    const actualAtQuarter = 0.8 + 0.35 * Math.cos((2 * Math.PI * 1.5525) / 12.4206) + 0.14 * Math.sin((2 * Math.PI * 1.5525) / 6.2103);
+
+    expect(Math.abs(withM4.projectSurge(quarterM2Plus) - actualAtQuarter)).toBeLessThan(
+      Math.abs(withoutM4.projectSurge(quarterM2Plus) - actualAtQuarter)
+    );
+
+    const clamped = decomposeResidualHarmonics(
+      asymmetricHistory.map(p => ({ t: p.t, v: p.v * 6 })),
+      now,
+      { lookbackHours: 48, includeM4: true, maxClampFt: 1.8 }
+    );
+    expect(Math.abs(clamped.harmonicAt(quarterM2Plus))).toBeLessThanOrEqual(1.8);
+  });
 });

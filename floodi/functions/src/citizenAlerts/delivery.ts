@@ -6,6 +6,12 @@ import { normalizeShadowPublication } from '../alerts/store';
 import { isDeliveryEligible } from './service';
 import { CitizenAccount, CitizenDelivery, CitizenSubscription, DeliveryConfiguration, OUTBOX, SUBSCRIPTIONS } from './types';
 import { EmailProvider, EmailProviderError } from './provider';
+import {
+  OperationalAlertEngineState,
+  OperationalNotificationEvent,
+  subscriberMatchesNotification,
+} from './operationalAlerts';
+import { buildOperationalAlertEmail } from './emailTemplate';
 
 const MINUTE = 60_000;
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -33,8 +39,20 @@ export function citizenFloodMessage(revision: ShadowRevision): { subject: string
   };
 }
 
-/** Fan-out is bounded and resumable. The global shadow intent is read-only; no
- * recipient, send state or delivery result is ever written to the shadow path. */
+interface OperationalOutboxIntentDoc {
+  kind: 'operational_v2';
+  intentId: string;
+  locationId: string;
+  forecastGeneratedAt: string;
+  issuedAt: string;
+  expiresAt: string;
+  decision: 'would-notify';
+  state: 'simulated';
+  event: OperationalNotificationEvent;
+}
+
+/** Fan-out is bounded and resumable. Supports Operational Alerts 2.0 (with per-subscriber
+ * severity/category filtering + rich HTML & hydrograph chart PNG) as well as legacy shadow intents. */
 export async function queueCitizenIntent(db: Firestore, intentId: string, configuration: DeliveryConfiguration, now = new Date()): Promise<{ queued: number; complete: boolean }> {
   if (!configuration.enabled) return { queued: 0, complete: true };
   if (!/^[a-f0-9]{32}$/.test(intentId)) throw new Error('Invalid citizen intent ID');
@@ -44,7 +62,127 @@ export async function queueCitizenIntent(db: Firestore, intentId: string, config
     await cursorRef.set({ complete: true, reason: 'source-missing', updatedAt: now.toISOString() });
     return { queued: 0, complete: true };
   }
-  const intent = intentSnapshot.data() as ShadowIntent;
+
+  const rawIntent = intentSnapshot.data() as Record<string, unknown>;
+
+  // Operational Alerts 2.0 branch
+  if (rawIntent?.kind === 'operational_v2') {
+    const opIntent = rawIntent as unknown as OperationalOutboxIntentDoc;
+    if (
+      opIntent.decision !== 'would-notify' ||
+      opIntent.state !== 'simulated' ||
+      Date.parse(opIntent.expiresAt) <= +now ||
+      !opIntent.event
+    ) {
+      await cursorRef.set({ complete: true, reason: 'source-no-longer-notifiable', updatedAt: now.toISOString() });
+      return { queued: 0, complete: true };
+    }
+    const cursor = await cursorRef.get();
+    if (cursor.data()?.complete) return { queued: 0, complete: true };
+    const after = cursor.data()?.afterUid;
+
+    const rendered = buildOperationalAlertEmail(
+      opIntent.event,
+      configuration.publicBaseUrl || 'https://floodcastwebapp.web.app'
+    );
+
+    let query = db.collection(SUBSCRIPTIONS).where('status', '==', 'active').orderBy('__name__').limit(100);
+    if (typeof after === 'string') query = query.startAfter(after);
+    const subscriptions = await query.get();
+    let queued = 0;
+
+    for (const snapshot of subscriptions.docs) {
+      const subscription = snapshot.data() as CitizenSubscription;
+      if (
+        !subscriberMatchesNotification(
+          subscription.preferences,
+          opIntent.event.highestSeverity,
+          opIntent.event.category
+        )
+      ) {
+        continue;
+      }
+
+      const id = hash(
+        `operational-v2|${opIntent.locationId}|${opIntent.event.primaryAdvisory.episodeId}|${intentId}|${subscription.uid}|${subscription.generation}`
+      );
+      const token = randomBytes(32).toString('hex');
+      const accepted = await db.runTransaction(async transaction => {
+        const [current, existing, currentIntent] = await Promise.all([
+          transaction.get(snapshot.ref),
+          transaction.get(db.doc(`${OUTBOX}/${id}`)),
+          transaction.get(intentSnapshot.ref),
+        ]);
+        const value = current.data() as CitizenSubscription | undefined;
+        if (
+          existing.exists ||
+          !value ||
+          value.status !== 'active' ||
+          value.generation !== subscription.generation ||
+          !subscriberMatchesNotification(value.preferences, opIntent.event.highestSeverity, opIntent.event.category) ||
+          currentIntent.data()?.state !== 'simulated' ||
+          Date.parse(opIntent.expiresAt) <= +now
+        ) {
+          return false;
+        }
+        const at = now.toISOString();
+        const delivery: CitizenDelivery = {
+          version: 1,
+          uid: value.uid,
+          subscriptionGeneration: value.generation,
+          email: value.email,
+          kind: 'flood',
+          deliveryEngine: 'operational_v2',
+          state: 'queued',
+          createdAt: at,
+          updatedAt: at,
+          expiresAt: new Date(Math.min(Date.parse(opIntent.expiresAt), +now + 45 * MINUTE)).toISOString(),
+          nextAttemptAt: at,
+          attempts: 0,
+          leaseId: null,
+          leaseUntil: null,
+          providerMessageId: null,
+          subject: rendered.subject,
+          text: rendered.text,
+          html: rendered.html,
+          unsubscribeToken: token,
+          sourceIntentId: intentId,
+          sourceEpisodeId: opIntent.event.primaryAdvisory.episodeId,
+          sourceRevisionId: intentId,
+        };
+        transaction.create(db.doc(`${OUTBOX}/${id}`), delivery);
+        transaction.create(db.doc(`citizen_alert_unsubscribe/${hash(token)}`), {
+          uid: value.uid,
+          generation: value.generation,
+          createdAt: at,
+        });
+        transaction.create(snapshot.ref.collection('history').doc(id), {
+          id,
+          kind: 'flood',
+          state: 'queued',
+          createdAt: at,
+          updatedAt: at,
+          subject: delivery.subject,
+          severity: opIntent.event.highestSeverity,
+          category: opIntent.event.category,
+          peakFt: opIntent.event.primaryAdvisory.peakFt,
+        });
+        return true;
+      });
+      if (accepted) queued++;
+    }
+
+    const complete = subscriptions.size < 100;
+    await cursorRef.set({
+      complete,
+      afterUid: subscriptions.docs.at(-1)?.id ?? after ?? null,
+      updatedAt: now.toISOString(),
+    });
+    return { queued, complete };
+  }
+
+  // Legacy shadow intent fallback (kept for legacy Firestore emulator tests)
+  const intent = rawIntent as unknown as ShadowIntent;
   if (intent.policyId !== CAROLINA_BEACH_SHADOW_POLICY.id || intent.decision !== 'would-notify' || intent.state !== 'simulated' || Date.parse(intent.expiresAt) <= +now) {
     await cursorRef.set({ complete: true, reason: 'source-no-longer-notifiable', updatedAt: now.toISOString() });
     return { queued: 0, complete: true };
@@ -74,7 +212,6 @@ export async function queueCitizenIntent(db: Firestore, intentId: string, config
       const delivery: CitizenDelivery = {
         version: 1, uid: value.uid, subscriptionGeneration: value.generation, email: value.email,
         kind: 'flood', state: 'queued', createdAt: at, updatedAt: at,
-        // Provider idempotency lasts longer than this complete retry window.
         expiresAt: new Date(Math.min(Date.parse(intent.expiresAt), +now + 30 * MINUTE)).toISOString(),
         nextAttemptAt: at, attempts: 0, leaseId: null, leaseUntil: null, providerMessageId: null,
         subject: message.subject, text: message.text,
@@ -92,14 +229,143 @@ export async function queueCitizenIntent(db: Firestore, intentId: string, config
   return { queued, complete };
 }
 
-/** A newly confirmed enrollment receives the current usable upcoming event even
- * if its original shadow notification expired or global fan-out finished earlier.
- * This creates a separate citizen delivery, never a new shadow revision. */
+/** A newly confirmed enrollment receives any currently active operational flood watch
+ * matching their selected severity & category preferences, consolidated into a single digest email. */
 export async function queueCitizenEnrollment(db: Firestore, uid: string, configuration: DeliveryConfiguration, now = new Date()): Promise<number> {
   if (!configuration.enabled) return 0;
+
+  const opStateRef = db.doc('operational_alert_states/carolina-beach');
+  const opOutlookRef = db.doc('locations/carolina-beach/forecast_challengers/timesfm-3/outlook/current');
+  const [subSnap, opStateSnap, opOutlookSnap] = await Promise.all([
+    db.doc(`${SUBSCRIPTIONS}/${uid}`).get(),
+    opStateRef.get(),
+    opOutlookRef.get(),
+  ]);
+
+  if (opStateSnap.exists && opOutlookSnap.exists && opOutlookSnap.data()?.status === 'available') {
+    const subscription = subSnap.data() as CitizenSubscription | undefined;
+    if (!subscription || subscription.status !== 'active') return 0;
+    const opState = opStateSnap.data() as OperationalAlertEngineState;
+    const matchingActive = opState.episodes
+      .filter(
+        ep =>
+          ep.status === 'active' &&
+          Date.parse(ep.advisory.endAt) > +now &&
+          subscriberMatchesNotification(subscription.preferences, ep.severity, 'upcoming_watch')
+      )
+      .sort((a, b) => b.advisory.peakFt - a.advisory.peakFt);
+
+    let queued = 0;
+    if (matchingActive.length > 0) {
+      const primary = matchingActive[0];
+      const extras = matchingActive.slice(1).map(e => e.advisory);
+      const syntheticEvent: OperationalNotificationEvent = {
+        intentId: hash(`enroll-catchup|${primary.episodeId}|${opState.lastEvaluatedIssueAt}`).slice(0, 32),
+        locationId: 'carolina-beach',
+        issuedAt: now.toISOString(),
+        expiresAt: new Date(Math.min(+now + 45 * MINUTE, Date.parse(primary.advisory.endAt))).toISOString(),
+        category: 'upcoming_watch',
+        highestSeverity: primary.severity,
+        primaryAdvisory: primary.advisory,
+        additionalAdvisories: extras,
+        previousPeakFt: null,
+        previousSeverity: null,
+        whatChanged: null,
+        bulletin: {
+          id: primary.episodeId,
+          episodeId: primary.episodeId,
+          issuedAt: now.toISOString(),
+          category: 'upcoming_watch',
+          severity: primary.severity,
+          headline:
+            extras.length > 0
+              ? `Active Flood Watch · ${matchingActive.length} Upcoming High-Water Cycles`
+              : `Active Flood Watch · Crest ${primary.advisory.peakFt.toFixed(2)} ft MLLW`,
+          summary: '',
+          whatChanged: null,
+          peakFt: primary.advisory.peakFt,
+          peakAt: primary.advisory.peakAt,
+          startAt: primary.advisory.startAt,
+          endAt: primary.advisory.endAt,
+          durationMinutes: primary.advisory.durationMinutes,
+          estimatedStreetDepthIn: primary.advisory.estimatedStreetDepthIn,
+          windSpeedMph: primary.advisory.windSpeedMph,
+          windCompass: primary.advisory.windCompass,
+          precipWindowIn: primary.advisory.precipWindowIn,
+        },
+      };
+      const rendered = buildOperationalAlertEmail(
+        syntheticEvent,
+        configuration.publicBaseUrl || 'https://floodcastwebapp.web.app'
+      );
+      const id = hash(`operational-v2-enroll|${primary.episodeId}|${primary.revision}|${uid}|${subscription.generation}`);
+      const token = randomBytes(32).toString('hex');
+      const accepted = await db.runTransaction(async transaction => {
+        const ref = db.doc(`${OUTBOX}/${id}`);
+        const [existing, freshSub] = await Promise.all([transaction.get(ref), transaction.get(subSnap.ref)]);
+        const fresh = freshSub.data() as CitizenSubscription | undefined;
+        if (existing.exists || fresh?.status !== 'active' || fresh.generation !== subscription.generation) return false;
+        const at = now.toISOString();
+        const delivery: CitizenDelivery = {
+          version: 1,
+          uid,
+          subscriptionGeneration: fresh.generation,
+          email: fresh.email,
+          kind: 'flood',
+          deliveryEngine: 'operational_v2',
+          state: 'queued',
+          createdAt: at,
+          updatedAt: at,
+          expiresAt: syntheticEvent.expiresAt,
+          nextAttemptAt: at,
+          attempts: 0,
+          leaseId: null,
+          leaseUntil: null,
+          providerMessageId: null,
+          subject: rendered.subject,
+          text: rendered.text,
+          html: rendered.html,
+          unsubscribeToken: token,
+          sourceIntentId: null,
+          sourceEpisodeId: primary.episodeId,
+          sourceRevisionId: String(primary.revision),
+        };
+        transaction.create(ref, delivery);
+        transaction.create(db.doc(`citizen_alert_unsubscribe/${hash(token)}`), {
+          uid,
+          generation: fresh.generation,
+          createdAt: at,
+        });
+        transaction.create(subSnap.ref.collection('history').doc(id), {
+          id,
+          kind: 'flood',
+          state: 'queued',
+          createdAt: at,
+          updatedAt: at,
+          subject: delivery.subject,
+          severity: primary.severity,
+          category: 'upcoming_watch',
+          peakFt: primary.advisory.peakFt,
+        });
+        return true;
+      });
+      if (accepted) queued++;
+    }
+
+    await db.runTransaction(async transaction => {
+      const freshSub = await transaction.get(subSnap.ref);
+      const fresh = freshSub.data() as CitizenSubscription | undefined;
+      if (fresh?.status === 'active' && fresh.generation === subscription.generation) {
+        transaction.update(subSnap.ref, { catchupPending: false });
+      }
+    });
+    return queued;
+  }
+
+  // Legacy fallback for existing emulator tests
   const policy = CAROLINA_BEACH_SHADOW_POLICY;
   const [subscriptionSnapshot, stateSnapshot, currentSnapshot] = await Promise.all([
-    db.doc(`${SUBSCRIPTIONS}/${uid}`).get(), db.doc(`shadow_alert_states/${policy.id}`).get(), db.doc(`locations/${policy.locationId}/outlook/current`).get(),
+    Promise.resolve(subSnap), db.doc(`shadow_alert_states/${policy.id}`).get(), db.doc(`locations/${policy.locationId}/outlook/current`).get(),
   ]);
   const subscription = subscriptionSnapshot.data() as CitizenSubscription | undefined;
   const state = stateSnapshot.data()?.state as ShadowState | undefined;
@@ -143,8 +409,6 @@ export async function queueCitizenEnrollment(db: Firestore, uid: string, configu
     });
     if (accepted) queued++;
   }
-  // A valid dry forecast also completes catch-up. Missing/stale evidence above
-  // leaves the flag pending for the scheduler instead of dropping enrollment.
   await db.runTransaction(async transaction => {
     const [freshSubscription, freshState, freshCurrent] = await Promise.all([
       transaction.get(subscriptionSnapshot.ref), transaction.get(stateSnapshot.ref), transaction.get(currentSnapshot.ref),
@@ -158,11 +422,24 @@ export async function queueCitizenEnrollment(db: Firestore, uid: string, configu
   return queued;
 }
 
-/** Recheck actual current publication quality and episode revision at send time.
- * Earlier messages are cancelled when evidence is stale, superseded or revised;
- * a late worker can never turn an old forecast into a new notification. */
 export async function citizenSourceStatus(db: Firestore, delivery: CitizenDelivery, now: Date): Promise<'current' | 'stale' | 'waiting'> {
   if (delivery.kind === 'test') return 'current';
+  if (delivery.deliveryEngine === 'operational_v2') {
+    if (Date.parse(delivery.expiresAt) <= +now) return 'stale';
+    if (delivery.sourceIntentId) {
+      const intentSnap = await db.doc(`shadow_alert_outbox/${delivery.sourceIntentId}`).get();
+      const data = intentSnap.data();
+      if (!intentSnap.exists || data?.state !== 'simulated' || Date.parse(data?.expiresAt ?? '') <= +now) {
+        return 'stale';
+      }
+    }
+    const opStateSnap = await db.doc('operational_alert_states/carolina-beach').get();
+    if (!opStateSnap.exists) return 'current';
+    const opState = opStateSnap.data() as OperationalAlertEngineState;
+    const ep = opState.episodes.find(e => e.episodeId === delivery.sourceEpisodeId);
+    if (!ep) return 'stale';
+    return 'current';
+  }
   if (!delivery.sourceEpisodeId || !delivery.sourceRevisionId) return 'stale';
   const policy = CAROLINA_BEACH_SHADOW_POLICY;
   const [intentSnapshot, stateSnapshot, revisionSnapshot] = await Promise.all([
@@ -210,8 +487,6 @@ export async function processCitizenDelivery(db: Firestore, id: string, dependen
   const first = await ref.get();
   if (!first.exists) return 'missing';
   const original = first.data() as CitizenDelivery;
-  // A missing/disabled account cancels this delivery; transient Auth errors
-  // propagate so the worker can retry without claiming it was unsubscribed.
   const account = await dependencies.account(original.uid);
   const leaseId = randomBytes(16).toString('hex');
   const claimed = await db.runTransaction<CitizenDelivery | { terminal: CitizenDelivery['state'] } | null>(async transaction => {
@@ -245,7 +520,14 @@ export async function processCitizenDelivery(db: Firestore, id: string, dependen
     if (Date.parse(claimed.expiresAt) <= +now()) state = 'expired';
     else if (sourceCurrent === 'stale' || !isDeliveryEligible(subscription.exists ? subscription.data() as CitizenSubscription : null, freshAccount, dependencies.configuration, claimed.subscriptionGeneration) || claimed.email !== freshAccount.email) state = 'cancelled';
     else if (sourceCurrent === 'waiting') { state = 'retry'; failureCategory = 'waiting-for-forecast-evaluation'; }
-    else providerMessageId = await dependencies.provider.send({ id, to: claimed.email, subject: claimed.subject, text: claimed.text, unsubscribeToken: claimed.unsubscribeToken });
+    else providerMessageId = await dependencies.provider.send({
+      id,
+      to: claimed.email,
+      subject: claimed.subject,
+      text: claimed.text,
+      ...(claimed.html ? { html: claimed.html } : {}),
+      unsubscribeToken: claimed.unsubscribeToken,
+    });
   } catch (error) {
     state = error instanceof EmailProviderError && !error.retryable || claimed.attempts >= MAX_ATTEMPTS ? 'failed' : 'retry';
     failureCategory = error instanceof EmailProviderError ? error.retryable ? 'provider-transient' : 'provider-rejected' : 'dependency-unavailable';

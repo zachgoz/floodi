@@ -3,6 +3,7 @@ import type { Point } from 'src/components/Tab2/types';
 import { liveViewport, surgeTrend } from 'src/utils/waterForecast';
 import { selectSurgeReadout } from 'src/utils/surgeReadout';
 import { ForecastFactors } from './ForecastFactors';
+import type { ChallengerOutlookDocument } from './useChallengerOutlook';
 import type { ForecastDocument } from '../../../functions/src/forecast/schema';
 import { ChartInfo } from './ChartInfo';
 import type { ResidualPatternAnalysis } from '../../../functions/src/forecast/pattern';
@@ -16,6 +17,7 @@ interface Props {
   experimentalForecast?: Point[];
   forecastLabel?: string;
   forecastDescription?: string;
+  challenger?: ChallengerOutlookDocument | null;
   forecastDocument?: ForecastDocument | null;
   comparisonLabel?: string;
   timezone?: 'local' | 'gmt';
@@ -47,7 +49,7 @@ function samplesInWindow(points: Point[], domain: Viewport) {
   return valid.slice(Math.max(0, first - 1), end < 0 ? undefined : end + 1);
 }
 
-export function SurgeChart({ points, estimatedPoints = [], forecast = [], experimentalForecast = [], forecastLabel = 'Forecast', forecastDescription, forecastDocument, comparisonLabel = 'Comparison', timezone = 'local', source,
+export function SurgeChart({ points, estimatedPoints = [], forecast = [], experimentalForecast = [], forecastLabel = 'Forecast', forecastDescription, challenger, forecastDocument, comparisonLabel = 'Comparison', timezone = 'local', source,
   now = new Date(), viewport, forecastEndAt, focusTime, focusRatio = 1, onViewportChange, onResetToLive, showTrendProjection, trendAvailable, onToggleTrendProjection, previewLabel = '1h Trend', previewDescription, patternAnalysis, embedded = false, showControls = true }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [width, setWidth] = useState(800);
@@ -295,7 +297,7 @@ export function SurgeChart({ points, estimatedPoints = [], forecast = [], experi
         </g>
         {(width < 600 ? [0, 1] : [0, 0.5, 1]).map(f => <text key={f} x={50 + f * plotWidth} y="254" textAnchor={f === 0 ? 'start' : f === 1 ? 'end' : 'middle'} fill="currentColor" fontSize="12">{time(new Date(+domain.start + f * (+domain.end - +domain.start)))}</text>)}
       </svg>
-      {readout?.source === 'Forecast' && <ForecastFactors document={forecastDocument} at={readout.at} residual={readout.value} />}
+      {readout?.source === 'Forecast' && <ForecastFactors challenger={challenger} document={forecastDocument} at={readout.at} residual={readout.value} />}
       {!visible.length && !visibleForecast.length && <p className="forecast-empty">No data in this window</p>}
     </section>
   );

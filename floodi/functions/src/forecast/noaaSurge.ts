@@ -17,7 +17,30 @@ export interface NoaaSurgeForecast {
   points: NoaaSurgePoint[];
 }
 
-const ETSURGE_URL = 'https://slosh.nws.noaa.gov/etsurge/index.php?page=stn&region=me&datum=mllw&list=&map=0-96&type=text&stn=ncwrit';
+export interface NoaaEtssStationConfig {
+  stationCode: string; // e.g. 'ncwrit', 'ncwilm', 'ncbeau', 'scmyrt', 'scchar', 'gafpul'
+  noaaStationId: string; // e.g. '8658163', '8658120', '8656483', '8661070'
+  stationName: string;
+  region?: 'me' | 'gom' | 'wc' | 'ak';
+}
+
+export const WRIGHTSVILLE_ETSS_CONFIG: NoaaEtssStationConfig = {
+  stationCode: 'ncwrit',
+  noaaStationId: '8658163',
+  stationName: 'Wrightsville Beach, NC (ncwrit)',
+  region: 'me',
+};
+
+export const WILMINGTON_RIVER_ETSS_CONFIG: NoaaEtssStationConfig = {
+  stationCode: 'ncwilm',
+  noaaStationId: '8658120',
+  stationName: 'Wilmington Cape Fear River, NC (ncwilm)',
+  region: 'me',
+};
+
+export function buildEtssUrl(stationCode = 'ncwrit', region = 'me'): string {
+  return `https://slosh.nws.noaa.gov/etsurge/index.php?page=stn&region=${encodeURIComponent(region)}&datum=mllw&list=&map=0-96&type=text&stn=${encodeURIComponent(stationCode)}`;
+}
 
 /**
  * Parses the raw NOAA ETSS text table into structured hourly predictions.
@@ -75,11 +98,16 @@ export function parseNoaaSurgeTable(rawText: string, referenceYear = new Date().
 }
 
 /**
- * Fetches NOAA's official 102-hour Extra-Tropical Storm Surge (ETSS) forecast for Wrightsville Beach (ncwrit / 8658163).
+ * Fetches NOAA's official 102-hour Extra-Tropical Storm Surge (ETSS) forecast for any configured station.
+ * Defaults to Wrightsville Beach (ncwrit / 8658163) for backwards compatibility.
  */
-export async function fetchNoaaSurgeForecast(timeoutMs = 10_000): Promise<NoaaSurgeForecast | null> {
+export async function fetchNoaaSurgeForecast(
+  timeoutMs = 10_000,
+  stationConfig: NoaaEtssStationConfig = WRIGHTSVILLE_ETSS_CONFIG
+): Promise<NoaaSurgeForecast | null> {
   try {
-    const res = await fetch(ETSURGE_URL, {
+    const url = buildEtssUrl(stationConfig.stationCode, stationConfig.region ?? 'me');
+    const res = await fetch(url, {
       headers: {
         'User-Agent': 'FloodCast-Engine/1.0 (+https://floodcastwebapp.web.app)',
         'Accept': 'text/html,text/plain',
@@ -88,7 +116,7 @@ export async function fetchNoaaSurgeForecast(timeoutMs = 10_000): Promise<NoaaSu
     });
 
     if (!res.ok) {
-      logger.warn('NOAA ETSurge HTTP request failed', { status: res.status });
+      logger.warn('NOAA ETSurge HTTP request failed', { status: res.status, station: stationConfig.stationCode });
       return null;
     }
 
@@ -98,18 +126,18 @@ export async function fetchNoaaSurgeForecast(timeoutMs = 10_000): Promise<NoaaSu
 
     const points = parseNoaaSurgeTable(textContent);
     if (!points.length) {
-      logger.warn('NOAA ETSurge parsed zero valid points');
+      logger.warn('NOAA ETSurge parsed zero valid points', { station: stationConfig.stationCode });
       return null;
     }
 
     return {
-      station: '8658163',
-      stationName: 'Wrightsville Beach, NC (ncwrit)',
+      station: stationConfig.noaaStationId,
+      stationName: stationConfig.stationName,
       retrievedAt: new Date().toISOString(),
       points,
     };
   } catch (err) {
-    logger.error('Failed to retrieve NOAA ETSurge forecast', { error: safeError(err) });
+    logger.error('Failed to retrieve NOAA ETSurge forecast', { station: stationConfig.stationCode, error: safeError(err) });
     return null;
   }
 }

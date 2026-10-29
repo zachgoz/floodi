@@ -6,7 +6,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { citizenDeliveryConfiguration } from './config';
 import { queueCitizenIntent, queueCitizenEnrollment, listDueCitizenDeliveries, processCitizenDelivery } from './delivery';
 import { createResendProvider } from './provider';
-import { CitizenRequestError, applyCitizenAction, getCitizenStatus, unsubscribeWithToken } from './service';
+import { CitizenRequestError, applyCitizenAction, getCitizenStatus, getPublicAlertFeed, renderPublicAlertChartPng, unsubscribeWithToken } from './service';
 import { CitizenAccount } from './types';
 import { createCitizenHttpHandler, isCitizenAuthenticationFailure } from './http';
 
@@ -53,6 +53,8 @@ export const citizenAlerts = onRequest({ maxInstances: 3, timeoutSeconds: 60, se
   status: (current, configuration) => getCitizenStatus(db(), current, configuration),
   action: (current, configuration, request) => applyCitizenAction(db(), current, configuration, request),
   unsubscribe: token => unsubscribeWithToken(db(), token),
+  publicFeed: () => getPublicAlertFeed(db()),
+  chartPng: highlightPeakIso => renderPublicAlertChartPng(db(), highlightPeakIso),
   // Auth tokens, email addresses, request bodies and unsubscribe capabilities
   // must never enter application error logs.
   logFailure: () => logger.error('Citizen alert request failed', { event: 'citizen_alert_request_failed' }),

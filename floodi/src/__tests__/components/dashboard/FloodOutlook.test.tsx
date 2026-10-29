@@ -1,111 +1,178 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import { FloodOutlook } from 'src/components/dashboard/FloodOutlook';
 import type { SelectedWaterForecast } from 'src/utils/selectWaterForecast';
-import type { ForecastDocument } from '../../../../functions/src/forecast/schema';
+import type { ChallengerOutlookDocument } from 'src/components/dashboard/useChallengerOutlook';
 
 const now = new Date('2026-10-19T10:00:00Z');
 const at = (minutes: number) => new Date(+now + minutes * 60_000);
-const points = [4, 4, 6, 4, 4].map((v, index) => ({ t: at(index * 6), v }));
-const outlook: ForecastDocument = {
-  version: 1, status: 'available', method: 'residual-response', confidence: 'limited', validationStage: 'historical-hindcast',
-  generatedAt: now.toISOString(), expiresAt: at(30).toISOString(), locationId: 'carolina-beach', sensor: '30046', tideStation: '8658163',
-  datum: 'MLLW', units: 'ft', phaseMinutes: 60, thresholdFt: 5, currentResidualFt: .2, trend: 'Stable', points: [], validation: null,
-  evidence: [{ id: 'weather', text: 'Technical weather relationship text.' }, { id: 'validation', text: 'Source evaluation detail.' }],
-  explanation: { headline: 'Elevated flood risk', evidenceIds: ['weather'] }, explanationSource: 'gemini-3.8-flash',
-  sources: ['Synthetic gauge fixture'], limitations: ['Synthetic test only.'],
-};
-const selection: SelectedWaterForecast = { totalPoints: points, residualPoints: [], method: 'learned', confidence: 'limited', horizonEnd: at(24), reason: 'Technical selection reason.' };
-const props = { outlook, selection, showComparison: false, onToggle: vi.fn(), thresholdFt: 5, now };
+const points = [4, 4, 6.24, 4, 4].map((v, index) => ({ t: at(index * 6), v }));
 
-describe('compact resident flood outlook', () => {
+const selection: SelectedWaterForecast = {
+  totalPoints: points,
+  residualPoints: [],
+  method: 'learned',
+  confidence: 'limited',
+  horizonEnd: at(24),
+  reason: 'Multi-regime operational physics selection.',
+};
+
+const challenger: ChallengerOutlookDocument = {
+  challengerId: 'timesfm-3',
+  locationId: 'carolina-beach',
+  generatedAt: now.toISOString(),
+  expiresAt: at(60).toISOString(),
+  status: 'available',
+  engine: 'timesfm-3-vertex-etss-hybrid',
+  horizonSteps: 96,
+  thresholdFt: 5.6,
+  currentResidualFt: 0.84,
+  points: [],
+  peak: {
+    t: at(12).toISOString(),
+    totalFt: 6.24,
+    tideFt: 5.4,
+    residualFt: 0.84,
+    exceedsThreshold: true,
+  },
+  covariatesUsed: [
+    'noaa-etss-ocean-surge',
+    'noaa-etss-cape-fear-river',
+    'directional-nne-sound-wind-stress',
+    'usgs-lock1-discharge',
+  ],
+  metadata: {
+    historyPointsCount: 96,
+    noaaSurgeAvailable: true,
+    riverSurgeAvailable: true,
+    usgsFlowAvailable: true,
+    usgsDischargeCfs: 18450,
+    estuarineHarmonics: {
+      subtidalMeanFt: 0.31,
+      m2AmpFt: 0.24,
+      s1AmpFt: 0.09,
+      m4AmpFt: 0.06,
+      rSquared: 0.78,
+    },
+    retrievedAt: now.toISOString(),
+  },
+};
+
+describe('operational resident flood outlook', () => {
   afterEach(cleanup);
-  it('uses the actual threshold crossings for its next-event period', () => {
-    render(<FloodOutlook {...props} floodExpected />);
+
+  it('uses exact threshold crossings, real surge readout, and never displays Planning Outlook or fake +0.60', () => {
+    render(
+      <FloodOutlook
+        selection={selection}
+        challenger={challenger}
+        thresholdFt={5.6}
+        thresholds={{ minor: 5.6, moderate: 7.0, major: 7.7, extreme: 8.5 }}
+        floodExpected
+        isTimesFmPrimary
+        now={now}
+      />
+    );
+
     expect(screen.getByText('Flooding forecast')).toBeInTheDocument();
-    expect(screen.getByText('Monday, Oct 19 · 6:09 AM – 6:15 AM')).toBeInTheDocument();
-    expect(screen.queryByText(/Net increase/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/planning outlook/i)).not.toBeInTheDocument();
+    expect(screen.getByText('6.24')).toBeInTheDocument();
+    expect(screen.getByText('+0.64 ft above flood stage')).toBeInTheDocument();
+    expect(screen.getByText('+0.84')).toBeInTheDocument();
+    expect(screen.queryByText('+0.60')).not.toBeInTheDocument();
   });
-  it('keeps provider, raw evidence, comparison and source provenance inside the closed disclosure', () => {
-    const { container } = render(<FloodOutlook {...props} />);
+
+  it('renders Unavailable instead of inventing +0.60 when current surge residual is missing or NaN', () => {
+    const noResidualChallenger = { ...challenger, currentResidualFt: undefined };
+    render(
+      <FloodOutlook
+        selection={selection}
+        challenger={noResidualChallenger}
+        currentSurgeFt={Number.NaN}
+        thresholdFt={5.6}
+        now={now}
+      />
+    );
+
+    expect(screen.getByText('Unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('+0.60')).not.toBeInTheDocument();
+  });
+
+  it('renders all 4 canonical Carolina Beach flood stages (5.6 / 7.0 / 7.7 / 8.5) and operational physics provenance', () => {
+    const { container } = render(
+      <FloodOutlook
+        selection={selection}
+        challenger={challenger}
+        thresholds={{ minor: 5.6, moderate: 7.0, major: 7.7, extreme: 8.5 }}
+        isTimesFmPrimary
+        now={now}
+      />
+    );
+
     const details = container.querySelector('details')!;
     expect(details).not.toHaveAttribute('open');
-    expect(within(details).getByText(/Gemini 3.8 Flash explanation/)).toBeInTheDocument();
-    expect(within(details).getByText('Technical weather relationship text.')).toBeInTheDocument();
-    expect(within(details).getByText('Source evaluation detail.')).toBeInTheDocument();
-    expect(within(details).getByText(/Synthetic gauge fixture/)).toBeInTheDocument();
-    fireEvent.click(within(details).getByLabelText('Compare steady surge projection'));
-    expect(props.onToggle).toHaveBeenCalledOnce();
-    expect(container.querySelector('.outlook-risk-label')).not.toHaveTextContent(/Gemini|Technical/);
+
+    const pills = Array.from(container.querySelectorAll('.thresh-pill strong')).map(el =>
+      el.textContent?.trim()
+    );
+    expect(pills).toEqual(['5.6 ft', '7.0 ft', '7.7 ft', '8.5 ft']);
+
+    expect(within(details).queryByText(/6\.2 ft/)).not.toBeInTheDocument();
+    expect(within(details).queryByText(/6\.8\+ ft/)).not.toBeInTheDocument();
+    expect(within(details).queryByText(/Gemini 3\.8 Flash/i)).not.toBeInTheDocument();
+    expect(within(details).queryByText(/Compare TimesFM-3 Challenger/i)).not.toBeInTheDocument();
+
+    expect(within(details).getByText(/18,450 cfs/)).toBeInTheDocument();
+    expect(within(details).getByText(/R² = 0\.78/)).toBeInTheDocument();
+    expect(within(details).getByText(/USGS Cape Fear River Lock #1 \(02105769\)/)).toBeInTheDocument();
   });
-  it('marks historical-pattern events as planning outlooks using supplied method timing', () => {
-    const tail = { method: 'historical-pattern', startsAt: at(6).toISOString(), endsAt: at(24).toISOString(), weatherSupportedUntil: null, summary: { validationLeads: [] } } as unknown as NonNullable<ForecastDocument['tail']>;
-    render(<FloodOutlook {...props} outlook={{ ...outlook, tail }} selection={{ ...selection, tailMethod: 'historical-pattern' }} />);
-    expect(screen.getByText('Flooding in the planning outlook')).toBeInTheDocument();
-  });
+
   it('shows the actual covered horizon for dry or possible flooding without inventing an event', () => {
-    const dry = { ...selection, totalPoints: points.map(point => ({ ...point, v: 4 })) };
-    const { rerender } = render(<FloodOutlook {...props} selection={dry} floodExpected={false} />);
+    const dry = { ...selection, totalPoints: points.map(point => ({ ...point, v: 4.2 })) };
+    const { rerender } = render(
+      <FloodOutlook
+        selection={dry}
+        challenger={challenger}
+        thresholdFt={5.6}
+        floodExpected={false}
+        now={now}
+      />
+    );
     expect(screen.getByText('No flooding forecast')).toBeInTheDocument();
     expect(screen.getByText('Through Monday, Oct 19, 6:24 AM ET')).toBeInTheDocument();
-    rerender(<FloodOutlook {...props} selection={dry} floodExpected={false} floodPossible />);
+    expect(screen.getByText('1.40 ft below flood stage')).toBeInTheDocument();
+
+    rerender(
+      <FloodOutlook
+        selection={dry}
+        challenger={challenger}
+        thresholdFt={5.6}
+        floodExpected={false}
+        floodPossible
+        now={now}
+      />
+    );
     expect(screen.getByText('Flooding possible')).toBeInTheDocument();
     expect(screen.getByText('The forecast error range reaches flood stage.')).toBeInTheDocument();
   });
+
   it('distinguishes tide-only fallback from a local no-flooding forecast', () => {
-    render(<FloodOutlook {...props} outlook={null} selection={{ ...selection, method: 'tide', confidence: 'unavailable', totalPoints: points.map(point => ({ ...point, v: 4 })) }} />);
+    render(
+      <FloodOutlook
+        outlook={null}
+        challenger={null}
+        selection={{
+          ...selection,
+          method: 'tide',
+          confidence: 'unavailable',
+          totalPoints: points.map(point => ({ ...point, v: 4 })),
+        }}
+        thresholdFt={5.6}
+        now={now}
+      />
+    );
     expect(screen.getByText('Tide forecast only')).toBeInTheDocument();
     expect(screen.queryByText('No flooding forecast')).not.toBeInTheDocument();
     expect(screen.getByText('Outlook unavailable')).toBeInTheDocument();
   });
-  it('renders and toggles challenger comparison when challenger outlook is available', () => {
-    const onToggleChallenger = vi.fn();
-    const challenger = {
-      challengerId: 'timesfm-3',
-      locationId: 'carolina-beach',
-      generatedAt: now.toISOString(),
-      expiresAt: at(60).toISOString(),
-      status: 'available' as const,
-      engine: 'timesfm-3-vertex-etss-hybrid',
-      horizonSteps: 48,
-      thresholdFt: 5.6,
-      points: [],
-      peak: {
-        t: at(12).toISOString(),
-        totalFt: 5.82,
-        tideFt: 4.1,
-        residualFt: 1.72,
-        exceedsThreshold: true,
-      },
-      covariatesUsed: ['noaa-etss-surge'],
-    };
-    const { container, rerender } = render(
-      <FloodOutlook
-        {...props}
-        challenger={challenger}
-        showChallenger={false}
-        onToggleChallenger={onToggleChallenger}
-      />
-    );
-    const details = container.querySelector('details')!;
-    expect(within(details).getByText('Compare TimesFM-3 Challenger')).toBeInTheDocument();
-    expect(within(details).getByText('AI + NOAA ETSS')).toBeInTheDocument();
-    expect(within(details).queryByText(/Challenger Peak/)).not.toBeInTheDocument();
-
-    fireEvent.click(within(details).getByLabelText(/Compare TimesFM-3 Challenger/));
-    expect(onToggleChallenger).toHaveBeenCalledOnce();
-
-    rerender(
-      <FloodOutlook
-        {...props}
-        challenger={challenger}
-        showChallenger={true}
-        onToggleChallenger={onToggleChallenger}
-      />
-    );
-    expect(within(details).getByText(/5.82 ft/)).toBeInTheDocument();
-    expect(within(details).getByText(/(Flooding)/)).toBeInTheDocument();
-    expect(within(details).getByText(/Horizon: 24h/)).toBeInTheDocument();
-  });
 });
-

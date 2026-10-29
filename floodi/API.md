@@ -4,11 +4,15 @@
 
 | Endpoint/service | Contract |
 | --- | --- |
-| `GET /api/outlook` | Read the shared, schema-validated numerical outlook. A dashboard read never trains a model or invokes Gemini. Unavailable/expired results return 503. |
+| `GET /api/challenger` | Primary unified operational water-level & 5-driver physical surge forecast (`timesfm-3`, up to 21 days at 30-min resolution) combining NOAA tides (`8658163`), NOAA Ocean & Cape Fear River ETSS (`ncwrit`, `ncwilm`), directional N/NE Myrtle Grove Sound wind setup, USGS Lock #1 discharge (`02105769`), Google TimesFM AI, and 48h $M_2/S_1/M_4$ estuarine harmonics. Supports `?refresh=1` with 60s fresh-doc dedupe. |
+| `GET /api/alerts?feed=1` | Public JSON feed of active/upcoming 48-hour flood advisories (`5.6 / 7.0 / 7.7 / 8.5 ft MLLW`), next crest, physical surge drivers, and recent issued bulletins (`PublicAlertFeedDocument`). Requires no authentication. |
+| `GET /api/alerts?chart=1` | Public `image/png` (`680x260`) server-rendered 48-hour operational forecast hydrograph with flood threshold lines, uncertainty band, tide baseline, and crest callout badge (embedded in `/alerts` and Alert 2.0 emails). |
+| `GET / POST /api/alerts` | Resident alert readiness, verified subscription enrollment (`enroll`, `resume`, `pause`, `unsubscribe`, `test`), and granular category/severity preferences (`update_preferences`). |
+| `GET /api/outlook` | Compatibility read endpoint backed by the current operational forecast snapshot (`503` when unavailable/expired). Legacy ridge refitting and hourly Gemini calls are retired. |
 | `POST /api/client-errors` | Strict allowlisted JSON diagnostics from production web/native builds. Returns 204 on acceptance; rejects invalid origin, content type, oversized/private fields and exhausted quotas. No general console or arbitrary error-message upload. See [frontend diagnostics](docs/FRONTEND-ERROR-COLLECTION.md). |
 | `GET /api/fiman/**` | Existing bounded upstream proxy with cached public provider data. |
 | `runBackfillData?days=1..60` | Private administrative POST to the function URL, requiring an authorized Google identity. Structured 200/207/503 recovery summary; never a browser endpoint. |
-| `checkDataHealth` | Scheduled independent freshness inspection; no public HTTP endpoint. Private operational status and structured Cloud Logging events support alerts. |
+| `checkDataHealth` | Scheduled independent freshness inspection monitoring daily observations and `locations/carolina-beach/forecast_challengers/timesfm-3/outlook/current`. |
 
 Observations use bounded daily UTC documents and compatible legacy monthly reads. See [storage and migration](docs/DAILY-OBSERVATION-STORAGE.md) and [the reliability release verification](docs/RELIABILITY-IMPLEMENTATION-2026-10-14.md). Existing NOAA integration details follow.
 

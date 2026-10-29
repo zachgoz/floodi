@@ -3,14 +3,27 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from 'src/lib/firebase';
 import type { Point } from '../Tab2/types';
 
+export interface OperationalDrivers {
+  oceanSurgeFt: number;
+  windSetupFt: number;
+  riverFlowFt: number;
+  rainfallRunoffFt: number;
+  estuarineHarmonicFt: number;
+}
+
 export interface ChallengerPoint {
-  t: string;          // ISO 8601 UTC
-  totalFt: number;    // Astronomical tide + predicted residual
-  tideFt: number;     // Astronomical tide
-  residualFt: number; // Foundation model predicted residual
-  noaaSurgeFt?: number; // NOAA ETSS hydrodynamic surge guidance
-  lowerFt?: number;   // 10th percentile bound
-  upperFt?: number;   // 90th percentile bound
+  t: string;            // ISO 8601 UTC
+  totalFt: number;      // Astronomical tide + predicted residual
+  tideFt: number;       // Astronomical tide
+  residualFt: number;   // Synthesized operational surge residual
+  noaaSurgeFt?: number; // NOAA ETSS Wrightsville ocean surge guidance
+  riverSurgeFt?: number; // NOAA ETSS Wilmington Cape Fear River surge guidance
+  drivers?: OperationalDrivers;
+  windSpeedMph?: number;
+  windDirectionDeg?: number;
+  precipIn?: number;
+  lowerFt?: number;     // 10th percentile bound
+  upperFt?: number;     // 90th percentile bound
 }
 
 export interface ChallengerOutlookDocument {
@@ -22,6 +35,8 @@ export interface ChallengerOutlookDocument {
   engine: string;
   horizonSteps: number;
   thresholdFt: number;
+  currentResidualFt?: number;
+  observationAt?: string;
   points: ChallengerPoint[];
   peak: {
     t: string;
@@ -34,6 +49,16 @@ export interface ChallengerOutlookDocument {
   metadata?: {
     historyPointsCount: number;
     noaaSurgeAvailable: boolean;
+    riverSurgeAvailable?: boolean;
+    usgsFlowAvailable?: boolean;
+    usgsDischargeCfs?: number | null;
+    estuarineHarmonics?: {
+      subtidalMeanFt: number;
+      m2AmpFt: number;
+      s1AmpFt: number;
+      m4AmpFt: number;
+      rSquared: number;
+    };
     retrievedAt: string;
   };
 }
@@ -57,22 +82,23 @@ function isValidChallengerDoc(value: unknown, locationId: string): value is Chal
 export function useChallengerOutlook(locationId: string) {
   const [challenger, setChallenger] = useState<ChallengerOutlookDocument | null>(null);
   const [loading, setLoading] = useState(false);
-  const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  const refresh = useCallback(() => refreshRef.current(), []);
+  const refreshRef = useRef<(forceRefresh?: boolean) => Promise<void>>(() => Promise.resolve());
+  const refresh = useCallback((forceRefresh = false) => refreshRef.current(forceRefresh), []);
 
   useEffect(() => {
     let active = true;
 
-    const read = async (): Promise<void> => {
+    const read = async (forceRefresh = false): Promise<void> => {
       if (!active) return;
       setLoading(true);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
 
       try {
-        // 1. Try public cached HTTP endpoint first (with 1-minute cache bucket)
+        // 1. Try public cached HTTP endpoint first (with 1-minute cache bucket, or live refresh on pull-to-refresh)
         const cacheBucket = Math.floor(Date.now() / 60_000);
-        const res = await fetch(`/api/challenger?t=${cacheBucket}`, {
+        const query = forceRefresh ? `refresh=1&t=${Date.now()}` : `t=${cacheBucket}`;
+        const res = await fetch(`/api/challenger?${query}`, {
           signal: controller.signal,
           cache: 'no-store',
         });

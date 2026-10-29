@@ -121,16 +121,18 @@ export const PrivacyPolicy: React.FC = () => {
             </IonCardHeader>
             <IonCardContent>
               <p>
-                If you set up flood alerts or join early access, we store your account email,
-                verification status, selected coverage, consent and notification preferences.
-                Preferences and alert history are private and processed by our server services.
-                Email verification and alert availability are shown in Alerts; creating an account
-                alone does not activate flood notifications. We do not collect payment or billing
-                details for early access.
+                Public in-app flood advisories and 48-hour hydrograph bulletins are viewable without creating
+                an account. If you opt in to personalized email flood alerts, we store your account email,
+                verification status, selected coverage, consent timestamp, and granular notification
+                preferences (such as Minor, Moderate, Major, and Extreme severity tiers and Watch, Imminent
+                Warning, Forecast Change, and All-Clear categories).
               </p>
               <p style={{ marginTop: '12px' }}>
-                You can manage or pause notifications in Alerts. For account deletion, data access
-                or privacy questions, email <a href="mailto:floodcastapp@gmail.com">floodcastapp@gmail.com</a>.
+                Transactional flood alert emails are delivered via Resend and include a signed one-click
+                unsubscribe token (`List-Unsubscribe` header and footer link) so you can pause or unsubscribe
+                at any time without logging in. Creating an account alone never activates email notifications
+                without your explicit consent. For account deletion, data access, or privacy questions, email{' '}
+                <a href="mailto:floodcastapp@gmail.com">floodcastapp@gmail.com</a>.
               </p>
             </IonCardContent>
           </IonCard>

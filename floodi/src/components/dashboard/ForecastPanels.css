@@ -499,6 +499,11 @@
   color: #b91c1c;
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
+.thresh-pill.extreme {
+  background: rgba(147, 51, 234, 0.11);
+  color: #7e22ce;
+  border: 1px solid rgba(147, 51, 234, 0.32);
+}
 
 /* Compact Holdout & Benchmarking Sub-Drawer */
 .outlook-sub-details {
