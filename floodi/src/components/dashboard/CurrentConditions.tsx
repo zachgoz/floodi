@@ -11,6 +11,7 @@ export function CurrentConditions({
   customView,
   onSettings,
   onLocationChange,
+  onAccuracyClick,
 }: {
   location: string;
   locationId?: string;
@@ -19,6 +20,7 @@ export function CurrentConditions({
   customView: boolean;
   onSettings: () => void;
   onLocationChange?: (locationId: string) => void;
+  onAccuracyClick?: () => void;
 }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
@@ -54,7 +56,21 @@ export function CurrentConditions({
             ? `Observed ${status.latest.v.toFixed(2)} ft · ${status.latest.t.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET`
             : 'Waiting for a recent gauge reading'}
         </small>
-        {customView && <button type="button" onClick={onSettings}>Custom chart view</button>}
+        <div style={{ display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
+          {onAccuracyClick && (
+            <button
+              type="button"
+              className="accuracy-pill-trigger"
+              onClick={onAccuracyClick}
+              title="View scientific accuracy audit & error margins"
+              aria-label="View scientific accuracy audit"
+            >
+              <span className="accuracy-pill-dot" />
+              Verified 2.4" MAE
+            </button>
+          )}
+          {customView && <button type="button" onClick={onSettings}>Custom chart view</button>}
+        </div>
       </div>
     </div>
   );

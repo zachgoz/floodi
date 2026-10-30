@@ -31,6 +31,7 @@ import { useChartData } from 'src/components/Tab2/hooks/useChartData';
 import { useAtmosphericState } from 'src/components/Tab2/hooks/useAtmosphericState';
 import { useChartComments } from 'src/components/Tab2/hooks/useChartComments';
 import { ChartCommentModal } from 'src/components/Tab2/ChartCommentModal';
+import { ForecastAccuracyModal } from 'src/components/dashboard/ForecastAccuracyModal';
 import 'src/components/Tab2/styles/Tab2.css';
 import './Tab2.css';
 import 'src/components/dashboard/DashboardView.css';
@@ -100,6 +101,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   const [showTimeSettings, setShowTimeSettings] = useState(false);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const [showWLInfo, setShowWLInfo] = useState(false);
+  const [showAccuracyModal, setShowAccuracyModal] = useState(false);
 
   // User feedback messages
   const [messages, setMessages] = useState<{
@@ -129,9 +131,12 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   const [selectedCameraId, setSelectedCameraId] = useState<string>(WEBCAMS[0].id);
   const lastPersistedDomainRef = useRef<string | null>(null);
 
-  // Honor ?t=<iso> deep links from FloodCast Alerts 2.0 emails & advisories
+  // Honor ?t=<iso> deep links from FloodCast Alerts 2.0 emails & advisories and ?view=accuracy
   useEffect(() => {
     const params = new URLSearchParams(routerLocation.search);
+    if (params.get('accuracy') === '1' || params.get('view') === 'accuracy') {
+      setShowAccuracyModal(true);
+    }
     const tParam = params.get('t');
     if (!tParam || appliedDeepLinkRef.current === tParam) return;
     const targetMs = Date.parse(tParam);
@@ -690,6 +695,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
           customView={config.offset.mode === 'manual' || config.display.dataSource === 'noaa' || Object.entries(config.thresholds).some(([key, value]) => value !== LOCATIONS[config.locationId]?.thresholds[key as keyof typeof config.thresholds])}
           onSettings={() => setShowSettings(true)}
           onLocationChange={updateLocation}
+          onAccuracyClick={() => setShowAccuracyModal(true)}
         />
       </IonHeader>
 
@@ -741,6 +747,13 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                 onClick={() => document.getElementById('dashboard-section-map')?.scrollIntoView({ behavior: 'smooth' })}
               >
                 Street Map
+              </button>
+              <button
+                type="button"
+                className="jump-chip"
+                onClick={() => setShowAccuracyModal(true)}
+              >
+                Accuracy Audit
               </button>
             </nav>
 
@@ -1041,6 +1054,12 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
           existingComments={selectedComments || []}
           config={config}
           waterLevel={chartActionLevel}
+        />
+
+        {/* Scientific Forecast Accuracy Audit modal */}
+        <ForecastAccuracyModal
+          isOpen={showAccuracyModal}
+          onDismiss={() => setShowAccuracyModal(false)}
         />
 
         {showIntroTour && (

@@ -166,6 +166,9 @@ const AppTabs: React.FC = () => {
         <Route exact path="/tab2">
           <Tab2 />
         </Route>
+        <Route exact path="/accuracy">
+          <Redirect to="/tab2?view=accuracy" />
+        </Route>
         {/* App information and about page */}
         <Route path="/guide">
           <DeferredRoute><Tab3 /></DeferredRoute>
@@ -200,7 +203,7 @@ const AppTabs: React.FC = () => {
           {/* Primary FloodCast tab - main functionality */}
           <IonTabButton tab="tab2" href="/tab2">
             <IonIcon aria-hidden="true" icon={waterOutline} />
-            <IonLabel>Forecast</IonLabel>
+            <IonLabel>FloodCast</IonLabel>
           </IonTabButton>
           <IonTabButton tab="alerts" href="/alerts">
             <IonIcon aria-hidden="true" icon={notificationsOutline} />
