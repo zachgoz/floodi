@@ -176,6 +176,14 @@ export const MULTI_REGION_BASIN_SPECS: Record<string, BasinPhysicsSpec> = {
   },
 };
 
+// Aliases matching frontend LOCATIONS registry keys
+MULTI_REGION_BASIN_SPECS['beaufort'] = MULTI_REGION_BASIN_SPECS['beaufort-nc'];
+MULTI_REGION_BASIN_SPECS['garden-city'] = MULTI_REGION_BASIN_SPECS['garden-city-sc'];
+MULTI_REGION_BASIN_SPECS['new-bern'] = MULTI_REGION_BASIN_SPECS['new-bern-nc'];
+MULTI_REGION_BASIN_SPECS['wilmington'] = MULTI_REGION_BASIN_SPECS['wilmington-nc'];
+MULTI_REGION_BASIN_SPECS['charleston'] = MULTI_REGION_BASIN_SPECS['charleston-sc'];
+MULTI_REGION_BASIN_SPECS['savannah'] = MULTI_REGION_BASIN_SPECS['savannah-ga'];
+
 export interface SurgeDriversBreakdown {
   /** Regional ocean storm surge + baseline subtidal sea level anomaly (ft) */
   oceanSurgeFt: number;
@@ -283,7 +291,8 @@ function linearInterpMs(
  * to remove 0.1-ft quantization steps and residual tidal leakage from NOAA ETSS tables.
  */
 export function smoothSubtidalSeries(samples: TimeValueSample[]): Array<{ tMs: number; v: number }> {
-  const sorted = toSortedMsSeries(samples);
+  // Reject missing value sentinels (e.g. 99.90) and unphysical surge values
+  const sorted = toSortedMsSeries(samples).filter(p => Number.isFinite(p.v) && Math.abs(p.v) < 50);
   if (!sorted.length) return [];
   return sorted.map(pt => {
     let sum = 0;
@@ -617,16 +626,18 @@ export function synthesizeOperationalForecast(
     }
 
     const r3 = (x: number) => Math.round(x * 1000) / 1000;
-    const dOcean = r3(oceanComponentFt);
-    const dWind = r3(windComponentFt);
-    const dRiver = r3(riverComponentFt);
-    const dRain = r3(rainComponentFt);
+    // Strictly clamp each physical driver component to plausible coastal dynamics
+    const dOcean = r3(Math.max(-5.0, Math.min(15.0, oceanComponentFt)));
+    const dWind = r3(Math.max(-2.5, Math.min(4.5, windComponentFt)));
+    const dRiver = r3(Math.max(-1.5, Math.min(4.0, riverComponentFt)));
+    const dRain = r3(Math.max(0, Math.min(2.5, rainComponentFt)));
     const dHarm = r3(hEstuarine);
 
-    // Lossless driver sum: residualFt equals the exact sum of the 5 physical drivers
-    const residualFt = r3(dOcean + dWind + dRiver + dRain + dHarm);
+    // Lossless driver sum: residualFt equals the exact sum of the 5 physical drivers,
+    // physically bounded within [-5.0, 15.0] ft MLLW surge anomaly
+    const residualFt = r3(Math.max(-5.0, Math.min(15.0, dOcean + dWind + dRiver + dRain + dHarm)));
     const tideFt = r3(tp.v);
-    const totalFt = r3(tideFt + residualFt);
+    const totalFt = r3(Math.max(-2.0, Math.min(22.0, tideFt + residualFt)));
 
     // Calibrated uncertainty growth with lead time
     const rawSpread = linearInterpMs(tfmSpread, tMs, 3 * 3600_000);

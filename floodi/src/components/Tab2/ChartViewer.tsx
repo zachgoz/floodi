@@ -484,7 +484,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
   // Y-axis scaling
   const yMinMax = useMemo(() => {
-    const allValues = [
+    const rawValues = [
       ...observedPoints.map(p => p.v),
       ...adjustedPoints.map(p => p.v),
       ...experimentalPoints.map(p => p.v),
@@ -495,6 +495,10 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
       ...(showDelta ? surgeForecastPoints.map(p => p.v) : []),
       ...Object.values(thresholds),
     ];
+
+    // Filter to physically plausible coastal water levels [-5, 25] ft MLLW
+    // to protect chart viewport scaling against missing value sentinels or corrupt anomalies
+    const allValues = rawValues.filter(v => Number.isFinite(v) && v >= -5 && v <= 25);
 
     if (allValues.length === 0) return { min: 0, max: 1 };
 

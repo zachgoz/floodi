@@ -314,3 +314,51 @@ test('rolling-origin backtest proves Basin Physics (N/NE Wind + River Head + M4)
   );
 });
 
+test('MULTI_REGION_BASIN_SPECS supports short city identifiers and protects against 99.90 sentinels', () => {
+  const { MULTI_REGION_BASIN_SPECS, smoothSubtidalSeries, synthesizeOperationalForecast } = require('../lib/forecast/basinPhysics');
+  
+  // Verify aliases
+  assert.ok(MULTI_REGION_BASIN_SPECS['beaufort'], 'beaufort alias exists');
+  assert.ok(MULTI_REGION_BASIN_SPECS['garden-city'], 'garden-city alias exists');
+  assert.ok(MULTI_REGION_BASIN_SPECS['wilmington'], 'wilmington alias exists');
+  assert.ok(MULTI_REGION_BASIN_SPECS['new-bern'], 'new-bern alias exists');
+  assert.ok(MULTI_REGION_BASIN_SPECS['charleston'], 'charleston alias exists');
+  assert.ok(MULTI_REGION_BASIN_SPECS['savannah'], 'savannah alias exists');
+
+  // Verify smoothSubtidalSeries rejects 99.90
+  const dirtyEtss = [
+    { t: '2026-11-02T22:00:00Z', v: 0.9 },
+    { t: '2026-11-02T23:00:00Z', v: 0.8 },
+    { t: '2026-11-03T00:00:00Z', v: 99.90 },
+    { t: '2026-11-03T01:00:00Z', v: 99.90 },
+    { t: '2026-11-03T02:00:00Z', v: 0.7 },
+  ];
+  const smoothed = smoothSubtidalSeries(dirtyEtss);
+  for (const s of smoothed) {
+    assert.ok(s.v < 5, `Smoothed surge ${s.v} should be < 5`);
+  }
+
+  // Verify synthesizeOperationalForecast clamps any rogue surge within [-5, 15] ft and total water level within [-2, 22] ft
+  const origin = new Date('2026-11-02T22:00:00Z');
+  const past = Array.from({ length: 48 }, (_, i) => ({
+    t: new Date(origin.getTime() - (48 - i) * 3600_000).toISOString(),
+    v: 0.5,
+  }));
+  const futureTide = [
+    { t: new Date(origin.getTime() + 3600_000).toISOString(), v: 4.0 },
+    { t: new Date(origin.getTime() + 7200_000).toISOString(), v: 4.2 },
+  ];
+  const result = synthesizeOperationalForecast({
+    spec: MULTI_REGION_BASIN_SPECS['beaufort'],
+    issuedAt: origin,
+    recentResidual: past,
+    tide: futureTide,
+    oceanEtss: [{ t: origin, v: 99.90 }], // rogue input
+  });
+  assert.ok(result.length > 0);
+  for (const p of result) {
+    assert.ok(p.residualFt >= -5 && p.residualFt <= 15, `residualFt ${p.residualFt} within bounds`);
+    assert.ok(p.totalFt >= -2 && p.totalFt <= 22, `totalFt ${p.totalFt} within bounds`);
+  }
+});
+

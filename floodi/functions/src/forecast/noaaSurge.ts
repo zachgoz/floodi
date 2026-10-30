@@ -71,6 +71,9 @@ export function parseNoaaSurgeTable(rawText: string, referenceYear = new Date().
     const anom = parseFloat(parts[5]);
 
     if (isNaN(surge) || isNaN(tide)) continue;
+    // Reject NOAA missing value sentinel (99.90 / -99.90) and unphysical values.
+    // Surge along the US Atlantic coast is physically bounded within [-10, 25] ft.
+    if (Math.abs(surge) >= 80 || Math.abs(tide) >= 80) continue;
 
     // Build ISO Date in UTC
     const date = new Date(Date.UTC(referenceYear, month - 1, day, hour, 0, 0, 0));
@@ -87,8 +90,8 @@ export function parseNoaaSurgeTable(rawText: string, referenceYear = new Date().
       t: date.toISOString(),
       surgeFt: surge,
       tideFt: tide,
-      totalFt: !isNaN(fcst) && fcst < 90 ? fcst : tide + surge,
-      anomalyFt: isNaN(anom) ? 0 : anom,
+      totalFt: !isNaN(fcst) && Math.abs(fcst) < 80 ? fcst : tide + surge,
+      anomalyFt: isNaN(anom) || Math.abs(anom) >= 80 ? 0 : anom,
     });
   }
 

@@ -69,14 +69,22 @@ const READ_TIMEOUT_MS = 15_000;
 function isValidChallengerDoc(value: unknown, locationId: string): value is ChallengerOutlookDocument {
   if (!value || typeof value !== 'object') return false;
   const d = value as Partial<ChallengerOutlookDocument>;
-  return (
-    d.challengerId === 'timesfm-3' &&
-    d.locationId === locationId &&
-    d.status === 'available' &&
-    Array.isArray(d.points) &&
-    d.points.length > 0 &&
-    typeof d.generatedAt === 'string'
+  if (
+    d.challengerId !== 'timesfm-3' ||
+    d.locationId !== locationId ||
+    d.status !== 'available' ||
+    !Array.isArray(d.points) ||
+    d.points.length === 0 ||
+    typeof d.generatedAt !== 'string'
+  ) {
+    return false;
+  }
+  // Data integrity guard: reject corrupted/sentinel documents with unphysical water levels (> 25 ft or < -10 ft)
+  const hasUnphysical = d.points.some(
+    p => typeof p.totalFt !== 'number' || p.totalFt > 25 || p.totalFt < -10 ||
+         typeof p.residualFt !== 'number' || p.residualFt > 20 || p.residualFt < -10
   );
+  return !hasUnphysical;
 }
 
 export function useChallengerOutlook(locationId: string) {
@@ -87,6 +95,8 @@ export function useChallengerOutlook(locationId: string) {
 
   useEffect(() => {
     let active = true;
+    // Immediately clear previous location's challenger so cross-station contamination never occurs
+    setChallenger(null);
 
     const read = async (forceRefresh = false): Promise<void> => {
       if (!active) return;
@@ -95,9 +105,10 @@ export function useChallengerOutlook(locationId: string) {
       const timeout = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
 
       try {
-        // 1. Try public cached HTTP endpoint first (with 1-minute cache bucket, or live refresh on pull-to-refresh)
+        // 1. Try public cached HTTP endpoint first (scoped to locationId)
         const cacheBucket = Math.floor(Date.now() / 60_000);
-        const query = forceRefresh ? `refresh=1&t=${Date.now()}` : `t=${cacheBucket}`;
+        const locParam = `locationId=${encodeURIComponent(locationId)}`;
+        const query = forceRefresh ? `${locParam}&refresh=1&t=${Date.now()}` : `${locParam}&t=${cacheBucket}`;
         const res = await fetch(`/api/challenger?${query}`, {
           signal: controller.signal,
           cache: 'no-store',
@@ -128,10 +139,12 @@ export function useChallengerOutlook(locationId: string) {
           const data = snap.data();
           if (isValidChallengerDoc(data, locationId)) {
             setChallenger(data);
+            return;
           }
         }
+        if (active) setChallenger(null);
       } catch {
-        // Maintain previous state if both fail
+        if (active) setChallenger(null);
       } finally {
         if (active) setLoading(false);
       }

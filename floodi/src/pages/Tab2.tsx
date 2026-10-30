@@ -217,6 +217,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   const isTimesFmPrimary = Boolean(
     config.offset.mode !== 'manual' &&
     challenger &&
+    challenger.locationId === config.locationId &&
     (challengerTotalPoints.length > 0 || challengerResidualPoints.length > 0)
   );
   const hasBackendBasinPhysics = Boolean(challenger?.points?.some(p => p.drivers));
@@ -320,7 +321,8 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
       }
     }
 
-    return surge;
+    // Physical bounds clamp: coastal surge anomaly along US Atlantic coast is strictly bounded [-5.0, 15.0] ft
+    return surge.map(p => ({ ...p, v: Math.max(-5.0, Math.min(15.0, p.v)) }));
   }, [isTimesFmPrimary, hasBackendBasinPhysics, challengerResidualPoints, anchoredChallengerResidual, processedData, selectedForecast.residualPoints, subtidalStormAnomalies, decomposedHarmonics, FORECAST_INTERPOLATE_GAP_MS]);
 
   // High-resolution 6-minute TimesFM AI + NOAA ETSS operational forecast
@@ -348,7 +350,8 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
       }
     }
 
-    return points;
+    // Physical bounds clamp: total coastal water level is strictly bounded [-3.0, 22.0] ft MLLW
+    return points.map(p => ({ ...p, v: Math.max(-3.0, Math.min(22.0, p.v)) }));
   }, [isTimesFmPrimary, challengerResidualPoints, processedData, selectedForecast.totalPoints, operationalSurgePoints, decomposedHarmonics, FORECAST_INTERPOLATE_GAP_MS]);
 
   const operationalLower = useMemo(() => {

@@ -120,4 +120,66 @@ describe('useChallengerOutlook hook', () => {
     expect(result.current.challenger).toBeNull();
     expect(result.current.totalPoints).toHaveLength(0);
   });
+
+  it('rejects document with unphysical sentinel values (> 25 ft)', async () => {
+    const corruptDoc = {
+      ...validDoc,
+      points: [
+        {
+          t: new Date(+now + 1800_000).toISOString(),
+          totalFt: 88.924,
+          tideFt: 3.677,
+          residualFt: 85.247,
+        },
+      ],
+    };
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => corruptDoc,
+    });
+    vi.mocked(getDoc).mockResolvedValueOnce({
+      exists: () => false,
+      data: () => undefined,
+    } as any);
+
+    const { result } = renderHook(() => useChallengerOutlook('carolina-beach'));
+    await act(async () => {});
+
+    expect(result.current.challenger).toBeNull();
+  });
+
+  it('clears previous challenger immediately when locationId changes', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => validDoc,
+    });
+
+    const { result, rerender } = renderHook(({ loc }) => useChallengerOutlook(loc), {
+      initialProps: { loc: 'carolina-beach' },
+    });
+    await act(async () => {});
+    expect(result.current.challenger).toEqual(validDoc);
+
+    // Switch to beaufort where no challenger document exists
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      json: async () => ({ error: 'unavailable' }),
+    });
+    vi.mocked(getDoc).mockResolvedValueOnce({
+      exists: () => false,
+      data: () => undefined,
+    } as any);
+
+    rerender({ loc: 'beaufort' });
+    // Should immediately be null upon station switch
+    expect(result.current.challenger).toBeNull();
+
+    await act(async () => {});
+    expect(result.current.challenger).toBeNull();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('locationId=beaufort'),
+      expect.any(Object)
+    );
+  });
 });
