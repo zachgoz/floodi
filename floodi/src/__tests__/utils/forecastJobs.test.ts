@@ -220,6 +220,25 @@ describe('standalone Operational Forecast & Alerts 2.0 jobs (decoupled from lega
     });
   });
 
+  it('preserves the current forecast and skips alert evaluation when publication returns no forecast', async () => {
+    const cached = buildOperationalFixture();
+    backend.records.set(liveOperationalDoc, cached);
+    vi.setSystemTime(new Date(+initialNow + 10 * 60_000));
+    vi.mocked(runTimesFmChallenger).mockResolvedValueOnce(null);
+
+    await expect(runForecast()).rejects.toThrow('existing forecast retained');
+
+    expect(runTimesFmChallenger).toHaveBeenCalledTimes(1);
+    expect(runOperationalAlertsForForecast).not.toHaveBeenCalled();
+    expect(backend.records.get(liveOperationalDoc)).toBe(cached);
+    expect(backend.records.get('operationalHealth/generateFloodOutlook_carolina-beach')).toMatchObject({
+      status: 'failed',
+      stage: 'forecast',
+      retainedGeneratedAt: initialNow.toISOString(),
+      error: { message: 'Operational forecast engine could not produce an available forecast' },
+    });
+  });
+
   it('serves cached operational outlook from both /api/challenger and /api/outlook with expiry-bounded Cache-Control', async () => {
     await runForecast();
     const doc = backend.records.get(liveOperationalDoc) as ChallengerOutlookDocument;

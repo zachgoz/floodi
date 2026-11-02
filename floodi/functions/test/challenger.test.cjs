@@ -1,16 +1,26 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { Firestore } = require('firebase-admin/firestore');
 
 const { resampleResidualGrid, runTimesFmChallenger } = require('../lib/forecast/challenger');
 
-/** Mock Firestore for testing */
-function createMockFirestore() {
+// Reference construction is local and performs no RPC. Use the SDK's actual
+// path validation so an invalid publication path cannot pass a permissive mock.
+const referenceValidator = new Firestore({ projectId: 'demo-floodcast-tests' });
+
+/** Mock storage with SDK-validated references and atomic batch commits. */
+function createMockFirestore({ failCommit = false } = {}) {
   const store = new Map();
+  const calls = { directWrites: 0, batchCommits: 0 };
   return {
     store,
+    calls,
     doc(path) {
+      referenceValidator.doc(path);
       return {
+        path,
         async set(data) {
+          calls.directWrites++;
           store.set(path, data);
         },
         async get() {
@@ -22,8 +32,30 @@ function createMockFirestore() {
         },
       };
     },
+    batch() {
+      const writes = [];
+      return {
+        set(ref, data) {
+          writes.push([ref.path, data]);
+          return this;
+        },
+        async commit() {
+          calls.batchCommits++;
+          if (failCommit) throw new Error('Simulated publication commit failure');
+          for (const [path, data] of writes) store.set(path, data);
+        },
+      };
+    },
   };
 }
+
+test('publication references reject the invalid odd-component marker path', () => {
+  const db = createMockFirestore();
+  assert.throws(() => db.doc(
+    'forecast_challenger_publications/timesfm-3/carolina-beach/issues/2026-11-02T12:34:05.268Z'
+  ), /even number of components/);
+  assert.equal(db.store.size, 0);
+});
 
 test('resampleResidualGrid handles empty and boundary cases', () => {
   const now = new Date('2026-10-25T12:00:00Z');
@@ -174,11 +206,44 @@ test('runTimesFmChallenger succeeds with mocked TimesFM and NOAA ETSS guidance',
   // Verify Firestore writes
   const issueKey = `locations/30046/forecast_challengers/timesfm-3/issues/${issuedAt.toISOString()}`;
   const currentKey = 'locations/30046/forecast_challengers/timesfm-3/outlook/current';
-  const markerKey = `forecast_challenger_publications/timesfm-3/30046/issues/${issuedAt.toISOString()}`;
+  const markerKey = `forecast_challenger_publications/timesfm-3/locations/30046/issues/${issuedAt.toISOString()}`;
 
   assert.equal(db.store.has(issueKey), true);
   assert.equal(db.store.has(currentKey), true);
   assert.equal(db.store.has(markerKey), true);
+  assert.equal(db.store.get(issueKey), db.store.get(currentKey));
+  assert.equal(db.store.get(markerKey).issueId, db.store.get(currentKey).generatedAt);
+  assert.deepEqual(db.calls, { directWrites: 0, batchCommits: 1 });
+});
+
+test('publication commit failure retains the prior forecast without a partial archive or marker', async () => {
+  const db = createMockFirestore({ failCommit: true });
+  const issuedAt = new Date('2026-11-02T12:34:05.268Z');
+  const currentKey = 'locations/carolina-beach/forecast_challengers/timesfm-3/outlook/current';
+  const prior = { generatedAt: '2026-11-02T12:24:05.272Z', status: 'available' };
+  db.store.set(currentKey, prior);
+  const recentResidual = Array.from({ length: 97 }, (_, index) => ({
+    t: new Date(+issuedAt - (96 - index) * 30 * 60_000),
+    v: 1.0,
+  }));
+  const result = await runTimesFmChallenger({
+    db,
+    siteId: 'carolina-beach',
+    thresholdFt: 5.6,
+    issuedAt,
+    recentResidual,
+    tide: [{ t: issuedAt, v: 3.5 }],
+    timesfmClient: {
+      async forecast() {
+        return { mean: new Array(48).fill(1), engine: 'bigquery-ai-forecast' };
+      },
+    },
+    noaaForecastProvider: async () => null,
+  });
+
+  assert.equal(result, null, 'a failed commit must never be reported as published');
+  assert.deepEqual(db.calls, { directWrites: 0, batchCommits: 1 });
+  assert.deepEqual([...db.store.entries()], [[currentKey, prior]]);
 });
 
 test('runTimesFmChallenger handles TimesFM failure gracefully without throwing', async () => {

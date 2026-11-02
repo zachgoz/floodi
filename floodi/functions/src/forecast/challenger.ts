@@ -438,21 +438,25 @@ export async function runTimesFmChallenger(
     // 6. Write operational forecast atomically to Firestore
     const issuePath = `locations/${siteId}/forecast_challengers/timesfm-3/issues/${issuedAt.toISOString()}`;
     const currentPath = `locations/${siteId}/forecast_challengers/timesfm-3/outlook/current`;
-    const publicationMarker = `forecast_challenger_publications/timesfm-3/${siteId}/issues/${issuedAt.toISOString()}`;
-
-    await Promise.all([
-      db.doc(issuePath).set(challengerDoc),
-      db.doc(currentPath).set(challengerDoc),
-      db.doc(publicationMarker).set({
-        challengerId: 'timesfm-3',
-        locationId: siteId,
-        issueId: issuedAt.toISOString(),
-        publishedAt: FieldValue.serverTimestamp(),
-        engine,
-        peakFt: challengerDoc.peak?.totalFt ?? null,
-        peakTime: challengerDoc.peak?.t ?? null,
-      }),
-    ]);
+    const publicationMarker = `forecast_challenger_publications/timesfm-3/locations/${siteId}/issues/${issuedAt.toISOString()}`;
+    // Validate every document reference before starting a write. Publishing the
+    // current pointer independently could expose an issue whose marker failed.
+    const issueRef = db.doc(issuePath);
+    const currentRef = db.doc(currentPath);
+    const markerRef = db.doc(publicationMarker);
+    const publication = db.batch();
+    publication.set(issueRef, challengerDoc);
+    publication.set(currentRef, challengerDoc);
+    publication.set(markerRef, {
+      challengerId: 'timesfm-3',
+      locationId: siteId,
+      issueId: issuedAt.toISOString(),
+      publishedAt: FieldValue.serverTimestamp(),
+      engine,
+      peakFt: challengerDoc.peak?.totalFt ?? null,
+      peakTime: challengerDoc.peak?.t ?? null,
+    });
+    await publication.commit();
 
     logger.info('Operational Basin Physics + TimesFM forecast published successfully', {
       event: 'timesfm_challenger_published',
