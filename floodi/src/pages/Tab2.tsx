@@ -32,6 +32,7 @@ import { useAtmosphericState } from 'src/components/Tab2/hooks/useAtmosphericSta
 import { useChartComments } from 'src/components/Tab2/hooks/useChartComments';
 import { ChartCommentModal } from 'src/components/Tab2/ChartCommentModal';
 import { ForecastAccuracyModal } from 'src/components/dashboard/ForecastAccuracyModal';
+import { useForecastAccuracy } from 'src/components/dashboard/useForecastAccuracy';
 import 'src/components/Tab2/styles/Tab2.css';
 import './Tab2.css';
 import 'src/components/dashboard/DashboardView.css';
@@ -164,6 +165,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     upperPoints: challengerUpperPoints,
     residualPoints: challengerResidualPoints,
   } = useChallengerOutlook(config.locationId);
+  const { accuracy: rollingAccuracy } = useForecastAccuracy(config.locationId);
   const FORECAST_INTERPOLATE_GAP_MS = 3 * 3600_000; // 3 hours to safely bridge 30-min to 1-hour model intervals and anchor observations
 
   const anchoredChallengerResidual = useMemo(() => {
@@ -696,6 +698,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
           onSettings={() => setShowSettings(true)}
           onLocationChange={updateLocation}
           onAccuracyClick={() => setShowAccuracyModal(true)}
+          maeInches={rollingAccuracy.mae24hInches}
         />
       </IonHeader>
 
@@ -1060,6 +1063,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
         <ForecastAccuracyModal
           isOpen={showAccuracyModal}
           onDismiss={() => setShowAccuracyModal(false)}
+          accuracy={rollingAccuracy}
         />
 
         {showIntroTour && (

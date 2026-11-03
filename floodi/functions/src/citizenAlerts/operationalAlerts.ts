@@ -73,6 +73,8 @@ export interface PublicFloodAdvisory {
   windCompass: string | null;
   precipWindowIn: number;
   drivers?: SurgeDriversBreakdown;
+  isProbabilisticWatch?: boolean;
+  upperPeakFt?: number;
 }
 
 export interface PublicAlertBulletin {
@@ -332,6 +334,53 @@ export function extractOperationalAdvisories(
     if (adv) advisories.push(adv);
   }
 
+  // Probabilistic P90 Near-Threshold Flood Watch detection:
+  // Identify high-tide cycles where central totalFt is marginal (< thresholds.minor, but within 0.35 ft / 4.2 in)
+  // while the P90 upper confidence bound (upperFt) breaches thresholds.minor (5.6 ft).
+  const coveredBuckets = new Set(advisories.map(a => Math.round(Date.parse(a.peakAt) / (6 * HOUR_MS))));
+
+  for (let i = 1; i < valid.length - 1; i++) {
+    const pt = valid[i];
+    const prev = valid[i - 1];
+    const next = valid[i + 1];
+    const ptMs = Date.parse(pt.t);
+    const bucket = Math.round(ptMs / (6 * HOUR_MS));
+    if (coveredBuckets.has(bucket)) continue;
+
+    // Check if point is a local high-tide peak
+    const isPeak = pt.totalFt >= prev.totalFt - 0.01 && pt.totalFt >= next.totalFt - 0.01;
+    if (!isPeak) continue;
+
+    const hasUpperP90Breach = typeof pt.upperFt === 'number' && pt.upperFt >= thresholds.minor;
+    const isMarginalCentral = pt.totalFt < thresholds.minor && pt.totalFt >= thresholds.minor - 0.35;
+
+    if (hasUpperP90Breach && isMarginalCentral) {
+      coveredBuckets.add(bucket);
+      advisories.push({
+        episodeId: `cb-tide-${bucket}`,
+        severity: 'minor',
+        startAt: new Date(ptMs - 45 * MINUTE_MS).toISOString(),
+        peakAt: pt.t,
+        endAt: new Date(ptMs + 45 * MINUTE_MS).toISOString(),
+        durationMinutes: 90,
+        startClipped: false,
+        endClipped: false,
+        peakFt: Math.round(pt.totalFt * 100) / 100,
+        aboveFloodStageFt: 0,
+        estimatedStreetDepthIn: Math.max(0, Math.round((pt.upperFt! - thresholds.minor) * 12 * 10) / 10),
+        tideFt: Math.round(pt.tideFt * 100) / 100,
+        surgeFt: Math.round(pt.residualFt * 100) / 100,
+        windSpeedMph: typeof pt.windSpeedMph === 'number' ? Math.round(pt.windSpeedMph) : null,
+        windDirectionDeg: typeof pt.windDirectionDeg === 'number' ? pt.windDirectionDeg : null,
+        windCompass: bearingToCompass(pt.windDirectionDeg),
+        precipWindowIn: typeof pt.precipIn === 'number' ? Math.round(pt.precipIn * 100) / 100 : 0,
+        drivers: pt.drivers,
+        isProbabilisticWatch: true,
+        upperPeakFt: Math.round(pt.upperFt! * 100) / 100,
+      });
+    }
+  }
+
   return advisories;
 }
 
@@ -509,7 +558,7 @@ export function evaluateOperationalAlertStep(
         lastNotifiedPeakAt: adv.peakAt,
         advisory: adv,
       };
-      const isImminentNow = Date.parse(adv.startAt) - nowMs <= IMMINENT_LEAD_MS;
+      const isImminentNow = !adv.isProbabilisticWatch && Date.parse(adv.startAt) - nowMs <= IMMINENT_LEAD_MS;
       pendingTriggers.push({
         category: isImminentNow ? 'imminent_warning' : 'upcoming_watch',
         advisory: adv,
@@ -526,6 +575,7 @@ export function evaluateOperationalAlertStep(
         ...adv,
         episodeId: existing.episodeId,
         severity: effectiveSeverity,
+        isProbabilisticWatch: existing.advisory.isProbabilisticWatch && adv.isProbabilisticWatch,
       };
 
       const wasCleared = existing.status === 'cleared';
@@ -558,6 +608,11 @@ export function evaluateOperationalAlertStep(
         whatChanged = `Upgraded from ${severityTitle(prevNotifiedSev)} to ${severityTitle(
           effectiveSeverity
         )} Flood (${existing.lastNotifiedPeakFt?.toFixed(2) ?? ''} → ${stabilizedAdv.peakFt.toFixed(2)} ft MLLW).`;
+      } else if (existing.advisory.isProbabilisticWatch && !stabilizedAdv.isProbabilisticWatch) {
+        notifyCategory = 'forecast_change';
+        whatChanged = `Upgraded from Near-Threshold Watch to ${severityTitle(
+          effectiveSeverity
+        )} Flood Warning (${existing.lastNotifiedPeakFt?.toFixed(2) ?? ''} → ${stabilizedAdv.peakFt.toFixed(2)} ft MLLW).`;
       } else if (entersImminent) {
         notifyCategory = 'imminent_warning';
         whatChanged = `Flooding begins within ~${Math.max(
@@ -680,25 +735,30 @@ export function evaluateOperationalAlertStep(
     }
 
     const peakEt = etFormatter.format(new Date(primary.advisory.peakAt));
+    const isWatch = Boolean(primary.advisory.isProbabilisticWatch);
     const headline =
       primary.category === 'all_clear'
         ? `All-Clear: Flood Forecast Revised Below Threshold (${peakEt} ET)`
-        : primary.category === 'imminent_warning'
-          ? `Imminent ${severityTitle(highestSev)} Flood Warning · Crest ${primary.advisory.peakFt.toFixed(2)} ft`
-          : primary.category === 'forecast_change'
-            ? `${severityTitle(highestSev)} Flood Forecast Updated · Crest ${primary.advisory.peakFt.toFixed(2)} ft`
-            : extras.length > 0
-              ? `${severityTitle(highestSev)} Flood Watch · ${allAdvs.length} Upcoming High-Water Cycles`
-              : `${severityTitle(highestSev)} Flood Watch · Crest ${primary.advisory.peakFt.toFixed(2)} ft MLLW`;
+        : isWatch
+          ? `Near-Threshold Flood Watch: High Water Possible · Crest ${primary.advisory.peakFt.toFixed(2)} ft (P90: ${primary.advisory.upperPeakFt?.toFixed(2) ?? primary.advisory.peakFt.toFixed(2)} ft)`
+          : primary.category === 'imminent_warning'
+            ? `Imminent ${severityTitle(highestSev)} Flood Warning · Crest ${primary.advisory.peakFt.toFixed(2)} ft`
+            : primary.category === 'forecast_change'
+              ? `${severityTitle(highestSev)} Flood Forecast Updated · Crest ${primary.advisory.peakFt.toFixed(2)} ft`
+              : extras.length > 0
+                ? `${severityTitle(highestSev)} Flood Watch · ${allAdvs.length} Upcoming High-Water Cycles`
+                : `${severityTitle(highestSev)} Flood Watch · Crest ${primary.advisory.peakFt.toFixed(2)} ft MLLW`;
 
     const summary =
       primary.category === 'all_clear'
         ? primary.whatChanged ?? 'Forecasted high tide has fallen below the 5.6 ft MLLW minor flood stage.'
-        : `Peak ${primary.advisory.peakFt.toFixed(2)} ft MLLW (+${primary.advisory.aboveFloodStageFt.toFixed(
-            2
-          )} ft above stage, ~${primary.advisory.estimatedStreetDepthIn.toFixed(1)}" low-street water) around ${peakEt} ET.${
-            extras.length > 0 ? ` Plus ${extras.length} additional flood tide cycle(s) in the next 48h.` : ''
-          }`;
+        : isWatch
+          ? `Forecast water level crests near ${primary.advisory.peakFt.toFixed(2)} ft MLLW at ${peakEt} ET, but the 90th percentile upper confidence bound reaches ${primary.advisory.upperPeakFt?.toFixed(2) ?? '5.6+'} ft. Low-lying street flooding along Canal Dr is possible within model error bounds.`
+          : `Peak ${primary.advisory.peakFt.toFixed(2)} ft MLLW (+${primary.advisory.aboveFloodStageFt.toFixed(
+              2
+            )} ft above stage, ~${primary.advisory.estimatedStreetDepthIn.toFixed(1)}" low-street water) around ${peakEt} ET.${
+              extras.length > 0 ? ` Plus ${extras.length} additional flood tide cycle(s) in the next 48h.` : ''
+            }`;
 
     const intentId = makeIntentHash(
       `${locationId}|${primary.advisory.episodeId}|${primary.category}|${highestSev}|${forecast.generatedAt}`

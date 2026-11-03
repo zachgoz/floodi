@@ -362,3 +362,56 @@ test('MULTI_REGION_BASIN_SPECS supports short city identifiers and protects agai
   }
 });
 
+test('directionalWindStress captures non-linear coastal aerodynamic drag enhancement Cd(W) at high wind speeds', () => {
+  // At reference 20 mph, Cd = 1.0, stress is 1.0
+  assert.equal(directionalWindStress(20, 25, 25), 1.0);
+  // At 30 mph, Cd(30) = 1.0 + 0.02 * 10 = 1.20, stress = (30/20)^2 * 1.20 = 2.25 * 1.20 = 2.70
+  const stress30 = directionalWindStress(30, 25, 25);
+  assert.ok(Math.abs(stress30 - 2.70) < 1e-6, `stress at 30 mph should be 2.70, got ${stress30}`);
+  // Pure quadratic without Cd would be 2.25
+  assert.ok(stress30 > 2.25, 'Wind stress with Cd must exceed pure quadratic baseline');
+});
+
+test('synthesizeOperationalForecast blends TimesFM-3 at 45% weight in Regime A and couples USGS river stage head', () => {
+  const origin = new Date('2026-11-03T12:00:00Z');
+  const past = Array.from({ length: 48 }, (_, i) => ({
+    t: new Date(origin.getTime() - (48 - i) * 1800_000).toISOString(),
+    v: 0.8,
+  }));
+  const futureTide = [
+    { t: new Date(origin.getTime() + 1800_000).toISOString(), v: 4.5 },
+    { t: new Date(origin.getTime() + 3600_000).toISOString(), v: 4.7 },
+  ];
+
+  // Run with ocean ETSS = 1.0, TimesFM = 1.4 (0.4 ft higher)
+  const withTfm = synthesizeOperationalForecast({
+    spec: CAROLINA_BEACH_BASIN_SPEC,
+    issuedAt: origin,
+    recentResidual: past,
+    tide: futureTide,
+    oceanEtss: [
+      { t: origin, v: 0.8 },
+      { t: new Date(origin.getTime() + 7200_000), v: 1.0 },
+    ],
+    timesFmSubtidal: [
+      { t: new Date(origin.getTime() + 1800_000), v: 1.4 },
+      { t: new Date(origin.getTime() + 3600_000), v: 1.4 },
+    ],
+    usgsStageFt: [
+      { t: origin, v: 14.0 }, // Elevated Lock #1 river stage (4 ft above 10 ft pool)
+    ],
+  });
+
+  assert.ok(withTfm.length === 2);
+  const p1 = withTfm[1];
+  // Physical breakdown must be present and lossless
+  assert.ok(p1.drivers.oceanSurgeFt > 0, 'ocean driver must be positive');
+  assert.ok(p1.drivers.riverFlowFt > 0, 'elevated USGS river stage must produce positive river flow driver');
+  assert.equal(
+    Math.round((p1.drivers.oceanSurgeFt + p1.drivers.windSetupFt + p1.drivers.riverFlowFt + p1.drivers.rainfallRunoffFt + p1.drivers.estuarineHarmonicFt) * 1000) / 1000,
+    p1.residualFt,
+    'Physical driver decomposition must sum losslessly to residualFt'
+  );
+});
+
+

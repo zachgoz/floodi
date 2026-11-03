@@ -12,6 +12,7 @@ export function CurrentConditions({
   onSettings,
   onLocationChange,
   onAccuracyClick,
+  maeInches = 2.4,
 }: {
   location: string;
   locationId?: string;
@@ -21,6 +22,7 @@ export function CurrentConditions({
   onSettings: () => void;
   onLocationChange?: (locationId: string) => void;
   onAccuracyClick?: () => void;
+  maeInches?: number;
 }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
@@ -66,7 +68,7 @@ export function CurrentConditions({
               aria-label="View scientific accuracy audit"
             >
               <span className="accuracy-pill-dot" />
-              Verified 2.4" MAE
+              Verified {maeInches.toFixed(1)}" MAE
             </button>
           )}
           {customView && <button type="button" onClick={onSettings}>Custom chart view</button>}

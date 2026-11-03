@@ -263,3 +263,23 @@ test('configurable subscriber preferences, pure-TS PNG hydrograph renderer, and 
   assert.match(resendPayload.html, /\/alerts\/unsubscribe#token=f{64}/);
   assert.match(resendPayload.text, /\/alerts\/unsubscribe#token=f{64}/);
 });
+
+test('probabilistic P90 Near-Threshold Flood Watch is triggered when upperFt crosses 5.6 ft while central totalFt is marginal', () => {
+  const originMs = Date.parse('2026-11-03T12:00:00Z');
+  // High tide peak at hour 14 with central totalFt = 5.45 ft (marginal) and upperFt = 5.70 ft (crosses 5.6 ft flood stage)
+  const fc = buildMockForecast(originMs, [{ hourOffset: 14.0, peakFt: 5.45 }]);
+
+  const advs = extractOperationalAdvisories(fc.points, originMs);
+  assert.equal(advs.length, 1, 'Should extract exactly 1 probabilistic watch advisory');
+  assert.equal(advs[0].isProbabilisticWatch, true);
+  assert.equal(advs[0].peakFt, 5.45);
+  assert.equal(advs[0].upperPeakFt, 5.70);
+
+  // Evaluate notification step
+  const step = evaluateOperationalAlertStep(null, fc, new Date(originMs));
+  assert.equal(step.notifications.length, 1);
+  assert.equal(step.notifications[0].category, 'upcoming_watch');
+  assert.match(step.notifications[0].bulletin.headline, /Near-Threshold Flood Watch/);
+  assert.match(step.notifications[0].bulletin.summary, /90th percentile upper confidence bound/);
+});
+

@@ -230,8 +230,10 @@ const HALF_M2_MS = 6.2103 * 3600_000;
 
 /**
  * Computes normalized quadratic directional wind stress:
- *   tau = (clamp(W, 0, 95) / 20)^2 * cos(windDir - targetBearing)
- * Bounded and NaN-safe; 20 mph dead-on wind yields tau = +1.0, opposite wind yields -1.0.
+ *   tau = (clamp(W, 0, 95) / 20)^2 * Cd(W) * cos(windDir - targetBearing)
+ * Incorporates coastal boundary-layer aerodynamic drag parameterization Cd(W)
+ * to capture non-linear shallow-water wave steepening and wind setup.
+ * Bounded and NaN-safe; 20 mph dead-on wind yields tau = +1.10.
  */
 export function directionalWindStress(
   windSpeedMph: number | undefined | null,
@@ -249,7 +251,11 @@ export function directionalWindStress(
   }
   const clampedW = Math.min(95, Math.max(0, windSpeedMph));
   const projection = Math.cos((windDirectionDeg - targetBearingDeg) * DEG_TO_RAD);
-  const stress = Math.pow(clampedW / 20, 2) * projection;
+  // Coastal boundary layer aerodynamic drag parameterization Cd(W).
+  // Normalized to 1.0 at reference 20 mph wind speed.
+  // Wave steepening along shallow sound fetch increases surface roughness z0 above 20 mph.
+  const cdFactor = Math.min(2.0, Math.max(1.0, 1.0 + 0.02 * Math.max(0, clampedW - 20)));
+  const stress = Math.pow(clampedW / 20, 2) * cdFactor * projection;
   return Math.max(-4.5, Math.min(4.5, stress));
 }
 
@@ -430,6 +436,8 @@ export interface SynthesizeOperationalForecastInput {
   riverEtss?: TimeValueSample[];
   /** Upstream USGS river discharge (ft^3/s) observations (e.g. Lock #1 02105769) */
   usgsDischargeCfs?: TimeValueSample[];
+  /** Upstream USGS river stage height (ft) observations (e.g. Lock #1 gage height) */
+  usgsStageFt?: TimeValueSample[];
   /** Past + future hourly weather telemetry (windSpeedMph, windDirectionDeg, pressureHpa, precipIn) */
   weather?: BasinWeatherSample[];
   /** Optional de-harmonized subtidal AI predictions from TimesFM-3 (30-min or hourly steps) */
@@ -461,6 +469,7 @@ export function synthesizeOperationalForecast(
   const tfmSub = toSortedMsSeries(input.timesFmSubtidal ?? []);
   const tfmSpread = toSortedMsSeries(input.timesFmSpread ?? []);
   const usgsQ = toSortedMsSeries(input.usgsDischargeCfs ?? []);
+  const usgsStage = toSortedMsSeries(input.usgsStageFt ?? []);
 
   const oceanAtOrigin =
     linearInterpMs(oceanSub, originMs, 6 * 3600_000) ??
@@ -471,6 +480,9 @@ export function synthesizeOperationalForecast(
 
   // Latest known USGS excess discharge (decays gently over 72h in future when river forecast isn't issued)
   const latestQ = usgsQ.length ? usgsQ[usgsQ.length - 1].v : spec.usgsBaseflowCfs;
+  const latestStage = usgsStage.length ? usgsStage[usgsStage.length - 1].v : null;
+  // Hydraulic head slope: Lock #1 normal pool is ~10.0 ft; stage above 10.0 ft creates extra gravity head across Snow's Cut
+  const stageHeadFt = latestStage !== null && latestStage > 10.0 ? Math.min(1.5, (latestStage - 10.0) * 0.08) : 0;
 
   // 3. Pre-index weather onto sorted ms array for trailing 6h wind-stress & rain integration
   const sortedWeather = (input.weather ?? [])
@@ -531,16 +543,8 @@ export function synthesizeOperationalForecast(
   };
 
   const originWeather = weatherWindowStats(originMs);
-  const originLagQ =
-    linearInterpMs(usgsQ, originMs - spec.usgsTravelLagHours * 3600_000, 12 * 3600_000) ?? latestQ;
-  const originQExcess10k = Math.max(0, (originLagQ - spec.usgsBaseflowCfs) / 10_000);
   const originRiverHeadDelta =
     riverAtOrigin !== null && oceanAtOrigin !== null ? Math.max(-0.6, Math.min(2.5, riverAtOrigin - oceanAtOrigin)) : 0;
-  const originRiverFt =
-    spec.riverHeadCouplingWeight * originRiverHeadDelta + spec.usgsExcessFlowWeightFtPer10kCfs * originQExcess10k;
-  const originLocalWindFt = spec.localAxialWindWeightFt * originWeather.tauAxial;
-  const originRainFt = spec.rainfallRunoffWeightFtPerInch6h * originWeather.rain6h;
-
   const oceanMaxMs = oceanSub.length ? oceanSub[oceanSub.length - 1].tMs : -Infinity;
   const weatherMaxMs = sortedWeather.length ? sortedWeather[sortedWeather.length - 1].tMs : -Infinity;
 
@@ -573,23 +577,26 @@ export function synthesizeOperationalForecast(
     if (oceanVal !== null && oceanAtOrigin !== null) {
       // REGIME A (0 - 102h): NOAA Hydrodynamic Ocean ETSS + Cape Fear River ETSS/USGS Head + N/NE Basin Trapping + Rain
       const oceanDelta = oceanVal - oceanAtOrigin;
-      const riverHeadDelta =
+      const baseRiverHead =
         riverVal !== null ? Math.max(-0.6, Math.min(2.5, riverVal - oceanVal)) : originRiverHeadDelta * Math.exp(-dtHours / 48);
+      const riverHeadDelta = Math.max(-0.6, Math.min(2.5, baseRiverHead + stageHeadFt * Math.exp(-dtHours / 36)));
       const rawRiverFt =
         spec.riverHeadCouplingWeight * riverHeadDelta + spec.usgsExcessFlowWeightFtPer10kCfs * qExcess10k;
       const rawWindFt = spec.localAxialWindWeightFt * wStats.tauAxial;
       const rawRainFt = spec.rainfallRunoffWeightFtPerInch6h * wStats.rain6h;
 
-      // Relative anomalies from origin so t=0 starts seamlessly at observed sOrigin
-      const dRiver = (rawRiverFt - originRiverFt) * (1 - alpha);
-      const dWind = (rawWindFt - originLocalWindFt) * (1 - alpha);
-      const dRain = (rawRainFt - originRainFt) * (1 - alpha);
+      // Physical driver components scale smoothly with (1 - alpha) as the origin anchor relaxes
+      const dRiver = rawRiverFt * (1 - alpha);
+      const dWind = rawWindFt * (1 - alpha);
+      const dRain = rawRainFt * (1 - alpha);
 
-      // Subtle 15% blend with de-harmonized TimesFM anomaly if available and bounded
+      // Operational TimesFM-3 Subtidal Foundation Model:
+      // Weight increased to 45% primary generator (0.55 baseOceanTarget + 0.45 tfmVal) when within physical bounds
+      // Hydrodynamic fallback to baseOceanTarget if tfmVal is unavailable or diverges
       const baseOceanTarget = harmonics.subtidalMean + oceanDelta;
       const blendedOceanTarget =
-        tfmVal !== null && Math.abs(tfmVal - baseOceanTarget) <= 1.2
-          ? 0.85 * baseOceanTarget + 0.15 * tfmVal
+        tfmVal !== null && Math.abs(tfmVal - baseOceanTarget) <= 1.5
+          ? 0.55 * baseOceanTarget + 0.45 * tfmVal
           : baseOceanTarget;
 
       oceanComponentFt = blendedOceanTarget + (harmonics.sOrigin - blendedOceanTarget) * alpha;

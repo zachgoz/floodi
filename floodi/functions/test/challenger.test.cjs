@@ -394,4 +394,67 @@ test('runTimesFmChallenger produces physically dynamic non-flat residual oscilla
   }
 });
 
+test('runTimesFmChallenger preserves full multi-week astronomical tide horizon (21 days) when extendFullTideHorizon is true', async () => {
+  const db = createMockFirestore();
+  const issuedAt = new Date('2026-11-03T12:00:00Z');
+
+  // Build 48h residual history
+  const recentResidual = [];
+  for (let i = 0; i < 96; i++) {
+    const t = new Date(issuedAt.getTime() - (96 - i) * 30 * 60_000);
+    recentResidual.push({ t, v: 0.8 });
+  }
+
+  // 21 days of tide predictions (21 * 48 = 1008 points at 30-min intervals)
+  const fullTide21Days = [];
+  for (let step = 0; step <= 1008; step++) {
+    const t = new Date(issuedAt.getTime() + step * 30 * 60_000);
+    fullTide21Days.push({ t, v: 3.5 + 2.0 * Math.sin(step * 0.25) });
+  }
+
+  const doc = await runTimesFmChallenger({
+    db,
+    siteId: 'carolina-beach',
+    thresholdFt: 5.6,
+    issuedAt,
+    recentResidual,
+    tide: fullTide21Days,
+    horizonSteps: 144, // 72 hours of TimesFM
+    extendFullTideHorizon: true, // Multi-week horizon preservation flag!
+    timesfmClient: {
+      async forecast(req) {
+        return {
+          engine: 'timesfm-3-subtidal',
+          mean: Array(req.horizon).fill(0.95),
+          q10: Array(req.horizon).fill(0.70),
+          q90: Array(req.horizon).fill(1.20),
+        };
+      },
+    },
+    noaaForecastProvider: async () => ({
+      station: '8658163',
+      stationName: 'Wrightsville Beach',
+      retrievedAt: issuedAt.toISOString(),
+      points: [
+        { t: issuedAt.toISOString(), surgeFt: 0.65 },
+        { t: new Date(issuedAt.getTime() + 102 * 3600_000).toISOString(), surgeFt: 0.85 },
+      ],
+    }),
+  });
+
+  assert.ok(doc);
+  assert.equal(doc.status, 'available');
+  assert.equal(doc.engine, 'timesfm-3-subtidal');
+  // Must preserve all 1008 points across all 21 days, NOT truncated to 144 steps!
+  assert.equal(doc.points.length, 1008, 'Must generate all 1008 points spanning full 21-day tide horizon');
+
+  // Verify that peak and mathematical integrity are maintained across the entire 21-day series
+  assert.ok(doc.peak);
+  assert.ok(doc.peak.totalFt > 0);
+  for (const pt of doc.points) {
+    assert.equal(Math.round((pt.tideFt + pt.residualFt) * 1000) / 1000, pt.totalFt);
+  }
+});
+
+
 

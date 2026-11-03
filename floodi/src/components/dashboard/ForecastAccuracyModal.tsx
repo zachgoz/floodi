@@ -10,17 +10,35 @@ import {
   IonContent,
 } from '@ionic/react';
 import { closeOutline, checkmarkCircleOutline, waterOutline, pulseOutline, compassOutline } from 'ionicons/icons';
+import { AUDITED_BASELINE_ACCURACY, type RollingAccuracyData } from './useForecastAccuracy';
 import './ForecastAccuracyModal.css';
 
 interface ForecastAccuracyModalProps {
   isOpen: boolean;
   onDismiss: () => void;
+  accuracy?: RollingAccuracyData;
 }
 
 export const ForecastAccuracyModal: React.FC<ForecastAccuracyModalProps> = ({
   isOpen,
   onDismiss,
+  accuracy = AUDITED_BASELINE_ACCURACY,
 }) => {
+  const effectiveAccuracy = accuracy || AUDITED_BASELINE_ACCURACY;
+
+  const getLeadLabel = (hours: number): string => {
+    switch (hours) {
+      case 1: return '1 Hour';
+      case 3: return '3 Hours';
+      case 6: return '6 Hours';
+      case 12: return '12 Hours';
+      case 24: return '24 Hours (Planning Horizon)';
+      case 48: return '48 Hours (Day 2)';
+      case 72: return '72 Hours (Day 3)';
+      default: return `${hours} Hours`;
+    }
+  };
+
   return (
     <IonModal
       isOpen={isOpen}
@@ -56,22 +74,22 @@ export const ForecastAccuracyModal: React.FC<ForecastAccuracyModalProps> = ({
           {/* Key Stat Cards */}
           <div className="accuracy-stats-grid">
             <div className="accuracy-stat-card highlight">
-              <span className="accuracy-stat-value">2.4 in</span>
+              <span className="accuracy-stat-value">{effectiveAccuracy.mae24hInches.toFixed(1)} in</span>
               <span className="accuracy-stat-label">24-Hour Horizon MAE</span>
-              <span className="accuracy-stat-sub">0.199 ft · Zero Drift</span>
+              <span className="accuracy-stat-sub">{effectiveAccuracy.mae24hFt.toFixed(3)} ft · Zero Drift</span>
             </div>
             <div className="accuracy-stat-card">
-              <span className="accuracy-stat-value">1.4 in</span>
+              <span className="accuracy-stat-value">{effectiveAccuracy.mae1hInches.toFixed(1)} in</span>
               <span className="accuracy-stat-label">1-Hour Lead MAE</span>
-              <span className="accuracy-stat-sub">0.116 ft · Immediate Anchor</span>
+              <span className="accuracy-stat-sub">{effectiveAccuracy.mae1hFt.toFixed(3)} ft · Immediate Anchor</span>
             </div>
             <div className="accuracy-stat-card">
-              <span className="accuracy-stat-value">±26.8 min</span>
+              <span className="accuracy-stat-value">±{effectiveAccuracy.crestTimingMinutes.toFixed(1)} min</span>
               <span className="accuracy-stat-label">Crest Timing Accuracy</span>
               <span className="accuracy-stat-sub">High-tide peak timing</span>
             </div>
             <div className="accuracy-stat-card highlight">
-              <span className="accuracy-stat-value">77%</span>
+              <span className="accuracy-stat-value">{effectiveAccuracy.errorReductionPct}%</span>
               <span className="accuracy-stat-label">Error Reduction</span>
               <span className="accuracy-stat-sub">vs. NOAA Astronomical Tables</span>
             </div>
@@ -84,7 +102,7 @@ export const ForecastAccuracyModal: React.FC<ForecastAccuracyModalProps> = ({
               Water-Level Error Profile by Lead Time
             </h3>
             <p className="accuracy-section-desc">
-              Scored across 190+ frozen operational forecasts against verified Carolina Beach Canal Gauge 30046 records.
+              Scored across {effectiveAccuracy.sampleCount}+ frozen operational forecasts against verified Carolina Beach Canal Gauge 30046 records.
               Errors represent Mean Absolute Error (MAE) in feet and equivalent inches.
             </p>
             <div className="accuracy-table-wrapper">
@@ -99,55 +117,18 @@ export const ForecastAccuracyModal: React.FC<ForecastAccuracyModalProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td><strong>1 Hour</strong></td>
-                    <td>0.116 ft (1.4 in)</td>
-                    <td>0.231 ft (2.8 in)</td>
-                    <td>0.853 ft (10.2 in)</td>
-                    <td>0.103 ft (1.2 in)</td>
-                  </tr>
-                  <tr>
-                    <td><strong>3 Hours</strong></td>
-                    <td>0.183 ft (2.2 in)</td>
-                    <td>0.342 ft (4.1 in)</td>
-                    <td>0.864 ft (10.4 in)</td>
-                    <td>0.185 ft (2.2 in)</td>
-                  </tr>
-                  <tr>
-                    <td><strong>6 Hours</strong></td>
-                    <td>0.187 ft (2.2 in)</td>
-                    <td>0.371 ft (4.5 in)</td>
-                    <td>0.876 ft (10.5 in)</td>
-                    <td>0.219 ft (2.6 in)</td>
-                  </tr>
-                  <tr>
-                    <td><strong>12 Hours</strong></td>
-                    <td>0.181 ft (2.2 in)</td>
-                    <td>0.385 ft (4.6 in)</td>
-                    <td>0.896 ft (10.8 in)</td>
-                    <td>0.251 ft (3.0 in)</td>
-                  </tr>
-                  <tr className="highlight-row">
-                    <td><strong>24 Hours</strong> (Planning Horizon)</td>
-                    <td>0.199 ft (2.4 in)</td>
-                    <td>0.378 ft (4.5 in)</td>
-                    <td>0.896 ft (10.8 in)</td>
-                    <td>0.302 ft (3.6 in)</td>
-                  </tr>
-                  <tr>
-                    <td><strong>48 Hours</strong> (Day 2)</td>
-                    <td>0.221 ft (2.7 in)</td>
-                    <td>0.467 ft (5.6 in)</td>
-                    <td>0.953 ft (11.4 in)</td>
-                    <td>0.425 ft (5.1 in)</td>
-                  </tr>
-                  <tr>
-                    <td><strong>72 Hours</strong> (Day 3)</td>
-                    <td>0.263 ft (3.2 in)</td>
-                    <td>0.550 ft (6.6 in)</td>
-                    <td>1.055 ft (12.7 in)</td>
-                    <td>0.600 ft (7.2 in)</td>
-                  </tr>
+                  {effectiveAccuracy.leads.map((lead) => {
+                    const isHighlight = lead.leadHours === 24;
+                    return (
+                      <tr key={lead.leadHours} className={isHighlight ? 'highlight-row' : undefined}>
+                        <td><strong>{getLeadLabel(lead.leadHours)}</strong></td>
+                        <td>{lead.floodCastMaeFt.toFixed(3)} ft ({lead.floodCastMaeInches.toFixed(1)} in)</td>
+                        <td>{lead.p90Ft.toFixed(3)} ft ({lead.p90Inches.toFixed(1)} in)</td>
+                        <td>{lead.tideOnlyMaeFt.toFixed(3)} ft ({lead.tideOnlyMaeInches.toFixed(1)} in)</td>
+                        <td>{lead.persistenceMaeFt.toFixed(3)} ft ({lead.persistenceMaeInches.toFixed(1)} in)</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -274,3 +255,4 @@ export const ForecastAccuracyModal: React.FC<ForecastAccuracyModalProps> = ({
 };
 
 export default ForecastAccuracyModal;
+

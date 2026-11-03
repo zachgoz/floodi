@@ -237,7 +237,7 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
             </div>
             <div>
               <h3>{floodPossible ? 'Flooding possible' : forecastAvailable ? 'No flooding predicted' : 'Forecast unavailable'}</h3>
-              <p>{floodPossible ? 'Within the forecast error range.' : forecastAvailable ? 'No threshold exceedance in the available forecast.' : 'Waiting for water level predictions.'}</p>
+              <p>{floodPossible ? 'Near-Threshold Watch: Within 90th percentile (P90) forecast error margin; street ponding possible if winds or tide surge exceed nominal guidance.' : forecastAvailable ? 'No threshold exceedance in the available forecast.' : 'Waiting for water level predictions.'}</p>
             </div>
           </div>
         )}

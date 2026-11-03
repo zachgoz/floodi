@@ -25,6 +25,10 @@
         "function": "floodChallenger"
       },
       {
+        "source": "/api/accuracy",
+        "function": "forecastAccuracy"
+      },
+      {
         "source": "/api/client-errors",
         "function": "collectClientErrors"
       },

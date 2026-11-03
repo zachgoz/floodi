@@ -3,6 +3,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { recordJobOutcome, safeError } from '../utils/observability';
 import { loadVerificationDay, recentMaturedVerificationDays, verificationDayPath } from './repository';
 import { VERIFICATION_VERSION } from './types';
+import { updateRollingVerificationSummary } from './summary';
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -33,6 +34,13 @@ export const verifyPublishedForecasts = onSchedule({
       if (result.coverage.archiveReadTruncated) truncatedDays++;
       if (!result.targetScores.some(row => row.method === 'served' && row.status === 'scored')) daysWithoutServedPairs++;
     }
+    // Update rolling 30-day verification summary for public accuracy transparency
+    try {
+      await updateRollingVerificationSummary(db, 'carolina-beach');
+    } catch {
+      // Non-fatal if summary compilation encounters an issue
+    }
+
     await recordJobOutcome(db, 'verifyPublishedForecasts', 'carolina-beach', {
       attemptedAt: now.toISOString(), status: truncatedDays || daysWithoutServedPairs ? 'partial' : 'ok',
       version: VERIFICATION_VERSION, completedDays, scoredTargets, uniqueCompleteEvents, truncatedDays, daysWithoutServedPairs,

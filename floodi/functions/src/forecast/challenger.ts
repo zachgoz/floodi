@@ -347,6 +347,11 @@ export async function runTimesFmChallenger(
         .filter(p => typeof p.dischargeCfs === 'number' && Number.isFinite(p.dischargeCfs))
         .map(p => ({ t: p.t, v: p.dischargeCfs! })) ?? [];
 
+    const usgsStageSeries =
+      usgsTelemetry?.points
+        .filter(p => typeof p.gageHeightFt === 'number' && Number.isFinite(p.gageHeightFt))
+        .map(p => ({ t: p.t, v: p.gageHeightFt! })) ?? [];
+
     // Ensure Ocean ETSS covers origin if NOAA ETSS had a single anchor point or TimesFM zero-shot ran without ETSS
     const effectiveOceanEtss =
       noaaPoints.length >= 2
@@ -363,6 +368,7 @@ export async function runTimesFmChallenger(
       oceanEtss: effectiveOceanEtss,
       riverEtss: riverPoints,
       usgsDischargeCfs: usgsDischargeSeries,
+      usgsStageFt: usgsStageSeries,
       weather: normalizedWeather,
       timesFmSubtidal,
       timesFmSpread,
