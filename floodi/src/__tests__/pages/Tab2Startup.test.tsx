@@ -12,6 +12,7 @@ vi.mock('src/components/Tab2/hooks/useChartComments', () => ({ useChartComments:
 vi.mock('src/components/dashboard/useFloodOutlook', () => ({ useFloodOutlook: () => ({ outlook: null, refresh: vi.fn() }) }));
 vi.mock('src/components/dashboard/useChallengerOutlook', () => ({ useChallengerOutlook: () => ({ challenger: null, loading: false, refresh: vi.fn(), totalPoints: [], lowerPoints: [], upperPoints: [], residualPoints: [] }) }));
 vi.mock('src/components/dashboard/useForecastAccuracy', () => ({ useForecastAccuracy: () => ({ accuracy: { mae24hInches: 2.4, mae24hFt: 0.199, mae1hInches: 1.4, mae1hFt: 0.116, crestTimingMinutes: 26.8, errorReductionPct: 77, sampleCount: 192, leads: [] }, loading: false, error: null, refresh: vi.fn() }) }));
+vi.mock('src/components/dashboard/useForecastDiagnostics', () => ({ useForecastDiagnostics: () => ({ diagnostics: { overallStatus: 'optimal', rolling7dMaeInches: 2.2, rolling30dMaeInches: 2.4, driftDeltaInches: -0.2, systematicBiasInches: 0.3, biasDirection: 'running_high', regimeMetrics: [], quadrantMetrics: [], recentAnomalies: [], activeProposals: [] }, loading: false, error: null, refresh: vi.fn() }) }));
 vi.mock('src/components/dashboard/InundationMap', () => ({ default: () => <div data-testid="loaded-map">Flood map</div> }));
 vi.mock('@vis.gl/react-google-maps', () => ({ APIProvider: ({ children }: React.PropsWithChildren) => <>{children}</> }));
 vi.mock('src/components/dashboard/SurgeChart', () => ({ SurgeChart: () => null }));

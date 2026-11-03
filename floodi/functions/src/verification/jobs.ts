@@ -4,6 +4,7 @@ import { recordJobOutcome, safeError } from '../utils/observability';
 import { loadVerificationDay, recentMaturedVerificationDays, verificationDayPath } from './repository';
 import { VERIFICATION_VERSION } from './types';
 import { updateRollingVerificationSummary } from './summary';
+import { updateModelDiagnostics } from './diagnostics';
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -34,11 +35,12 @@ export const verifyPublishedForecasts = onSchedule({
       if (result.coverage.archiveReadTruncated) truncatedDays++;
       if (!result.targetScores.some(row => row.method === 'served' && row.status === 'scored')) daysWithoutServedPairs++;
     }
-    // Update rolling 30-day verification summary for public accuracy transparency
+    // Update rolling 30-day verification summary and model diagnostics for public accuracy & tuning transparency
     try {
       await updateRollingVerificationSummary(db, 'carolina-beach');
+      await updateModelDiagnostics(db, 'carolina-beach');
     } catch {
-      // Non-fatal if summary compilation encounters an issue
+      // Non-fatal if summary/diagnostic compilation encounters an issue
     }
 
     await recordJobOutcome(db, 'verifyPublishedForecasts', 'carolina-beach', {

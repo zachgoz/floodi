@@ -29,6 +29,10 @@
         "function": "forecastAccuracy"
       },
       {
+        "source": "/api/diagnostics",
+        "function": "forecastDiagnostics"
+      },
+      {
         "source": "/api/client-errors",
         "function": "collectClientErrors"
       },

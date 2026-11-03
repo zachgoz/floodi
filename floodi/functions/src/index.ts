@@ -71,6 +71,6 @@ export { checkDataHealth } from './health';
 export { collectClientErrors } from './clientErrors';
 export { evaluateShadowFloodAlerts, reconcileShadowFloodAlerts } from './alerts/jobs';
 export { verifyPublishedForecasts } from './verification/jobs';
-export { forecastAccuracy } from './verification/endpoint';
+export { forecastAccuracy, forecastDiagnostics } from './verification/endpoint';
 
 export { citizenAlerts, queueCitizenFloodAlerts, queueCitizenAlertEnrollment, deliverCitizenFloodAlerts } from "./citizenAlerts/jobs";
