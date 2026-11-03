@@ -229,3 +229,4 @@ export function useForecastDiagnostics(locationId = 'carolina-beach') {
     refresh: fetchDiagnostics,
   };
 }
+

@@ -143,3 +143,4 @@ test('computeModelDiagnostics handles boundary conditions (zero error, null fiel
   assert.equal(diag.biasDirection, 'calibrated');
   assert.equal(diag.overallStatus, 'optimal');
 });
+
