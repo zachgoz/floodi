@@ -28,6 +28,7 @@ import {
   type ModelHealthDiagnostics,
   useForecastDiagnostics,
 } from './useForecastDiagnostics';
+import ForecastConvergenceChart from './ForecastConvergenceChart';
 import './ForecastAccuracyModal.css';
 
 interface ForecastAccuracyModalProps {
@@ -111,6 +112,29 @@ export const ForecastAccuracyModal: React.FC<ForecastAccuracyModalProps> = ({
                   benchmarked against real Carolina Beach Yacht Basin water-level observations.
                 </p>
               </header>
+
+              {/* Audit Timeframe & Provenance Banner */}
+              <div className="audit-provenance-banner" data-testid="audit-provenance-banner">
+                <div className="provenance-chip">
+                  <span className="provenance-chip-label">Audited Window</span>
+                  <strong className="provenance-chip-val">Oct 5 – Nov 3, 2026 (Last 30 Days)</strong>
+                </div>
+                <div className="provenance-chip">
+                  <span className="provenance-chip-label">Verification Mode</span>
+                  <strong className="provenance-chip-val">Realtime Prospective Replay</strong>
+                </div>
+                <div className="provenance-chip">
+                  <span className="provenance-chip-label">Audited Station</span>
+                  <strong className="provenance-chip-val">Carolina Beach Gauge 30046</strong>
+                </div>
+                <div className="provenance-chip">
+                  <span className="provenance-chip-label">Update Cadence</span>
+                  <strong className="provenance-chip-val">Daily at 06:40 UTC (Auto-Updated)</strong>
+                </div>
+              </div>
+
+              {/* Real-World Case Study: November 3 High Tide Convergence Hydrograph */}
+              <ForecastConvergenceChart />
 
               {/* Key Stat Cards */}
               <div className="accuracy-stats-grid">

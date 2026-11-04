@@ -669,4 +669,374 @@
   line-height: 1.4;
 }
 
+/* Audit Timeframe & Provenance Banner */
+.audit-provenance-banner {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.provenance-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.provenance-chip-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ion-color-step-600, #94a3b8);
+}
+
+.provenance-chip-val {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ion-text-color, #f8fafc);
+}
+
+/* ==========================================================================
+   Light Mode Overrides (.ion-palette-light & prefers-color-scheme: light)
+   WCAG AA/AAA Contrast Optimization
+   ========================================================================== */
+
+.ion-palette-light .accuracy-modal-content {
+  --background: #f8fafc;
+  --color: #0f172a;
+}
+
+.ion-palette-light .accuracy-title {
+  color: #0f172a;
+}
+
+.ion-palette-light .accuracy-subtitle {
+  color: #475569;
+}
+
+.ion-palette-light .accuracy-segment-toolbar {
+  --background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.ion-palette-light .accuracy-segment-selector {
+  --background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.ion-palette-light .accuracy-segment-selector ion-segment-button {
+  --color: #475569;
+  --color-checked: #0f172a;
+  --indicator-color: #ffffff;
+  font-weight: 700;
+}
+
+/* Audit Provenance Banner (Light) */
+.ion-palette-light .audit-provenance-banner {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.ion-palette-light .provenance-chip-label {
+  color: #64748b;
+}
+
+.ion-palette-light .provenance-chip-val {
+  color: #0f172a;
+}
+
+/* Stat Cards (Light) */
+.ion-palette-light .accuracy-stat-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.ion-palette-light .accuracy-stat-label {
+  color: #1e293b;
+}
+
+.ion-palette-light .accuracy-stat-sub {
+  color: #64748b;
+}
+
+.ion-palette-light .accuracy-stat-value {
+  color: #0284c7;
+}
+
+.ion-palette-light .accuracy-stat-card.highlight .accuracy-stat-value {
+  color: #15803d;
+}
+
+/* Section Cards (Light) */
+.ion-palette-light .accuracy-section-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.ion-palette-light .accuracy-section-title {
+  color: #0f172a;
+}
+
+.ion-palette-light .accuracy-section-desc {
+  color: #475569;
+}
+
+/* Lead Time Table (Light) */
+.ion-palette-light .accuracy-table-wrapper {
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.ion-palette-light .accuracy-table th {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-bottom: 2px solid #cbd5e1;
+}
+
+.ion-palette-light .accuracy-table td {
+  color: #1e293b;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.ion-palette-light .accuracy-table tr.highlight-row {
+  background: rgba(2, 132, 199, 0.08);
+}
+
+.ion-palette-light .accuracy-table tr.highlight-row td {
+  color: #0369a1;
+}
+
+/* Head-to-Head Comparison Cards (Light) */
+.ion-palette-light .compare-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.ion-palette-light .compare-card.winner {
+  background: rgba(22, 163, 74, 0.08);
+  border-color: rgba(22, 163, 74, 0.35);
+}
+
+.ion-palette-light .compare-card:not(.winner) .compare-badge {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.ion-palette-light .compare-name {
+  color: #0f172a;
+}
+
+.ion-palette-light .compare-desc {
+  color: #475569;
+}
+
+.ion-palette-light .compare-card.winner .compare-error {
+  color: #15803d;
+}
+
+.ion-palette-light .compare-card:not(.winner) .compare-error {
+  color: #dc2626;
+}
+
+/* Science & Couplings Cards (Light) */
+.ion-palette-light .science-item {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.ion-palette-light .science-content h5 {
+  color: #0f172a;
+}
+
+.ion-palette-light .science-content p {
+  color: #475569;
+}
+
+/* Flood Stage Threshold Pills (Light) */
+.ion-palette-light .stage-pill strong {
+  color: #0f172a;
+}
+
+.ion-palette-light .stage-pill span {
+  color: #475569;
+}
+
+.ion-palette-light .stage-pill.minor {
+  border-color: rgba(202, 138, 4, 0.4);
+  background: rgba(234, 179, 8, 0.12);
+}
+
+.ion-palette-light .stage-pill.moderate {
+  border-color: rgba(234, 88, 12, 0.4);
+  background: rgba(249, 115, 22, 0.12);
+}
+
+.ion-palette-light .stage-pill.major {
+  border-color: rgba(220, 38, 38, 0.4);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.ion-palette-light .stage-pill.extreme {
+  border-color: rgba(147, 51, 234, 0.4);
+  background: rgba(168, 85, 247, 0.12);
+}
+
+/* Diagnostics & AI Governance Tab (Light) */
+.ion-palette-light .diagnostics-status-badge.optimal {
+  background: rgba(22, 163, 74, 0.15);
+  color: #15803d;
+  border-color: rgba(22, 163, 74, 0.35);
+}
+
+.ion-palette-light .diagnostics-status-badge.stable {
+  background: rgba(2, 132, 199, 0.15);
+  color: #0284c7;
+  border-color: rgba(2, 132, 199, 0.35);
+}
+
+.ion-palette-light .diagnostics-status-badge.drift_detected {
+  background: rgba(220, 38, 38, 0.15);
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.35);
+}
+
+.ion-palette-light .diagnostics-drift-delta {
+  color: #15803d;
+}
+
+.ion-palette-light .regime-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.ion-palette-light .regime-name {
+  color: #0f172a;
+}
+
+.ion-palette-light .regime-mae {
+  color: #0284c7;
+}
+
+.ion-palette-light .regime-sub {
+  color: #64748b;
+}
+
+.ion-palette-light .quadrant-title {
+  color: #334155;
+}
+
+.ion-palette-light .quadrant-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.ion-palette-light .quadrant-badge {
+  color: #0284c7;
+}
+
+.ion-palette-light .quadrant-mae {
+  color: #0f172a;
+}
+
+.ion-palette-light .quadrant-samples {
+  color: #64748b;
+}
+
+.ion-palette-light .proposal-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.ion-palette-light .proposal-badge {
+  background: rgba(202, 138, 4, 0.15);
+  color: #a16207;
+  border-color: rgba(202, 138, 4, 0.35);
+}
+
+.ion-palette-light .proposal-badge.active {
+  background: rgba(22, 163, 74, 0.15);
+  color: #15803d;
+  border-color: rgba(22, 163, 74, 0.35);
+}
+
+.ion-palette-light .proposal-impact {
+  color: #15803d;
+}
+
+.ion-palette-light .proposal-target {
+  color: #0284c7;
+}
+
+.ion-palette-light .proposal-trigger {
+  color: #475569;
+}
+
+.ion-palette-light .proposal-diff {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+.ion-palette-light .diff-line.current {
+  color: #dc2626;
+}
+
+.ion-palette-light .diff-line.proposed {
+  color: #16a34a;
+}
+
+.ion-palette-light .proposal-code-hint {
+  background: #ffffff;
+  border: 1px dashed #94a3b8;
+}
+
+.ion-palette-light .proposal-code-hint code {
+  color: #0f172a;
+}
+
+.ion-palette-light .anomaly-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.ion-palette-light .anomaly-date {
+  color: #64748b;
+}
+
+.ion-palette-light .anomaly-desc {
+  color: #0f172a;
+}
+
+.ion-palette-light .anomaly-error {
+  color: #ea580c;
+}
+
+.ion-palette-light .anomaly-severity {
+  background: rgba(234, 88, 12, 0.15);
+  color: #c2410c;
+}
+
+.ion-palette-light .attribution-bars {
+  background: #e2e8f0;
+}
+
+.ion-palette-light .attribution-legend {
+  color: #475569;
+}
+
+.ion-palette-light .anomaly-summary {
+  color: #475569;
+}
+
+.ion-palette-light .accuracy-modal-footer {
+  color: #64748b;
+  border-top: 1px solid #e2e8f0;
+}
+
 

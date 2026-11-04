@@ -65,6 +65,17 @@ describe('ForecastAccuracyModal Component', () => {
     expect(screen.getByText('Verification Audit')).toBeInTheDocument();
     expect(screen.getByText('Diagnostics & Proposals')).toBeInTheDocument();
 
+    // Provenance Banner
+    expect(screen.getByTestId('audit-provenance-banner')).toBeInTheDocument();
+    expect(screen.getByText('Oct 5 – Nov 3, 2026 (Last 30 Days)')).toBeInTheDocument();
+    expect(screen.getByText('Realtime Prospective Replay')).toBeInTheDocument();
+    expect(screen.getByText('Carolina Beach Gauge 30046')).toBeInTheDocument();
+    expect(screen.getByText('Daily at 06:40 UTC (Auto-Updated)')).toBeInTheDocument();
+
+    // Real-World Case Study Convergence Chart
+    expect(screen.getByTestId('forecast-convergence-chart')).toBeInTheDocument();
+    expect(screen.getByText('Forecast Lock-In Convergence (November 3 High Tide)')).toBeInTheDocument();
+
     // Key stat highlights
     expect(screen.getByText('2.4 in')).toBeInTheDocument();
     expect(screen.getByText('24-Hour Horizon MAE')).toBeInTheDocument();
