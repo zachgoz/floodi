@@ -10,37 +10,37 @@ describe('ForecastConvergenceChart Component', () => {
     expect(screen.getByText('Real-World Case Study')).toBeInTheDocument();
     expect(screen.getByText('Forecast Lock-In Convergence (November 3 High Tide)')).toBeInTheDocument();
     expect(
-      screen.getByText(/Demonstrating how FloodCast locked in the 5\.82 ft crest across 24h, 12h, and 6h prior update cycles/)
+      screen.getByText(/Demonstrating how FloodCast locked in the 4\.91 ft crest across 24h, 12h, and 6h prior update cycles/)
     ).toBeInTheDocument();
   });
 
-  it('renders all 5 peak convergence stat cards with exact crest values and error deltas', () => {
+  it('renders all 5 peak convergence stat cards with exact hydrograph water levels and error deltas', () => {
     render(<ForecastConvergenceChart />);
 
-    // Observed
+    // Observed (Gauge 8658163 / Carolina Beach)
     expect(screen.getByText('Canal Gauge Crest')).toBeInTheDocument();
-    expect(screen.getByText('5.82 ft')).toBeInTheDocument();
-    expect(screen.getByText('Crested at 18:30 UTC')).toBeInTheDocument();
+    expect(screen.getByText('4.91 ft')).toBeInTheDocument();
+    expect(screen.getByText('Crested at 19:24 UTC · Gauge 8658163')).toBeInTheDocument();
 
     // 6h Lead
     expect(screen.getByText('Lead: 6 Hours')).toBeInTheDocument();
-    expect(screen.getByText('5.84 ft')).toBeInTheDocument();
-    expect(screen.getByText('+0.2 in error · 99.7% match')).toBeInTheDocument();
+    expect(screen.getByText('4.88 ft')).toBeInTheDocument();
+    expect(screen.getByText('−0.4 in error · 99.4% match')).toBeInTheDocument();
 
     // 12h Lead
     expect(screen.getByText('Lead: 12 Hours')).toBeInTheDocument();
-    expect(screen.getByText('5.80 ft')).toBeInTheDocument();
-    expect(screen.getByText('−0.2 in error · 99.7% match')).toBeInTheDocument();
+    expect(screen.getByText('4.85 ft')).toBeInTheDocument();
+    expect(screen.getByText('−0.7 in error · 98.8% match')).toBeInTheDocument();
 
     // 24h Lead
     expect(screen.getByText('Lead: 24 Hours')).toBeInTheDocument();
-    expect(screen.getByText('5.75 ft')).toBeInTheDocument();
-    expect(screen.getByText('−0.8 in error · Flood predicted 24h prior')).toBeInTheDocument();
+    expect(screen.getByText('4.80 ft')).toBeInTheDocument();
+    expect(screen.getByText('−1.3 in error · Outperformed tide tables')).toBeInTheDocument();
 
     // NOAA Astronomical Baseline
     expect(screen.getByText('Astronomical Only')).toBeInTheDocument();
-    expect(screen.getByText('5.10 ft')).toBeInTheDocument();
-    expect(screen.getByText('−8.6 in error · Missed flood threshold!')).toBeInTheDocument();
+    expect(screen.getByText('4.46 ft')).toBeInTheDocument();
+    expect(screen.getByText('−5.4 in error · Missed coastal surge!')).toBeInTheDocument();
   });
 
   it('renders SVG curves and toggles curve visibility when legend buttons are clicked', () => {
@@ -81,8 +81,8 @@ describe('ForecastConvergenceChart Component', () => {
   it('updates the inspector values when clicking a specific time slice', () => {
     render(<ForecastConvergenceChart />);
 
-    // Default inspection is at peak (18:30)
-    expect(screen.getByText('Time: 18:30 (Peak) UTC (Nov 3)')).toBeInTheDocument();
+    // Default inspection is at peak (19:24)
+    expect(screen.getByText('Time: 19:24 (Peak) UTC (Nov 3)')).toBeInTheDocument();
 
     // Find touch slice for 12:00
     const slice1200 = screen.getByLabelText('Inspect 12:00');
@@ -90,33 +90,31 @@ describe('ForecastConvergenceChart Component', () => {
 
     // Inspector should now reflect 12:00
     expect(screen.getByText('Time: 12:00 UTC (Nov 3)')).toBeInTheDocument();
-    expect(screen.getByText('1.40′')).toBeInTheDocument(); // Observed at 12:00
-    expect(screen.getByText('1.41′')).toBeInTheDocument(); // 6h forecast at 12:00
-    expect(screen.getByText('1.42′')).toBeInTheDocument(); // 12h forecast at 12:00
-    expect(screen.getByText('1.45′')).toBeInTheDocument(); // 24h forecast at 12:00
-    expect(screen.getByText('1.20′')).toBeInTheDocument(); // NOAA tide at 12:00
+    expect(screen.getByText('1.49′')).toBeInTheDocument(); // Observed at 12:00
+    expect(screen.getByText('1.48′')).toBeInTheDocument(); // 6h forecast at 12:00
+    expect(screen.getByText('1.45′')).toBeInTheDocument(); // 12h forecast at 12:00
+    expect(screen.getByText('1.42′')).toBeInTheDocument(); // 24h forecast at 12:00
+    expect(screen.getByText('1.10′')).toBeInTheDocument(); // NOAA tide at 12:00
   });
 
-  it('validates calibration constants across all 18 hourly sample points', () => {
-    expect(NOVEMBER_3_EVENT_SAMPLES).toHaveLength(18);
+  it('validates calibration constants across all 15 sample points matching verified hydrograph records', () => {
+    expect(NOVEMBER_3_EVENT_SAMPLES).toHaveLength(15);
 
-    // Peak sample is at index 11
-    const peak = NOVEMBER_3_EVENT_SAMPLES[11];
-    expect(peak.timeLabel).toBe('18:30 (Peak)');
-    expect(peak.hourFloat).toBe(18.5);
-    expect(peak.observed).toBe(5.82);
-    expect(peak.forecast6h).toBe(5.84);
-    expect(peak.forecast12h).toBe(5.80);
-    expect(peak.forecast24h).toBe(5.75);
-    expect(peak.noaaTide).toBe(5.10);
+    // Peak sample is at index 9
+    const peak = NOVEMBER_3_EVENT_SAMPLES[9];
+    expect(peak.timeLabel).toBe('19:24 (Peak)');
+    expect(peak.hourFloat).toBe(19.4);
+    expect(peak.observed).toBe(4.91);
+    expect(peak.forecast6h).toBe(4.88);
+    expect(peak.forecast12h).toBe(4.85);
+    expect(peak.forecast24h).toBe(4.80);
+    expect(peak.noaaTide).toBe(4.46);
 
-    // All locked-in forecasts correctly surpass the 5.6 ft flood stage at peak
-    expect(peak.forecast6h).toBeGreaterThan(5.6);
-    expect(peak.forecast12h).toBeGreaterThan(5.6);
-    expect(peak.forecast24h).toBeGreaterThan(5.6);
-
-    // Astronomical tide only failed to predict flooding (< 5.6 ft)
-    expect(peak.noaaTide).toBeLessThan(5.6);
+    // Trough sample at index 3
+    const trough = NOVEMBER_3_EVENT_SAMPLES[3];
+    expect(trough.timeLabel).toBe('14:00 (Trough)');
+    expect(trough.hourFloat).toBe(14.0);
+    expect(trough.observed).toBe(1.21);
+    expect(trough.noaaTide).toBe(0.78);
   });
 });
-

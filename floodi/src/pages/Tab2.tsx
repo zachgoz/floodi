@@ -1064,6 +1064,10 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
           isOpen={showAccuracyModal}
           onDismiss={() => setShowAccuracyModal(false)}
           accuracy={rollingAccuracy}
+          observedPoints={processedData?.observedPoints}
+          predictedPoints={processedData?.predictedPoints}
+          adjustedPoints={operationalForecastPoints?.length ? operationalForecastPoints : processedData?.adjustedPoints}
+          thresholds={config.thresholds}
         />
 
         {showIntroTour && (

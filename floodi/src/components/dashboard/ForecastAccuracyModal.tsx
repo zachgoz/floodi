@@ -28,6 +28,7 @@ import {
   type ModelHealthDiagnostics,
   useForecastDiagnostics,
 } from './useForecastDiagnostics';
+import type { Point } from '../Tab2/types';
 import ForecastConvergenceChart from './ForecastConvergenceChart';
 import './ForecastAccuracyModal.css';
 
@@ -37,6 +38,10 @@ interface ForecastAccuracyModalProps {
   accuracy?: RollingAccuracyData;
   diagnostics?: ModelHealthDiagnostics;
   locationId?: string;
+  observedPoints?: Point[];
+  predictedPoints?: Point[];
+  adjustedPoints?: Point[];
+  thresholds?: Record<string, number>;
 }
 
 export const ForecastAccuracyModal: React.FC<ForecastAccuracyModalProps> = ({
@@ -45,6 +50,10 @@ export const ForecastAccuracyModal: React.FC<ForecastAccuracyModalProps> = ({
   accuracy = AUDITED_BASELINE_ACCURACY,
   diagnostics: propDiagnostics,
   locationId = 'carolina-beach',
+  observedPoints,
+  predictedPoints,
+  adjustedPoints,
+  thresholds,
 }) => {
   const [activeSegment, setActiveSegment] = useState<'accuracy' | 'diagnostics'>('accuracy');
   const { diagnostics: fetchedDiagnostics } = useForecastDiagnostics(locationId);
@@ -134,7 +143,11 @@ export const ForecastAccuracyModal: React.FC<ForecastAccuracyModalProps> = ({
               </div>
 
               {/* Real-World Case Study: November 3 High Tide Convergence Hydrograph */}
-              <ForecastConvergenceChart />
+              <ForecastConvergenceChart
+                liveObservedPoints={observedPoints}
+                livePredictedPoints={predictedPoints}
+                liveAdjustedPoints={adjustedPoints}
+              />
 
               {/* Key Stat Cards */}
               <div className="accuracy-stats-grid">
