@@ -119,3 +119,4 @@ describe('ForecastConvergenceChart Component', () => {
     expect(peak.noaaTide).toBeLessThan(5.6);
   });
 });
+
