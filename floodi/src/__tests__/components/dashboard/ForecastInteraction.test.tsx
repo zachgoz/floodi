@@ -79,7 +79,7 @@ describe("forecast chart behavior", () => {
       <NextFloodingEventsCard adjustedPoints={central} predictedPoints={central} upperForecastPoints={[p(0,4.5),p(60,5.3),p(120,4.5)]} windPoints={[]} precipPoints={[]} thresholds={thresholds} now={now} onTimeChange={vi.fn()} />
       <ChartViewer locationId="carolina-beach" observedPoints={[]} predictedPoints={central} adjustedPoints={central} deltaPoints={[]} domainStart={now} domainEnd={p(120,0).t} now={now} thresholds={thresholds} showDelta={false} timezone="local" />
     </>);
-    expect(screen.getByRole('heading', {name:'Flooding possible'})).toBeInTheDocument();
+    expect(screen.getByRole('heading', {name:'No Flooding Expected (Near-Threshold Watch)'})).toBeInTheDocument();
     expect(container.querySelectorAll('[data-testid="forecast-flood-shading"]')).toHaveLength(0);
   });
   it('identifies a localized NOAA proxy in the tooltip without calling it observed', () => {

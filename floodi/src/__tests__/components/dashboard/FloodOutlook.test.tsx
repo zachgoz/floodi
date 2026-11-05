@@ -152,8 +152,12 @@ describe('operational resident flood outlook', () => {
         now={now}
       />
     );
-    expect(screen.getByText('Flooding possible')).toBeInTheDocument();
-    expect(screen.getByText('The forecast error range reaches flood stage.')).toBeInTheDocument();
+    expect(screen.getByText('High tides near flood stage (Watch)')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Tides are forecast just below flood stage, but within a few inches of minor street flooding.'
+      )
+    ).toBeInTheDocument();
   });
 
   it('distinguishes tide-only fallback from a local no-flooding forecast', () => {

@@ -236,8 +236,8 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
               <IonIcon icon={water} />
             </div>
             <div>
-              <h3>{floodPossible ? 'Flooding possible' : forecastAvailable ? 'No flooding predicted' : 'Forecast unavailable'}</h3>
-              <p>{floodPossible ? 'Near-Threshold Watch: Within 90th percentile (P90) forecast error margin; street ponding possible if winds or tide surge exceed nominal guidance.' : forecastAvailable ? 'No threshold exceedance in the available forecast.' : 'Waiting for water level predictions.'}</p>
+              <h3>{floodPossible ? 'No Flooding Expected (Near-Threshold Watch)' : forecastAvailable ? 'No flooding predicted' : 'Forecast unavailable'}</h3>
+              <p>{floodPossible ? `Peak high tides are forecast just below the ${(thresholds.minor ?? 5.6).toFixed(1)} ft flood stage. Flooding is not expected, but minor street puddles along Canal Dr are possible if coastal winds push extra water into the sound.` : forecastAvailable ? 'No threshold exceedance in the available forecast.' : 'Waiting for water level predictions.'}</p>
             </div>
           </div>
         )}

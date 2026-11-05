@@ -68,7 +68,7 @@ export function FloodOutlook({
       : nextEvent || floodExpected
       ? "Flooding forecast"
       : floodPossible
-      ? "Flooding possible"
+      ? "High tides near flood stage (Watch)"
       : hasCoverage
       ? hasThreshold || floodExpected === false
         ? "No flooding forecast"
@@ -172,7 +172,9 @@ export function FloodOutlook({
         </div>
         {period && <p className="outlook-period">{period}</p>}
         {!nextEvent && floodPossible && (
-          <p className="forecast-caption">The forecast error range reaches flood stage.</p>
+          <p className="forecast-caption">
+            Tides are forecast just below flood stage, but within a few inches of minor street flooding.
+          </p>
         )}
       </div>
 
@@ -225,7 +227,7 @@ export function FloodOutlook({
         {nextEvent || floodExpected
           ? `Water levels are projected to crest above the ${effectiveMinorFt.toFixed(1)} ft minor flood threshold during upcoming high tide windows. Low-lying roads along Canal Dr and Florida Ave may experience tidal inundation.`
           : floodPossible
-          ? `Water levels are projected near flood stage during upcoming high tides. Monitor conditions closely if winds strengthen from the north or northeast.`
+          ? `Upcoming high tides are forecast to peak just below the ${effectiveMinorFt.toFixed(1)} ft minor flood stage. While no flooding is officially forecast, minor street puddles along Canal Dr and Florida Ave are possible if coastal winds push extra water into the sound.`
           : `Water levels are projected to remain safely below the ${effectiveMinorFt.toFixed(1)} ft minor flood stage across the active forecast horizon.`}
       </p>
 
