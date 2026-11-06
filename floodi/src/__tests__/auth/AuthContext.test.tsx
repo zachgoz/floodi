@@ -157,7 +157,7 @@ describe('AuthContext', () => {
         <ErrProbe />
       </AuthProvider>
     );
-    (signInWithEmailAndPassword as unknown as { mockRejectedValueOnce: (v: unknown) => void }).mockRejectedValueOnce({ code: 'auth/invalid-credential', message: 'xxx' });
+    (signInWithEmailAndPassword as unknown as { mockRejectedValueOnce: (v: unknown) => void }).mockRejectedValueOnce({ code: 'auth/invalid-credential', message: 'Invalid credentials' });
     // Trigger
     screen.getByText('go').click();
     await waitFor(() => expect(screen.getByTestId('err').textContent).toContain('auth/invalid-credential'));
