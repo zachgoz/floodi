@@ -365,11 +365,94 @@ test('MULTI_REGION_BASIN_SPECS supports short city identifiers and protects agai
 test('directionalWindStress captures non-linear coastal aerodynamic drag enhancement Cd(W) at high wind speeds', () => {
   // At reference 20 mph, Cd = 1.0, stress is 1.0
   assert.equal(directionalWindStress(20, 25, 25), 1.0);
-  // At 30 mph, Cd(30) = 1.0 + 0.02 * 10 = 1.20, stress = (30/20)^2 * 1.20 = 2.25 * 1.20 = 2.70
+  // At 30 mph, calibrated Cd(30) = 1.0 + 0.025 * 10 = 1.25, stress = (30/20)^2 * 1.25 = 2.25 * 1.25 = 2.8125
   const stress30 = directionalWindStress(30, 25, 25);
-  assert.ok(Math.abs(stress30 - 2.70) < 1e-6, `stress at 30 mph should be 2.70, got ${stress30}`);
+  assert.ok(Math.abs(stress30 - 2.8125) < 1e-6, `stress at 30 mph should be 2.8125, got ${stress30}`);
   // Pure quadratic without Cd would be 2.25
   assert.ok(stress30 > 2.25, 'Wind stress with Cd must exceed pure quadratic baseline');
+  // High-wind squall at 45 mph: Cd(45) = 1.0 + 0.025 * 25 = 1.625; stress = (45/20)^2 * 1.625 = 8.22656 -> clamped to 4.5
+  assert.equal(directionalWindStress(45, 25, 25), 4.5);
+});
+
+test('synthesizeOperationalForecast applies surge-driven shallow-water wave celerity phase advance', () => {
+  const origin = new Date('2026-11-03T12:00:00Z');
+  const past = Array.from({ length: 48 }, (_, i) => ({
+    t: new Date(origin.getTime() - (48 - i) * 1800_000).toISOString(),
+    v: 1.0,
+  }));
+
+  // Create 24 hours of 6-minute astronomical tide points: sinusoidal M2 tide peaking at +12h (24:00 UTC)
+  const tide = [];
+  for (let m = 0; m <= 24 * 60; m += 6) {
+    const t = new Date(origin.getTime() + m * 60_000);
+    // Peak at m = 720 min (12h): cos(0) = 1 -> peak 5.0 ft; trough at 6h: 1.0 ft
+    const angle = ((m - 720) / (12.4206 * 60)) * 2 * Math.PI;
+    tide.push({ t, v: 3.0 + 2.0 * Math.cos(angle) });
+  }
+
+  // 1. High-surge scenario (+1.0 ft subtidal ocean surge) with Carolina Beach shallow lagoon spec (18 min/ft advance)
+  const surgeForecast = synthesizeOperationalForecast({
+    spec: CAROLINA_BEACH_BASIN_SPEC,
+    issuedAt: origin,
+    recentResidual: past,
+    tide,
+    oceanEtss: [
+      { t: origin, v: 1.0 },
+      { t: new Date(origin.getTime() + 24 * 3600_000), v: 1.0 },
+    ],
+  });
+
+  // 2. Zero-surge scenario (0.0 ft ocean surge) with same spec
+  const zeroSurgeForecast = synthesizeOperationalForecast({
+    spec: CAROLINA_BEACH_BASIN_SPEC,
+    issuedAt: origin,
+    recentResidual: past.map(p => ({ ...p, v: 0.0 })),
+    tide,
+    oceanEtss: [
+      { t: origin, v: 0.0 },
+      { t: new Date(origin.getTime() + 24 * 3600_000), v: 0.0 },
+    ],
+  });
+
+  // Strict anchor continuity at t = 0 (h = 0)
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+  assert.equal(surgeForecast[0].tideFt, r3(tide[0].v), 't=0 tideFt must match unshifted astronomical tide exactly');
+  assert.equal(zeroSurgeForecast[0].tideFt, r3(tide[0].v), 'zero-surge t=0 tideFt must match unshifted astronomical tide');
+
+  // Find peak totalFt time index around the +12h high tide window (indices 100 to 140, i.e. 10h to 14h)
+  let surgePeakIndex = 0;
+  let maxSurgeTotal = -Infinity;
+  let zeroPeakIndex = 0;
+  let maxZeroTotal = -Infinity;
+
+  for (let i = 100; i <= 140; i++) {
+    if (surgeForecast[i].totalFt > maxSurgeTotal) {
+      maxSurgeTotal = surgeForecast[i].totalFt;
+      surgePeakIndex = i;
+    }
+    if (zeroSurgeForecast[i].totalFt > maxZeroTotal) {
+      maxZeroTotal = zeroSurgeForecast[i].totalFt;
+      zeroPeakIndex = i;
+    }
+  }
+
+  const surgePeakTimeMs = new Date(surgeForecast[surgePeakIndex].t).getTime();
+  const zeroPeakTimeMs = new Date(zeroSurgeForecast[zeroPeakIndex].t).getTime();
+  const timingAdvanceMinutes = (zeroPeakTimeMs - surgePeakTimeMs) / 60_000;
+
+  // The positive surge must advance the high tide peak earlier in time by ~15 to 25 minutes
+  assert.ok(
+    timingAdvanceMinutes >= 12 && timingAdvanceMinutes <= 25,
+    `Surge should advance high tide crest by 12-25 min, got ${timingAdvanceMinutes} min`
+  );
+
+  // Lossless driver decomposition must hold across all points
+  for (const pt of surgeForecast) {
+    const d = pt.drivers;
+    const sum = Math.round((d.oceanSurgeFt + d.windSetupFt + d.riverFlowFt + d.rainfallRunoffFt + d.estuarineHarmonicFt) * 1000) / 1000;
+    assert.equal(sum, pt.residualFt, `Drivers must sum to residualFt at ${pt.t}`);
+    assert.equal(Math.round((pt.tideFt + pt.residualFt) * 1000) / 1000, pt.totalFt, `totalFt must equal tideFt + residualFt at ${pt.t}`);
+  }
 });
 
 test('synthesizeOperationalForecast blends TimesFM-3 at 45% weight in Regime A and couples USGS river stage head', () => {

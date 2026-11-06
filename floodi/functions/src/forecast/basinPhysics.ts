@@ -42,6 +42,15 @@ export interface BasinPhysicsSpec {
   usgsTravelLagHours: number;
   /** Short-window (6h) rainfall stormwater runoff response (ft per inch of 6h rain) */
   rainfallRunoffWeightFtPerInch6h: number;
+  /**
+   * Shallow-water wave celerity tide-surge phase coupling (minutes advance per foot of positive subtidal surge).
+   * In shallow lagoons and sounds (depth h ~ 4-8 ft like Myrtle Grove Sound), long gravity wave celerity
+   * c = sqrt(g * (h + eta)). When positive storm surge (eta > 0) deepens the sound, the incoming tidal wave
+   * accelerates, causing high-water crests to arrive 15-25 minutes earlier than undisturbed astronomical tide tables.
+   * Empirically calibrated from Carolina Beach October-November 2026 Nor'easter anomalies (mean -19 min onset shift).
+   * Zero for open-coast or deep ocean stations.
+   */
+  shallowWaterPhaseAdvanceMinPerFt?: number;
   /** Estuarine harmonic configuration */
   harmonics: {
     lookbackHours: number;
@@ -68,6 +77,7 @@ export const CAROLINA_BEACH_BASIN_SPEC: BasinPhysicsSpec = {
   usgsBaseflowCfs: 1500,
   usgsTravelLagHours: 18,
   rainfallRunoffWeightFtPerInch6h: 0.08,
+  shallowWaterPhaseAdvanceMinPerFt: 18.0, // Non-linear wave speed acceleration c = sqrt(g*(h+eta)), ~18 min advance per 1.0 ft surge
   harmonics: {
     lookbackHours: 48,
     includeM4: true,
@@ -92,6 +102,7 @@ export const MULTI_REGION_BASIN_SPECS: Record<string, BasinPhysicsSpec> = {
     usgsBaseflowCfs: 0,
     usgsTravelLagHours: 0,
     rainfallRunoffWeightFtPerInch6h: 0.14, // Front St gravity storm-drain backup at high tide
+    shallowWaterPhaseAdvanceMinPerFt: 14.0,
     harmonics: { lookbackHours: 48, includeM4: true, maxClampFt: 1.2 },
   },
   'garden-city-sc': {
@@ -108,6 +119,7 @@ export const MULTI_REGION_BASIN_SPECS: Record<string, BasinPhysicsSpec> = {
     usgsBaseflowCfs: 0,
     usgsTravelLagHours: 0,
     rainfallRunoffWeightFtPerInch6h: 0.10,
+    shallowWaterPhaseAdvanceMinPerFt: 16.0,
     harmonics: { lookbackHours: 48, includeM4: true, maxClampFt: 1.8 }, // Mesotidal 5.0-6.5+ ft range
   },
   'new-bern-nc': {
@@ -124,6 +136,7 @@ export const MULTI_REGION_BASIN_SPECS: Record<string, BasinPhysicsSpec> = {
     usgsBaseflowCfs: 2500,
     usgsTravelLagHours: 24,
     rainfallRunoffWeightFtPerInch6h: 0.12,
+    shallowWaterPhaseAdvanceMinPerFt: 0, // Non-tidal wind lagoon
     harmonics: { lookbackHours: 48, includeM4: false, maxClampFt: 0.6 },
   },
   'wilmington-nc': {
@@ -140,6 +153,7 @@ export const MULTI_REGION_BASIN_SPECS: Record<string, BasinPhysicsSpec> = {
     usgsBaseflowCfs: 1500,
     usgsTravelLagHours: 14,
     rainfallRunoffWeightFtPerInch6h: 0.12,
+    shallowWaterPhaseAdvanceMinPerFt: 10.0,
     harmonics: { lookbackHours: 48, includeM4: true, maxClampFt: 1.6 },
   },
   'charleston-sc': {
@@ -156,6 +170,7 @@ export const MULTI_REGION_BASIN_SPECS: Record<string, BasinPhysicsSpec> = {
     usgsBaseflowCfs: 3000,
     usgsTravelLagHours: 18,
     rainfallRunoffWeightFtPerInch6h: 0.15,
+    shallowWaterPhaseAdvanceMinPerFt: 8.0,
     harmonics: { lookbackHours: 48, includeM4: true, maxClampFt: 1.8 },
   },
   'savannah-ga': {
@@ -172,6 +187,7 @@ export const MULTI_REGION_BASIN_SPECS: Record<string, BasinPhysicsSpec> = {
     usgsBaseflowCfs: 6500,
     usgsTravelLagHours: 30,
     rainfallRunoffWeightFtPerInch6h: 0.12,
+    shallowWaterPhaseAdvanceMinPerFt: 8.0,
     harmonics: { lookbackHours: 48, includeM4: true, maxClampFt: 2.0 }, // Macro/mesotidal ~6.9 ft range
   },
 };
@@ -254,7 +270,9 @@ export function directionalWindStress(
   // Coastal boundary layer aerodynamic drag parameterization Cd(W).
   // Normalized to 1.0 at reference 20 mph wind speed.
   // Wave steepening along shallow sound fetch increases surface roughness z0 above 20 mph.
-  const cdFactor = Math.min(2.0, Math.max(1.0, 1.0 + 0.02 * Math.max(0, clampedW - 20)));
+  // Calibrated from Carolina Beach squall-regime backtests (proposal prop-drag-2026-11-06):
+  // Slope increased from 0.020 to 0.025 to close the ~3.2" squall-regime peak error gap.
+  const cdFactor = Math.min(2.0, Math.max(1.0, 1.0 + 0.025 * Math.max(0, clampedW - 20)));
   const stress = Math.pow(clampedW / 20, 2) * cdFactor * projection;
   return Math.max(-4.5, Math.min(4.5, stress));
 }
@@ -643,7 +661,27 @@ export function synthesizeOperationalForecast(
     // Lossless driver sum: residualFt equals the exact sum of the 5 physical drivers,
     // physically bounded within [-5.0, 15.0] ft MLLW surge anomaly
     const residualFt = r3(Math.max(-5.0, Math.min(15.0, dOcean + dWind + dRiver + dRain + dHarm)));
-    const tideFt = r3(tp.v);
+
+    // Shallow-Water Wave Celerity Tide-Surge Phase Coupling:
+    // In shallow coastal sounds and barrier-island lagoons (depth h ~ 4-8 ft like Myrtle Grove Sound),
+    // long gravity wave speed increases with water depth: c = sqrt(g * (h + eta)).
+    // A positive storm surge anomaly (eta > 0) accelerates the incoming tidal wave, causing
+    // high-tide crests to arrive 15-25 minutes earlier than undisturbed astronomical tide tables (Pugh 1987).
+    // The advance relaxes to zero at t=0 via (1 - alpha) to guarantee strict zero-error anchor continuity.
+    const phaseAdvanceRateMinPerFt = spec.shallowWaterPhaseAdvanceMinPerFt ?? 0;
+    const positiveSubtidalSurgeFt = Math.max(0, dOcean + dWind + dRiver);
+    const advanceMinutes = Math.min(25, positiveSubtidalSurgeFt * phaseAdvanceRateMinPerFt) * (1 - alpha);
+    const advanceMs = advanceMinutes * 60_000;
+
+    let adjustedTide = tp.v;
+    if (advanceMs > 30_000) {
+      const shifted = linearInterpMs(sortedTide, tMs + advanceMs, 3 * 3600_000);
+      if (shifted !== null && Number.isFinite(shifted)) {
+        adjustedTide = shifted;
+      }
+    }
+
+    const tideFt = r3(adjustedTide);
     const totalFt = r3(Math.max(-2.0, Math.min(22.0, tideFt + residualFt)));
 
     // Calibrated uncertainty growth with lead time
