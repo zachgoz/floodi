@@ -321,3 +321,146 @@ test('repository waits for marker commit even when REQUEST_TIME precedes the dec
   assert.equal(invalid.targetScores.find(row => row.originAt === iso(1) && row.method === 'served').exclusion, 'incompatible-reference');
   assert.equal(reads.includes('users/private-document'), false);
 });
+
+test('repository scores live timesfm-3 30-minute challenger forecasts when legacy forecast_archive is empty', async () => {
+  const { FORECAST_MAX_GAP_MS } = require('../lib/verification/types');
+  assert.ok(FORECAST_MAX_GAP_MS >= 30 * 60_000, '30-minute operational cadence must be supported');
+
+  const issuedAt = iso(-1 / 6); // 10 min before origin
+  const publishedAt = iso(-1 / 12); // 5 min before origin
+  const issuePath = `locations/carolina-beach/forecast_challengers/timesfm-3/issues/${issuedAt}`;
+  const markerPath = `forecast_challenger_publications/timesfm-3/locations/carolina-beach/issues/${issuedAt}`;
+
+  // Build 30-min cadence challenger doc matching production: originPoint at issuedAt + 30-min steps starting at issuedAt + 30m
+  const grid = makePoints(.5, -1 / 6 + 0.5, -1 / 6 + 96, h => 5.0 + 0.01 * h);
+  const originPoint = {
+    t: issuedAt,
+    tideFt: 4.0,
+    residualFt: 1.0,
+    totalFt: 5.0,
+    lowerFt: 4.8,
+    upperFt: 5.2,
+  };
+  const challengerDoc = {
+    challengerId: 'timesfm-3',
+    locationId: 'carolina-beach',
+    regime: 'back-barrier-lagoon',
+    generatedAt: issuedAt,
+    observationAt: iso(-.5),
+    currentResidualFt: 1.0,
+    expiresAt: iso(2),
+    status: 'available',
+    engine: 'bigquery-ai-forecast',
+    horizonSteps: grid.length,
+    thresholdFt: VERIFICATION_REFERENCE.thresholdFt,
+    originPoint,
+    points: grid.map(pt => ({
+      t: pt.t.toISOString(),
+      tideFt: 4.0,
+      residualFt: Math.round((pt.v - 4.0) * 1000) / 1000,
+      totalFt: Math.round(pt.v * 1000) / 1000,
+      lowerFt: Math.round((pt.v - 0.25) * 1000) / 1000,
+      upperFt: Math.round((pt.v + 0.25) * 1000) / 1000,
+    })),
+    peak: { t: iso(96), totalFt: 5.96, tideFt: 4.0, residualFt: 1.96, exceedsThreshold: true },
+    covariatesUsed: ['noaa_etss_surge'],
+    metadata: { historyPointsCount: 96, noaaSurgeAvailable: true, retrievedAt: issuedAt },
+  };
+  const marker = {
+    challengerId: 'timesfm-3',
+    locationId: 'carolina-beach',
+    issueId: issuedAt,
+    publishedAt: { toDate: () => new Date(publishedAt) },
+    engine: 'bigquery-ai-forecast',
+  };
+  const native = Object.fromEntries(makePoints(.5, -24, 96, () => 5.0).map(pt => [pt.t.toISOString(), pt.v]));
+
+  const db = {
+    doc: path => ({ path }),
+    collection: path => {
+      const query = {
+        where: () => query,
+        orderBy: () => query,
+        limit: () => query,
+        select: () => query,
+        get: async () => {
+          if (path.startsWith('forecast_archive/') || path.startsWith('forecast_publications/')) {
+            return { size: 0, docs: [] };
+          }
+          if (path.startsWith('locations/carolina-beach/forecast_challengers/timesfm-3/issues')) {
+            return { size: 1, docs: [{ id: issuedAt, data: () => ({ generatedAt: issuedAt }), createTime: { toDate: () => new Date(publishedAt) } }] };
+          }
+          if (path.startsWith('forecast_challenger_publications/timesfm-3/locations/carolina-beach/issues')) {
+            return { size: 1, docs: [{ id: issuedAt, data: () => marker, createTime: { toDate: () => new Date(publishedAt) } }] };
+          }
+          return { size: 0, docs: [] };
+        },
+      };
+      return query;
+    },
+    getAll: async (...refs) => refs.filter(ref => ref.path).map(ref => {
+      if (ref.path === issuePath) return { exists: true, data: () => challengerDoc };
+      if (ref.path === markerPath) return { exists: true, data: () => marker };
+      return { exists: true, data: () => ({ fiman: native }) };
+    }),
+  };
+
+  const result = await loadVerificationDay(db, day, new Date(iso(120)));
+  // Verify exact numeric errors at origin +0h:
+  // served at +24h predicts 5.0 + 0.01 * 24 = 5.24 vs observed 5.00 => +0.24 ft error
+  const served1h = first(result, 'served', 1);
+  const served24h = first(result, 'served', 24);
+  const tide24h = first(result, 'tide-only', 24);
+  const pers24h = first(result, 'persistence', 24);
+
+  assert.equal(served1h.status, 'scored');
+  assert.ok(Math.abs(served1h.errorFt - 0.01) < 0.001, `Expected 1h errorFt≈0.01, got ${served1h.errorFt}`);
+  assert.equal(served24h.status, 'scored');
+  assert.ok(Math.abs(served24h.errorFt - 0.24) < 0.001, `Expected 24h errorFt≈0.24, got ${served24h.errorFt}`);
+  assert.equal(tide24h.status, 'scored');
+  assert.equal(tide24h.errorFt, -1.0, 'tide-only baseline (4.0) vs observed (5.0) must equal -1.0 ft');
+  assert.equal(pers24h.status, 'scored');
+  assert.equal(pers24h.errorFt, 0.0, 'persistence baseline (4.0 + 1.0 = 5.0) must equal 0.0 ft');
+  // originPoint allows 24h event window [origin, origin+24h] to bracket t=origin cleanly
+  assert.equal(firstWindow(result, 'served').status, 'scored');
+
+  // Boundary case: corrupted challenger point (totalFt != tideFt + residualFt) must fail contract strictly
+  const corruptedDoc = {
+    ...challengerDoc,
+    points: challengerDoc.points.map((pt, idx) => idx === 0 ? { ...pt, totalFt: 9.999 } : pt),
+  };
+  const corruptedDb = {
+    ...db,
+    getAll: async (...refs) => refs.filter(ref => ref.path).map(ref => {
+      if (ref.path === issuePath) return { exists: true, data: () => corruptedDoc };
+      return { exists: true, data: () => ({ fiman: native }) };
+    }),
+  };
+  const rejected = await loadVerificationDay(corruptedDb, day, new Date(iso(120)));
+  assert.equal(first(rejected, 'served', 1).status, 'excluded');
+  assert.equal(first(rejected, 'served', 1).exclusion, 'invalid-archive-contract');
+});
+
+test('collectVerificationDaysToRun includes unscored recent days for auto-healing and omits scored days', async () => {
+  const { collectVerificationDaysToRun } = require('../lib/verification/jobs');
+  const now = new Date('2026-11-17T06:40:00.000Z');
+  const recent = recentMaturedVerificationDays(now); // 2026-11-12, 2026-11-13
+  assert.deepEqual(recent, ['2026-11-12', '2026-11-13']);
+
+  // Simulate Nov 09 & Nov 10 having 0 scored served targets, while Nov 01..08 & 11 are already scored
+  const scoredSnap = { exists: true, data: () => ({ targetScores: [{ method: 'served', status: 'scored' }] }) };
+  const unscoredSnap = { exists: true, data: () => ({ targetScores: [{ method: 'served', status: 'excluded' }] }) };
+  const missingSnap = { exists: false, data: () => undefined };
+
+  const db = {
+    doc: path => ({ path }),
+    getAll: async (...refs) => refs.map(ref => {
+      if (ref.path.endsWith('/days/2026-11-10')) return unscoredSnap;
+      if (ref.path.endsWith('/days/2026-11-09')) return missingSnap;
+      return scoredSnap;
+    }),
+  };
+
+  const days = await collectVerificationDaysToRun(db, now);
+  assert.deepEqual(days, ['2026-11-09', '2026-11-10', '2026-11-12', '2026-11-13']);
+});

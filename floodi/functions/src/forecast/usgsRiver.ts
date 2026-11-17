@@ -96,48 +96,66 @@ export function parseUsgsIvPayload(payload: unknown): {
 
 /**
  * Fetches recent upstream river discharge & stage from USGS Water Services (nwis/iv).
+ * Uses a 2-day (48h) window with one automatic retry on network timeouts or 5xx responses
+ * to prevent intermittent Lock #1 telemetry dropouts.
  */
 export async function fetchUsgsRiverTelemetry(
   gaugeConfig: UsgsRiverGaugeConfig = CAPE_FEAR_LOCK1_CONFIG,
-  periodDays = 3,
-  timeoutMs = 10_000
+  periodDays = 2,
+  timeoutMs = 15_000,
+  maxAttempts = 2
 ): Promise<UsgsRiverTelemetry | null> {
-  try {
-    const safeDays = Math.max(1, Math.min(30, Math.round(periodDays)));
-    const url = `https://waterservices.usgs.gov/nwis/iv/?format=json&sites=${encodeURIComponent(
-      gaugeConfig.siteId
-    )}&parameterCd=00060,00065&period=P${safeDays}D`;
+  const safeDays = Math.max(1, Math.min(30, Math.round(periodDays)));
+  const url = `https://waterservices.usgs.gov/nwis/iv/?format=json&sites=${encodeURIComponent(
+    gaugeConfig.siteId
+  )}&parameterCd=00060,00065&period=P${safeDays}D`;
 
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'FloodCast-Engine/1.0 (+https://floodcastwebapp.web.app)',
-        'Accept': 'application/json',
-      },
-      timeout: timeoutMs,
-    });
-
-    if (!res.ok) {
-      logger.warn('USGS river telemetry HTTP request failed', {
-        status: res.status,
-        siteId: gaugeConfig.siteId,
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'FloodCast-Engine/1.0 (+https://floodcastwebapp.web.app)',
+          'Accept': 'application/json',
+        },
+        timeout: timeoutMs,
       });
-      return null;
-    }
 
-    const payload = await res.json();
-    const parsed = parseUsgsIvPayload(payload);
-    return {
-      siteId: gaugeConfig.siteId,
-      siteName: gaugeConfig.siteName,
-      retrievedAt: new Date().toISOString(),
-      ...parsed,
-    };
-  } catch (err) {
-    logger.warn('USGS river telemetry unavailable; proceeding without upstream discharge term', {
-      siteId: gaugeConfig.siteId,
-      error: safeError(err),
-    });
-    return null;
+      if (!res.ok) {
+        if (res.status >= 500 && attempt < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 400));
+          continue;
+        }
+        logger.warn('USGS river telemetry HTTP request failed', {
+          status: res.status,
+          siteId: gaugeConfig.siteId,
+          attempt,
+        });
+        return null;
+      }
+
+      const payload = await res.json();
+      const parsed = parseUsgsIvPayload(payload);
+      return {
+        siteId: gaugeConfig.siteId,
+        siteName: gaugeConfig.siteName,
+        retrievedAt: new Date().toISOString(),
+        ...parsed,
+      };
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 400));
+        continue;
+      }
+    }
   }
+
+  logger.warn('USGS river telemetry unavailable; proceeding without upstream discharge term', {
+    siteId: gaugeConfig.siteId,
+    attempts: maxAttempts,
+    error: safeError(lastError),
+  });
+  return null;
 }
 

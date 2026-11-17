@@ -5,7 +5,8 @@ export const VERIFICATION_LEADS_HOURS = [1, 3, 6, 12, 24, 48, 72] as const;
 export const EVENT_WINDOW_HOURS = 24;
 /** Native gauge cadence is 30 minutes; tolerate timestamp jitter, never a missed sample. */
 export const OBSERVATION_MAX_GAP_MS = 30 * 60_000 + 10_000;
-export const FORECAST_MAX_GAP_MS = 15 * 60_000;
+/** Operational forecasts publish at 30-min (TimesFM-3) or 6-min (legacy) cadence. */
+export const FORECAST_MAX_GAP_MS = 30 * 60_000 + 10_000;
 
 export interface VerificationReference {
   version: string;

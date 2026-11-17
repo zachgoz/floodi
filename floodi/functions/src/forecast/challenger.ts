@@ -2,6 +2,8 @@ import * as logger from 'firebase-functions/logger';
 import { FieldValue } from 'firebase-admin/firestore';
 import { safeError } from '../utils/observability';
 import { WaterPoint, interpolate } from './water';
+import { SITE } from './sources';
+import { FORECAST_REFERENCE_VERSION } from './publication';
 import { TimesFmVertexClient, TimesFmPredictionResult } from './timesfmClient';
 import {
   fetchNoaaSurgeForecast,
@@ -51,6 +53,8 @@ export interface ChallengerOutlookDocument {
   engine: TimesFmPredictionResult['engine'] | 'none';
   horizonSteps: number;
   thresholdFt: number;
+  /** Optional anchor sample at issuedAt so prospective event-window verification brackets t=origin without changing 30m grid points. */
+  originPoint?: ChallengerPoint;
   points: ChallengerPoint[];
   peak: {
     t: string;
@@ -213,7 +217,7 @@ export async function runTimesFmChallenger(
     const timestamps = historyPoints.map(p => p.t);
 
     // 2. Fetch NOAA Ocean ETSS, NOAA River ETSS (Wilmington Cape Fear), and USGS Lock #1 discharge in parallel
-    const [noaaSurge, riverSurge, usgsTelemetry] = await Promise.all([
+    const [noaaSurge, riverSurge, liveUsgsTelemetry] = await Promise.all([
       noaaForecastProvider().catch(e => {
         logger.warn('NOAA Ocean ETSS fetch failed', { error: safeError(e) });
         return null;
@@ -227,6 +231,30 @@ export async function runTimesFmChallenger(
         return null;
       }),
     ]);
+
+    // If live USGS API timed out or failed, fall back to cached Lock #1 reading (<6h old)
+    let usgsTelemetry = liveUsgsTelemetry;
+    const usgsFromLive = !!(liveUsgsTelemetry && liveUsgsTelemetry.points.length > 0);
+    const usgsCachePath = `locations/${siteId}/telemetry/usgs_river`;
+    if (!usgsTelemetry && !hasCustomNoaaProvider) {
+      try {
+        const cachedUsgsSnap = await db.doc(usgsCachePath).get();
+        const cachedData = cachedUsgsSnap.data() as UsgsRiverTelemetry | undefined;
+        if (cachedUsgsSnap.exists && cachedData && typeof cachedData.retrievedAt === 'string') {
+          const ageMs = originMs - Date.parse(cachedData.retrievedAt);
+          if (Number.isFinite(ageMs) && ageMs >= -60_000 && ageMs <= 6 * 3600_000 && Array.isArray(cachedData.points)) {
+            usgsTelemetry = cachedData;
+            logger.info('Using cached USGS river telemetry fallback after transient live timeout', {
+              siteId,
+              cachedRetrievedAt: cachedData.retrievedAt,
+              latestDischargeCfs: cachedData.latestDischargeCfs,
+            });
+          }
+        }
+      } catch {
+        // Ignore cache read failures cleanly
+      }
+    }
 
     const normalizedWeather = normalizeWeatherSamples(forecastWeather);
 
@@ -360,11 +388,17 @@ export async function runTimesFmChallenger(
           ? [noaaPoints[0], { t: new Date(minEndMs), v: noaaPoints[0].v }]
           : timesFmSubtidal;
 
+    const originTide = interpolate(sortedInputTide, issuedAt, 65 * 60_000);
+    const hasOriginTide = originTide !== null && Number.isFinite(originTide);
+    const fullTideInputs = hasOriginTide
+      ? [{ t: issuedAt, v: originTide }, ...targetTideGrid]
+      : targetTideGrid;
+
     const synthesized = synthesizeOperationalForecast({
       spec,
       issuedAt,
       recentResidual: historyPoints,
-      tide: targetTideGrid,
+      tide: fullTideInputs,
       oceanEtss: effectiveOceanEtss,
       riverEtss: riverPoints,
       usgsDischargeCfs: usgsDischargeSeries,
@@ -374,7 +408,7 @@ export async function runTimesFmChallenger(
       timesFmSpread,
     });
 
-    const challengerPoints: ChallengerPoint[] = synthesized.map(pt => ({
+    const mappedPoints: ChallengerPoint[] = synthesized.map(pt => ({
       t: pt.t,
       totalFt: pt.totalFt,
       tideFt: pt.tideFt,
@@ -388,6 +422,9 @@ export async function runTimesFmChallenger(
       ...(pt.precipIn !== undefined ? { precipIn: pt.precipIn } : {}),
       drivers: pt.drivers,
     }));
+
+    const originPoint = hasOriginTide ? mappedPoints[0] : undefined;
+    const challengerPoints = hasOriginTide ? mappedPoints.slice(1) : mappedPoints;
 
     // Compute peak within the primary 72h operational outlook window (or full series if shorter)
     const primaryCutoffMs = originMs + Math.max(horizonSteps, 144) * 30 * 60_000;
@@ -420,6 +457,7 @@ export async function runTimesFmChallenger(
       engine,
       horizonSteps: challengerPoints.length,
       thresholdFt,
+      ...(originPoint ? { originPoint } : {}),
       points: challengerPoints,
       peak: peakPoint
         ? {
@@ -450,14 +488,30 @@ export async function runTimesFmChallenger(
     const issueRef = db.doc(issuePath);
     const currentRef = db.doc(currentPath);
     const markerRef = db.doc(publicationMarker);
+    const usgsCacheRef = db.doc(usgsCachePath);
     const publication = db.batch();
     publication.set(issueRef, challengerDoc);
     publication.set(currentRef, challengerDoc);
+    if (usgsFromLive && usgsTelemetry && !hasCustomNoaaProvider) {
+      publication.set(usgsCacheRef, {
+        ...usgsTelemetry,
+        points: usgsTelemetry.points.slice(-192),
+      });
+    }
     publication.set(markerRef, {
       challengerId: 'timesfm-3',
       locationId: siteId,
       issueId: issuedAt.toISOString(),
+      generatedAt: issuedAt.toISOString(),
       publishedAt: FieldValue.serverTimestamp(),
+      referenceVersion: FORECAST_REFERENCE_VERSION,
+      sensor: SITE.sensor,
+      tideStation: SITE.tideStation,
+      datum: SITE.datum,
+      units: SITE.units,
+      offsetFt: SITE.offsetFt,
+      phaseMinutes: SITE.phaseMinutes,
+      thresholdFt,
       engine,
       peakFt: challengerDoc.peak?.totalFt ?? null,
       peakTime: challengerDoc.peak?.t ?? null,
