@@ -18,6 +18,7 @@ export function CurrentConditions({
   onNextTideClick,
   isLive = true,
   onResetToLive,
+  liveReading,
 }: {
   location?: string;
   points: Point[];
@@ -28,12 +29,24 @@ export function CurrentConditions({
   onNextTideClick?: () => void;
   isLive?: boolean;
   onResetToLive?: () => void;
+  liveReading?: { t: Date; v: number } | null;
 }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
-  const status = currentGaugeStatus(points, thresholdFt, now);
+  const fallbackStatus = currentGaugeStatus(points, thresholdFt, now);
+  const hasLiveReading = Boolean(liveReading && Number.isFinite(liveReading.v) && Number.isFinite(+liveReading.t));
+  const status = hasLiveReading
+    ? {
+        latest: liveReading!,
+        fresh: true,
+        above: liveReading!.v > thresholdFt,
+        label: liveReading!.v > thresholdFt ? 'Gauge above flood threshold' : 'Below flood threshold',
+      }
+    : fallbackStatus;
   const statusTone = status.above ? 'is-elevated' : status.fresh ? 'is-normal' : 'is-stale';
   const shortStatus = formatShortThresholdLabel(status);
+  const showResetToLive = !isLive && Boolean(onResetToLive);
+  const showNextTide = !showResetToLive && Boolean(nextTideInfo);
   const dateTimeText = (status.latest?.t ?? now).toLocaleString('en-US', {
     timeZone: 'America/New_York',
     weekday: 'short',
@@ -67,7 +80,7 @@ export function CurrentConditions({
             <span className="cc-gauge-time">{dateTimeText}</span>
           </>
         )}
-        {!isLive && onResetToLive && (
+        {showResetToLive && (
           <button
             type="button"
             className="cc-reset-live-btn"
@@ -79,40 +92,42 @@ export function CurrentConditions({
         )}
       </div>
 
-      <div className="cc-actions-group">
-        {nextTideInfo && (
-          <button
-            type="button"
-            className={`cc-next-tide-pill ${nextTideInfo.type}`}
-            data-tour-id="next-tide-badge"
-            onClick={onNextTideClick}
-            aria-label={`Next ${nextTideInfo.type} tide in ${
-              nextTideInfo.minutesRemaining >= 60
-                ? `${Math.floor(nextTideInfo.minutesRemaining / 60)} hours ${nextTideInfo.minutesRemaining % 60} minutes`
-                : `${nextTideInfo.minutesRemaining} minutes`
-            }`}
-          >
-            <span className="cc-tide-arrow" aria-hidden="true">
-              {nextTideInfo.type === 'high' ? '▲' : '▼'}
-            </span>
-            <span>
-              {nextTideInfo.type === 'high' ? 'High' : 'Low'} in{' '}
-              {nextTideInfo.minutesRemaining >= 60
-                ? `${Math.floor(nextTideInfo.minutesRemaining / 60)}h ${nextTideInfo.minutesRemaining % 60}m`
-                : `${nextTideInfo.minutesRemaining}m`}
-            </span>
-            <span className="cc-tide-delta">
-              ({nextTideInfo.heightDelta >= 0 ? '+' : ''}{nextTideInfo.heightDelta.toFixed(1)}&apos;)
-            </span>
-          </button>
-        )}
+      {(showNextTide || customView) && (
+        <div className="cc-actions-group">
+          {showNextTide && nextTideInfo && (
+            <button
+              type="button"
+              className={`cc-next-tide-pill ${nextTideInfo.type}`}
+              data-tour-id="next-tide-badge"
+              onClick={onNextTideClick}
+              aria-label={`Next ${nextTideInfo.type} tide in ${
+                nextTideInfo.minutesRemaining >= 60
+                  ? `${Math.floor(nextTideInfo.minutesRemaining / 60)} hours ${nextTideInfo.minutesRemaining % 60} minutes`
+                  : `${nextTideInfo.minutesRemaining} minutes`
+              }`}
+            >
+              <span className="cc-tide-arrow" aria-hidden="true">
+                {nextTideInfo.type === 'high' ? '▲' : '▼'}
+              </span>
+              <span>
+                {nextTideInfo.type === 'high' ? 'High' : 'Low'} in{' '}
+                {nextTideInfo.minutesRemaining >= 60
+                  ? `${Math.floor(nextTideInfo.minutesRemaining / 60)}h ${nextTideInfo.minutesRemaining % 60}m`
+                  : `${nextTideInfo.minutesRemaining}m`}
+              </span>
+              <span className="cc-tide-delta">
+                ({nextTideInfo.heightDelta >= 0 ? '+' : ''}{nextTideInfo.heightDelta.toFixed(1)}&apos;)
+              </span>
+            </button>
+          )}
 
-        {customView && (
-          <button type="button" className="cc-custom-btn" onClick={onSettings}>
-            Custom
-          </button>
-        )}
-      </div>
+          {customView && (
+            <button type="button" className="cc-custom-btn" onClick={onSettings}>
+              Custom
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

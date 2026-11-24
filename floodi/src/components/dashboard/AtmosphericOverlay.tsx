@@ -253,6 +253,7 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
             observedWaterLevel={observedWaterLevel}
             wlColor={wlColor}
             statusLabel={statusLabel}
+            isLive={isLive}
             interactive={false}
             loading={loading}
           />

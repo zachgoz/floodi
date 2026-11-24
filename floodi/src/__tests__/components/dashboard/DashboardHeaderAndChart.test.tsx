@@ -77,14 +77,24 @@ describe('Dashboard header, hydrograph reset, and settings consolidation', () =>
     fireEvent.click(tideBtn);
     expect(onNextTideClick).toHaveBeenCalledTimes(1);
 
-    // Above threshold switches tone to is-elevated, and scrolling off live renders Reset to Live inside the Current Gauge pill
+    // Above threshold switches tone to is-elevated, scrolling off live renders Reset to Live inside the Current Gauge pill
+    // and hides the High/Low countdown pill so the bar stays on one line
     const onResetToLive = vi.fn();
+    const inferredLiveNow = new Date(Date.now());
     rerender(
       <CurrentConditions
-        points={[{ t: recent, v: 6.05 }]}
+        points={[{ t: new Date(Date.now() - 15 * 60_000), v: 5.80 }]}
+        liveReading={{ t: inferredLiveNow, v: 6.05 }}
         thresholdFt={5.6}
         customView={false}
         onSettings={vi.fn()}
+        nextTideInfo={{
+          type: 'low',
+          time: new Date(Date.now() + 90 * 60_000),
+          minutesRemaining: 90,
+          value: 2.1,
+          heightDelta: -3.95,
+        }}
         isLive={false}
         onResetToLive={onResetToLive}
       />,
@@ -93,6 +103,7 @@ describe('Dashboard header, hydrograph reset, and settings consolidation', () =>
     expect(elevatedPill).not.toBeNull();
     expect(elevatedPill?.textContent).toContain('6.05 ft');
     expect(elevatedPill?.textContent).toContain('Above threshold');
+    expect(container.querySelector('.cc-next-tide-pill')).toBeNull();
     const resetBtn = elevatedPill?.querySelector('.cc-reset-live-btn') as HTMLButtonElement | null;
     expect(resetBtn).not.toBeNull();
     expect(resetBtn).toHaveTextContent('Reset to Live');
@@ -100,7 +111,7 @@ describe('Dashboard header, hydrograph reset, and settings consolidation', () =>
     expect(onResetToLive).toHaveBeenCalledTimes(1);
   });
 
-  it('places the Past Similar button in the hydrograph header without Hydrograph Date or Reset to Live', () => {
+  it('floats the Past Similar button inside the chart overlay so it never pushes the hydrograph down', () => {
     const onJumpToTime = vi.fn();
     const now = new Date('2026-10-10T10:00:00Z');
     const domainStart = new Date(+now - 60 * 60_000);
@@ -148,7 +159,11 @@ describe('Dashboard header, hydrograph reset, and settings consolidation', () =>
     const titleGroup = container.querySelector('.title-group')!;
     expect(titleGroup.querySelector('.viewing-time-pill')).toBeNull();
     expect(titleGroup.querySelector('.reset-to-live-btn')).toBeNull();
-    const pastChip = titleGroup.querySelector('.similar-peak-chip') as HTMLButtonElement | null;
+    expect(titleGroup.querySelector('.similar-peak-chip')).toBeNull();
+
+    const chartOverlay = container.querySelector('.hydrograph-chart-wrapper .hydrograph-chart-overlay')!;
+    expect(chartOverlay).not.toBeNull();
+    const pastChip = chartOverlay.querySelector('.similar-peak-chip') as HTMLButtonElement | null;
     expect(pastChip).not.toBeNull();
     expect(pastChip).toHaveTextContent('Past similar: Sun, Sep 20 (6.79 ft)');
     fireEvent.click(pastChip!);

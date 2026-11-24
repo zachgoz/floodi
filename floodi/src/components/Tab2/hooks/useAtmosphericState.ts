@@ -17,6 +17,67 @@ export interface AtmosphericState {
   statusLabel: 'Observed' | 'Predicted' | 'Estimated';
 }
 
+export interface HydrographWaterLevelResolution {
+  wl: number | null;
+  isObserved: boolean;
+  isEstimated: boolean;
+  isAdjusted: boolean;
+  isPredicted: boolean;
+  obsRes: ReturnType<typeof findNearestPoint<Point>>;
+  adjRes: ReturnType<typeof findNearestPoint<Point>>;
+  predRes: ReturnType<typeof findNearestPoint<Point>>;
+}
+
+/**
+ * Shared water-level resolver used by both the hydrograph readout and the live
+ * top-bar gauge status so live values never drift apart.
+ */
+export function resolveHydrographWaterLevel(
+  processedData: {
+    observedPoints: Point[];
+    adjustedPoints: Point[];
+    predictedPoints: Point[];
+    timeDomain: { now: Date };
+  } | null | undefined,
+  targetT: Date,
+): HydrographWaterLevelResolution {
+  if (!processedData) {
+    return {
+      wl: null,
+      isObserved: false,
+      isEstimated: false,
+      isAdjusted: false,
+      isPredicted: false,
+      obsRes: null,
+      adjRes: null,
+      predRes: null,
+    };
+  }
+  const now = processedData.timeDomain.now;
+  const lastObsT = processedData.observedPoints.length > 0
+    ? Math.max(...processedData.observedPoints.map((p: Point) => p.t.getTime()))
+    : now.getTime();
+  const isPastHandover = targetT.getTime() > lastObsT;
+
+  const obsRes = findNearestPoint<Point>(processedData.observedPoints, targetT);
+  const adjRes = findNearestPoint<Point>(processedData.adjustedPoints, targetT);
+  const predRes = findNearestPoint<Point>(processedData.predictedPoints, targetT);
+
+  const isObserved = !!(obsRes && obsRes.dtMin < 60 && !isPastHandover);
+  const isEstimated = isObserved && obsRes?.point.estimated === true;
+  const forecastStart = processedData.adjustedPoints[0]?.t;
+  const forecastEnd = processedData.adjustedPoints.at(-1)?.t;
+  const withinForecast = !!(forecastStart && forecastEnd && targetT >= forecastStart && targetT <= forecastEnd);
+  const isAdjusted = !!(adjRes && adjRes.dtMin < 60 && isPastHandover && withinForecast);
+  const isPredicted = !isObserved && !isAdjusted && !!(predRes && predRes.dtMin < 60);
+
+  const wl = isObserved ? obsRes!.point.v :
+             isAdjusted ? adjRes!.point.v :
+             isPredicted ? predRes!.point.v : null;
+
+  return { wl, isObserved, isEstimated, isAdjusted, isPredicted, obsRes, adjRes, predRes };
+}
+
 /**
  * Custom hook to derive atmospheric values for the overlay pill and map visualization.
  * Handles both real-time data focus (via chart hover or scroll) and manual simulation.
@@ -53,31 +114,10 @@ export function useAtmosphericState(
     const targetT = manualFocusTime || currentViewport?.focusTime || now;
     const isLive = !manualFocusTime && (!currentViewport || (Math.abs(targetT.getTime() - now.getTime()) < 60000 || Math.abs(targetT.getTime() - Date.now()) < 2 * 60000));
 
-    // Find the latest measurement time to determine the handover point
-    const lastObsT = processedData.observedPoints.length > 0 
-      ? Math.max(...processedData.observedPoints.map((p: Point) => p.t.getTime())) 
-      : now.getTime();
-    const isPastHandover = targetT.getTime() > lastObsT;
-
-    const obsRes = findNearestPoint<Point>(processedData.observedPoints, targetT);
-    const adjRes = findNearestPoint<Point>(processedData.adjustedPoints, targetT);
-    const predRes = findNearestPoint<Point>(processedData.predictedPoints, targetT);
+    const { wl, isObserved, isEstimated, isAdjusted, isPredicted, obsRes, predRes } =
+      resolveHydrographWaterLevel(processedData, targetT);
     const windRes = findNearestPoint<WindPoint>(processedData.windPoints, targetT);
     const precipRes = findNearestPoint<PrecipPoint>(processedData.precipPoints, targetT);
-
-    const isObserved = !!(obsRes && obsRes.dtMin < 60 && !isPastHandover);
-    const isEstimated = isObserved && obsRes?.point.estimated === true;
-    // A learned forecast has a finite supported horizon. Nearest-point lookup
-    // must not extend its final level into a time where only tide is available.
-    const forecastStart = processedData.adjustedPoints[0]?.t;
-    const forecastEnd = processedData.adjustedPoints.at(-1)?.t;
-    const withinForecast = !!(forecastStart && forecastEnd && targetT >= forecastStart && targetT <= forecastEnd);
-    const isAdjusted = !!(adjRes && adjRes.dtMin < 60 && isPastHandover && withinForecast);
-    const isPredicted = !isObserved && !isAdjusted && !!(predRes && predRes.dtMin < 60);
-
-    const wl = isObserved ? obsRes!.point.v :
-               isAdjusted ? adjRes!.point.v :
-               isPredicted ? predRes!.point.v : null;
 
     const sourceName = (obsRes?.point.source || processedData.source || 'NOAA').toUpperCase() === 'FIMAN' ? 'Fiman' : 'NOAA';
 

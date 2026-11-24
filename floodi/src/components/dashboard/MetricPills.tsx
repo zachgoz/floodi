@@ -21,6 +21,7 @@ interface WaterLevelMetricProps {
   observedWaterLevel: number;
   wlColor: string;
   statusLabel: 'Observed' | 'Predicted' | 'Estimated';
+  isLive?: boolean;
   interactive?: boolean;
   onClick?: () => void;
   loading?: boolean;
@@ -30,44 +31,48 @@ export const WaterLevelMetric: React.FC<WaterLevelMetricProps> = ({
   observedWaterLevel,
   wlColor,
   statusLabel,
+  isLive = false,
   interactive = false,
   onClick,
   loading = false,
-}) => (
-  <div
-    className={`metric-item water-level highlight${interactive ? ' interactive' : ''}${loading ? ' is-loading' : ''}`}
-    title={interactive && !loading ? 'Click for details' : undefined}
-    onClick={interactive && !loading ? onClick : undefined}
-    style={!loading ? { '--wl-color': wlColor } as React.CSSProperties : undefined}
-  >
-    <div className="metric-icon-box">
-      {loading ? (
-        <IonSkeletonText animated style={{ width: '20px', height: '4px', borderRadius: '2px' }} />
-      ) : statusLabel === 'Estimated' ? (
-        <span style={{ borderTop: `3px dotted ${wlColor}`, width: '20px' }} />
-      ) : statusLabel === 'Predicted' ? (
-        <span className="legend-dashed-line" style={{ backgroundColor: wlColor, width: '20px' }} />
-      ) : (
-        <span className="legend-solid-line" style={{ backgroundColor: wlColor, width: '20px' }} />
-      )}
-    </div>
-    <div className="metric-details">
-      <div className="metric-value-row">
+}) => {
+  const showLiveLabel = isLive && statusLabel !== 'Estimated';
+  return (
+    <div
+      className={`metric-item water-level highlight${interactive ? ' interactive' : ''}${loading ? ' is-loading' : ''}`}
+      title={interactive && !loading ? 'Click for details' : undefined}
+      onClick={interactive && !loading ? onClick : undefined}
+      style={!loading ? { '--wl-color': wlColor } as React.CSSProperties : undefined}
+    >
+      <div className="metric-icon-box">
         {loading ? (
-          <IonSkeletonText animated style={{ width: '45px', height: '24px', borderRadius: '4px' }} />
+          <IonSkeletonText animated style={{ width: '20px', height: '4px', borderRadius: '2px' }} />
+        ) : statusLabel === 'Estimated' ? (
+          <span style={{ borderTop: `3px dotted ${wlColor}`, width: '20px' }} />
+        ) : !showLiveLabel && statusLabel === 'Predicted' ? (
+          <span className="legend-dashed-line" style={{ backgroundColor: wlColor, width: '20px' }} />
         ) : (
-          <span className="metric-value">{observedWaterLevel.toFixed(2)}</span>
+          <span className="legend-solid-line" style={{ backgroundColor: wlColor, width: '20px' }} />
         )}
-        <span className="metric-unit">ft</span>
-        {!loading && <span className="metric-status-label">{statusLabel}</span>}
       </div>
-      <div className="metric-label-row">
-        <span className="metric-label">Water Level</span>
-        {interactive && !loading && <IonIcon icon={helpCircleOutline} className="metric-help-icon" />}
+      <div className="metric-details">
+        <div className="metric-value-row">
+          {loading ? (
+            <IonSkeletonText animated style={{ width: '45px', height: '24px', borderRadius: '4px' }} />
+          ) : (
+            <span className="metric-value">{observedWaterLevel.toFixed(2)}</span>
+          )}
+          <span className="metric-unit">ft</span>
+          {!loading && !showLiveLabel && <span className="metric-status-label">{statusLabel}</span>}
+        </div>
+        <div className="metric-label-row">
+          <span className="metric-label">{showLiveLabel ? 'Live Water Level' : 'Water Level'}</span>
+          {interactive && !loading && <IonIcon icon={helpCircleOutline} className="metric-help-icon" />}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 interface AtmosphereMetricsProps {
   precipitationAccumulation: number | null;

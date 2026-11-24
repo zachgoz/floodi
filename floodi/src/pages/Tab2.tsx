@@ -28,7 +28,7 @@ import { SettingsModal } from 'src/components/Tab2/SettingsModal';
 import { TimeSettingsModal } from 'src/components/Tab2/TimeSettingsModal';
 import { useSettingsStorage } from 'src/components/Tab2/hooks/useSettingsStorage';
 import { useChartData } from 'src/components/Tab2/hooks/useChartData';
-import { useAtmosphericState } from 'src/components/Tab2/hooks/useAtmosphericState';
+import { useAtmosphericState, resolveHydrographWaterLevel } from 'src/components/Tab2/hooks/useAtmosphericState';
 import { useChartComments } from 'src/components/Tab2/hooks/useChartComments';
 import { ChartCommentModal } from 'src/components/Tab2/ChartCommentModal';
 import { ForecastAccuracyModal } from 'src/components/dashboard/ForecastAccuracyModal';
@@ -666,6 +666,17 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     );
   }, [processedData, operationalForecastPoints, activeAtmo.targetTime, activeAtmo.wl]);
 
+  // Sync the top-bar live gauge reading with the hydrograph's live inferred value & timestamp
+  const liveHydrographReading = useMemo(() => {
+    if (activeAtmo.isLive && activeAtmo.wl !== null && activeAtmo.targetTime) {
+      return { t: activeAtmo.targetTime, v: activeAtmo.wl };
+    }
+    if (!forecastData) return null;
+    const liveNow = forecastData.timeDomain.now;
+    const resolved = resolveHydrographWaterLevel(forecastData, liveNow);
+    return resolved.wl !== null ? { t: liveNow, v: resolved.wl } : null;
+  }, [activeAtmo.isLive, activeAtmo.wl, activeAtmo.targetTime, forecastData]);
+
   // Anchor top-bar next high/low tide strictly to the current point in time (independent of hydrograph scroll)
   const currentNextTideInfo = useMemo(() => {
     if (!processedData) return null;
@@ -726,6 +737,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
           onNextTideClick={() => setShowWLInfo(true)}
           isLive={activeAtmo.isLive}
           onResetToLive={resetToLive}
+          liveReading={liveHydrographReading}
         />
       </IonHeader>
 
@@ -966,7 +978,15 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         <DeferredInundationMap
                           waterLevelFt={simulationLevel}
                           waterLevelUnavailable={!activeAtmo.isSimulated && activeAtmo.wl === null}
-                          waterLevelLabel={activeAtmo.isSimulated ? 'Simulated Water Level' : activeAtmo.wl === null ? 'Water Level' : `${activeAtmo.isLive ? 'Live ' : ''}${activeAtmo.statusLabel} Water Level`}
+                          waterLevelLabel={
+                            activeAtmo.isSimulated
+                              ? 'Simulated Water Level'
+                              : activeAtmo.wl === null
+                              ? 'Water Level'
+                              : activeAtmo.isLive && activeAtmo.statusLabel !== 'Estimated'
+                              ? 'Live Water Level'
+                              : `${activeAtmo.statusLabel} Water Level`
+                          }
                           roadData={roadData}
                           observedLevelFt={processedData?.observedPoints?.filter(point => !point.estimated).at(-1)?.v}
                           targetTime={activeAtmo.targetTime || new Date()}

@@ -189,6 +189,46 @@
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.hydrograph-chart-overlay {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 25;
+  pointer-events: none;
+  display: flex;
+  justify-content: flex-end;
+  max-width: calc(100% - 20px);
+}
+
+.hydrograph-chart-overlay > * {
+  pointer-events: auto;
+}
+
+.hydrograph-chart-overlay .similar-peak-chip {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  background: rgba(248, 250, 252, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-color: rgba(37, 99, 235, 0.45);
+  color: #1d4ed8;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.16);
+}
+
+@media (max-width: 600px) {
+  .hydrograph-chart-overlay {
+    top: 6px;
+    right: 6px;
+    max-width: calc(100% - 12px);
+  }
+  .hydrograph-chart-overlay .similar-peak-chip {
+    min-height: 28px;
+    padding: 3px 8px;
+    font-size: 0.7rem;
+  }
+}
+
 .chart-loading-overlay {
   position: absolute;
   top: 0;

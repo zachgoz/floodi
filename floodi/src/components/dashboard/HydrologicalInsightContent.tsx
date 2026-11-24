@@ -123,6 +123,7 @@ export const HydrologicalInsightContent: React.FC<HydrologicalInsightContentProp
                 observedWaterLevel={observedWaterLevel}
                 wlColor={wlColor}
                 statusLabel={statusLabel}
+                isLive={isLive}
               />
             </div>
           </div>

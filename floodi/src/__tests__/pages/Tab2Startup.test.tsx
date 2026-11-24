@@ -8,7 +8,13 @@ import type { AppConfiguration } from 'src/components/Tab2/types';
 vi.mock('src/components/Tab2/hooks/useChartData', () => ({ useChartData: vi.fn() }));
 vi.mock('src/components/Tab2/hooks/useSettingsStorage', () => ({ useSettingsStorage: () => ({ config, updateLocation: vi.fn(), updateThresholds: vi.fn(), updateOffset: vi.fn(), updateTimeRange: vi.fn(), updateDisplay: vi.fn(), resetToDefaults: vi.fn() }) }));
 const mockUseAtmosphericState = vi.fn(() => ({ activeAtmo: { wl: null as number | null, isLive: true, isSimulated: false, targetTime: null as Date | null }, simulationLevel: 0, setSimulationLevel: vi.fn(), setIsUserSimulating: vi.fn() }));
-vi.mock('src/components/Tab2/hooks/useAtmosphericState', () => ({ useAtmosphericState: () => mockUseAtmosphericState() }));
+vi.mock('src/components/Tab2/hooks/useAtmosphericState', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('src/components/Tab2/hooks/useAtmosphericState')>();
+  return {
+    ...actual,
+    useAtmosphericState: () => mockUseAtmosphericState(),
+  };
+});
 vi.mock('src/components/Tab2/hooks/useChartComments', () => ({ useChartComments: () => ({ comments: [] }) }));
 vi.mock('src/components/dashboard/useFloodOutlook', () => ({ useFloodOutlook: () => ({ outlook: null, refresh: vi.fn() }) }));
 vi.mock('src/components/dashboard/useChallengerOutlook', () => ({ useChallengerOutlook: () => ({ challenger: null, loading: false, refresh: vi.fn(), totalPoints: [], lowerPoints: [], upperPoints: [], residualPoints: [] }) }));
@@ -117,6 +123,32 @@ describe('below-fold map startup', () => {
     });
 
     render(<MemoryRouter><Tab2 /></MemoryRouter>);
+    // When scrolled off live, Reset to Live replaces the High/Low countdown on the single-line bar
+    expect(screen.getByRole('button', { name: 'Reset hydrograph to live' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Next high tide/i })).toBeNull();
+
+    // When live (using the same curve where latest raw obs is 15m old at 3.85 ft and inferred live level at now is 4.00 ft),
+    // the top-bar gauge syncs to the hydrograph's live inferred value (4.00 ft) and shows High in 2h 0m anchored to now
+    cleanup();
+    vi.mocked(useChartData).mockReturnValue({
+      ...state,
+      processedData: {
+        ...state.processedData!,
+        observedPoints: [pt(-60, 3.0), pt(-15, 3.85)],
+        predictedPoints: curve,
+        adjustedPoints: curve.filter(p => +p.t >= +now - 15 * 60_000),
+      },
+    } as unknown as ReturnType<typeof useChartData>);
+    mockUseAtmosphericState.mockReturnValue({
+      activeAtmo: { wl: 4.0, isLive: true, isSimulated: false, targetTime: now },
+      simulationLevel: 4.0,
+      setSimulationLevel: vi.fn(),
+      setIsUserSimulating: vi.fn(),
+    });
+
+    render(<MemoryRouter><Tab2 /></MemoryRouter>);
+    const gaugePill = document.querySelector('.cc-gauge-status-pill')!;
+    expect(gaugePill.textContent).toContain('4.00 ft');
     const tideBtn = screen.getByRole('button', { name: /Next high tide in 2 hours 0 minutes/i });
     expect(tideBtn).toHaveTextContent('High in 2h 0m');
   });

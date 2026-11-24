@@ -70,10 +70,48 @@ describe('AtmosphericOverlay decluttered readout & tappable past events', () => 
     expect(wlButton.tagName).toBe('BUTTON');
     expect(wlButton).toHaveTextContent('3.85');
     expect(wlButton).toHaveTextContent('+0.42 ft surge');
+    expect(wlButton).toHaveTextContent('Live Water Level');
+    expect(wlButton).not.toHaveTextContent('Predicted');
 
-    // Next-tide badge lives in the HydrographChart date header now, not duplicated inside AtmosphericOverlay
+    // Next-tide badge lives in CurrentConditions now, not duplicated inside AtmosphericOverlay
     expect(screen.queryByRole('button', { name: 'Next high tide details' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Jump to similar past/i })).toBeNull();
+  });
+
+  it('shows Live Water Level instead of Predicted when viewing live data, and restores Predicted when scrolled to future', () => {
+    const { rerender } = render(
+      <AtmosphericOverlay
+        observedWaterLevel={4.52}
+        surge={0.35}
+        windSpeed={10}
+        windDirection={90}
+        precipitationAccumulation={0}
+        statusLabel="Predicted"
+        isLive={true}
+        thresholds={thresholds}
+        now={now}
+      />,
+    );
+
+    const wlButton = screen.getByRole('button', { name: 'View water level and flood insight details' });
+    expect(wlButton).toHaveTextContent('Live Water Level');
+    expect(wlButton).not.toHaveTextContent('Predicted');
+
+    rerender(
+      <AtmosphericOverlay
+        observedWaterLevel={5.95}
+        surge={0.65}
+        windSpeed={14}
+        windDirection={90}
+        precipitationAccumulation={0.1}
+        statusLabel="Predicted"
+        isLive={false}
+        thresholds={thresholds}
+        now={now}
+      />,
+    );
+    expect(wlButton).toHaveTextContent('Predicted');
+    expect(wlButton).not.toHaveTextContent('Live Water Level');
   });
 
   it('handles degenerate NaN/null weather and empty flood events without crashing or showing fake values', () => {

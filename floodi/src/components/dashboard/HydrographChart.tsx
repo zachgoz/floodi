@@ -75,8 +75,6 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
           ) : (
             <h2 className="hydrograph-title">{locationName}</h2>
           )}
-
-          {!loading && headerAction}
         </div>
         {sentinel}
       </div>
@@ -85,6 +83,11 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
         {loading && (
           <div className="chart-loading-overlay">
             <IonSpinner name="crescent" color="primary" />
+          </div>
+        )}
+        {!loading && headerAction && (
+          <div className="hydrograph-chart-overlay">
+            {headerAction}
           </div>
         )}
         <ChartViewer 
