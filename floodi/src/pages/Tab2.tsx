@@ -650,12 +650,11 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     };
   }, [processedData, operationalForecastPoints, activeAtmo.targetTime, config.thresholds.minor]);
 
-  // Compute next tide info reactively
+  // Compute next tide info for the inspected point (used inside water-level insight modal)
   const nextTideInfo = useMemo(() => {
     if (!processedData || !activeAtmo.targetTime || activeAtmo.wl === undefined || activeAtmo.wl === null) {
       return null;
     }
-    // Create combined actual + FloodCast prediction curve to ensure we find actual expected peaks (including surge)
     const combinedPoints = [
       ...processedData.observedPoints,
       ...operationalForecastPoints
@@ -667,6 +666,29 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     );
   }, [processedData, operationalForecastPoints, activeAtmo.targetTime, activeAtmo.wl]);
 
+  // Anchor top-bar next high/low tide strictly to the current point in time (independent of hydrograph scroll)
+  const currentNextTideInfo = useMemo(() => {
+    if (!processedData) return null;
+    const liveNow = processedData.timeDomain.now || new Date();
+    const combinedPoints = [
+      ...processedData.observedPoints,
+      ...operationalForecastPoints,
+    ];
+    const curve = combinedPoints.length > 0 ? combinedPoints : processedData.predictedPoints;
+    if (curve.length === 0) return null;
+    const latestObs = [...processedData.observedPoints]
+      .filter(p => !p.estimated && Number.isFinite(p.v) && +p.t <= +liveNow)
+      .sort((a, b) => +b.t - +a.t)[0];
+    const nearestLive = curve.reduce<Point | null>((best, pt) => {
+      if (!Number.isFinite(pt.v) || !Number.isFinite(+pt.t)) return best;
+      if (!best) return pt;
+      return Math.abs(+pt.t - +liveNow) < Math.abs(+best.t - +liveNow) ? pt : best;
+    }, null);
+    const currentLevel = latestObs?.v ?? nearestLive?.v;
+    if (currentLevel === undefined || !Number.isFinite(currentLevel)) return null;
+    return findNextTideExtremum(curve, liveNow, currentLevel);
+  }, [processedData, operationalForecastPoints]);
+
   return (
     <IonPage
       ref={(node) => {
@@ -676,7 +698,12 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     >
       <IonHeader>
         <IonToolbar>
-          <IonTitle>FloodCast</IonTitle>
+          <IonTitle>
+            FloodCast{' '}
+            <span className="toolbar-location-subtitle">
+              · {LOCATIONS[config.locationId]?.name || config.location.name}
+            </span>
+          </IonTitle>
           <IonButtons slot="end">
             <IonButton routerLink="/alerts" aria-label="Flood alerts"><IonIcon icon={notificationsOutline} aria-hidden="true" /></IonButton>
             <IonButton routerLink="/profile" aria-label="Your account"><IonIcon icon={personCircleOutline} aria-hidden="true" /></IonButton>
@@ -691,14 +718,12 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
         </IonToolbar>
         <CurrentConditions
           location={`${LOCATIONS[config.locationId]?.name || config.location.name}, ${config.location.state}`}
-          locationId={config.locationId}
           points={processedData?.observedPoints || []}
           thresholdFt={LOCATIONS[config.locationId]?.thresholds.minor ?? 5.6}
           customView={config.offset.mode === 'manual' || config.display.dataSource === 'noaa' || Object.entries(config.thresholds).some(([key, value]) => value !== LOCATIONS[config.locationId]?.thresholds[key as keyof typeof config.thresholds])}
           onSettings={() => setShowSettings(true)}
-          onLocationChange={updateLocation}
-          onAccuracyClick={() => setShowAccuracyModal(true)}
-          maeInches={rollingAccuracy.mae24hInches}
+          nextTideInfo={currentNextTideInfo ?? undefined}
+          onNextTideClick={() => setShowWLInfo(true)}
         />
       </IonHeader>
 
@@ -791,8 +816,6 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                           setResetCount(c => c + 1);
                         }}
                         locationName="Water Level Forecast"
-                        nextTideInfo={nextTideInfo ?? undefined}
-                        onNextTideClick={() => setShowWLInfo(true)}
                         controls={<ForecastTimeControls
                           viewport={currentViewport || processedData?.timeDomain || { start: new Date(Date.now() - 36 * 3600_000), end: new Date(Date.now() + 48 * 3600_000) }}
                           now={processedData?.timeDomain.now || new Date()}
@@ -870,7 +893,6 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         loading={loading}
                         mode={config.timeRange.mode}
                         onResetToLive={resetToLive}
-                        onTimeSettingsClick={() => setShowTimeSettings(true)}
                         centerRequest={centerRequest}
                         viewportRequest={viewportRequest}
                         resetKey={resetCount}
@@ -997,6 +1019,8 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
               toggleCommentOverlay();
             }
           }}
+          onAccuracyClick={() => setShowAccuracyModal(true)}
+          maeInches={rollingAccuracy.mae24hInches}
         />
 
         <TimeSettingsModal

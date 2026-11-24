@@ -103,56 +103,51 @@
   .dashboard-grid { gap: 12px; }
 }
 
-/* Structured maritime telemetry status bar under the main toolbar */
+/* Compact single-line maritime telemetry status bar under the main toolbar */
+.toolbar-location-subtitle {
+  font-weight: 500;
+  font-size: 0.88em;
+  opacity: 0.72;
+}
+
 .dashboard-current-conditions {
   background: var(--ion-toolbar-background, var(--ion-background-color));
-  padding: 8px 16px;
+  padding: 6px 14px;
   border-top: 1px solid var(--chart-grid);
   font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  font-variant-numeric: tabular-nums;
-}
-
-.cc-station-group,
-.cc-telemetry-group {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
 }
 
-.cc-location-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--dash-title-color, var(--ion-text-color));
-}
-
-.dashboard-current-conditions .location-select {
-  background: var(--chart-plot-bg, rgba(148, 163, 184, 0.1));
-  border: 1px solid var(--chart-plot-stroke, rgba(148, 163, 184, 0.3));
-  border-radius: 10px;
-  color: var(--dash-title-color, var(--ion-text-color));
-  font-size: 13px;
-  font-weight: 600;
-  padding: 5px 10px;
-  cursor: pointer;
-  min-height: 32px;
-}
-
-.cc-status-badge {
+.cc-gauge-status-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   padding: 4px 10px;
   border-radius: 999px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: rgba(148, 163, 184, 0.12);
   color: var(--dash-subtitle-color, #475569);
+}
+
+.cc-gauge-status-pill.is-normal {
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803d;
+}
+
+.cc-gauge-status-pill.is-elevated {
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
 }
 
 .cc-status-dot {
@@ -163,153 +158,150 @@
   flex-shrink: 0;
 }
 
-.cc-status-badge.is-normal {
-  background: rgba(22, 163, 74, 0.1);
-  color: #15803d;
-}
-
-.cc-status-badge.is-elevated {
-  background: rgba(220, 38, 38, 0.12);
-  color: #dc2626;
-}
-
-.cc-gauge-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 4px 10px;
-  border-radius: 10px;
-  background: var(--chart-plot-bg, rgba(148, 163, 184, 0.08));
-  border: 1px solid var(--chart-plot-stroke, rgba(148, 163, 184, 0.22));
-  color: var(--dash-title-color, var(--ion-text-color));
-  white-space: nowrap;
-}
-
-.cc-chip-kicker {
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--dash-subtitle-color, #64748b);
-}
-
-.cc-chip-val {
-  font-size: 12.5px;
+.cc-gauge-val {
   font-weight: 700;
   color: var(--dash-title-color, var(--ion-text-color));
+  flex-shrink: 0;
 }
 
-.cc-chip-time {
-  font-size: 11.5px;
+.cc-sep {
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+
+.cc-threshold-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cc-gauge-time {
+  font-size: 11px;
+  font-weight: 500;
   color: var(--dash-subtitle-color, #64748b);
   padding-left: 6px;
   border-left: 1px solid var(--chart-grid, rgba(148, 163, 184, 0.3));
+  flex-shrink: 0;
 }
 
-.cc-chip-chevron {
-  font-size: 14px;
-  line-height: 1;
-  opacity: 0.7;
+.cc-actions-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cc-next-tide-pill {
+  appearance: none;
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  min-height: 28px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--chart-plot-bg, rgba(148, 163, 184, 0.1));
+  border: 1px solid var(--chart-plot-stroke, rgba(148, 163, 184, 0.25));
+  color: var(--dash-title-color, var(--ion-text-color));
+  font-variant-numeric: tabular-nums;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.cc-next-tide-pill:hover {
+  border-color: var(--ion-color-primary);
+}
+
+.cc-next-tide-pill.high .cc-tide-arrow {
+  color: #16a34a;
+}
+
+.cc-next-tide-pill.low .cc-tide-arrow {
+  color: var(--ion-color-primary, #0284c7);
+}
+
+.cc-tide-delta {
+  color: var(--dash-subtitle-color, #64748b);
+  font-weight: 500;
 }
 
 .dashboard-current-conditions .cc-custom-btn {
-  min-height: 32px;
-  padding: 4px 10px;
+  min-height: 28px;
+  padding: 3px 9px;
   border: 1px solid var(--ion-color-primary);
-  border-radius: 10px;
+  border-radius: 999px;
   color: var(--ion-color-primary);
   background: transparent;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
 }
 
-.dashboard-current-conditions button:focus-visible,
-.dashboard-current-conditions .location-select:focus-visible {
+.dashboard-current-conditions button:focus-visible {
   outline: 2px solid var(--ion-color-primary);
   outline-offset: 2px;
 }
 
-.dashboard-current-conditions .accuracy-pill-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  background: rgba(22, 163, 74, 0.1);
-  border: 1px solid rgba(22, 163, 74, 0.3);
-  color: #15803d;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  border-radius: 10px;
-  padding: 4px 10px;
-  white-space: nowrap;
-  transition: background 0.18s ease, border-color 0.18s ease;
-}
-
-.dashboard-current-conditions .accuracy-pill-trigger .cc-chip-kicker {
-  color: inherit;
-  opacity: 0.85;
-}
-
-.dashboard-current-conditions .accuracy-pill-trigger strong {
-  font-size: 12.5px;
-  font-weight: 700;
-}
-
-.dashboard-current-conditions .accuracy-pill-trigger:hover {
-  background: rgba(22, 163, 74, 0.18);
-  border-color: rgba(22, 163, 74, 0.52);
-}
-
-.dashboard-current-conditions .accuracy-pill-trigger .accuracy-pill-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.55);
-}
-
 @media (prefers-color-scheme: dark) {
-  .cc-status-badge.is-normal,
-  .dashboard-current-conditions .accuracy-pill-trigger {
+  .cc-gauge-status-pill.is-normal {
     background: rgba(34, 197, 94, 0.14);
-    border-color: rgba(74, 222, 128, 0.32);
     color: #86efac;
   }
-  .cc-status-badge.is-elevated {
+  .cc-gauge-status-pill.is-elevated {
     background: rgba(239, 68, 68, 0.16);
     color: #fca5a5;
   }
+  .cc-next-tide-pill.high .cc-tide-arrow {
+    color: #4ade80;
+  }
+  .cc-next-tide-pill.low .cc-tide-arrow {
+    color: #7dd3fc;
+  }
 }
 
-.ion-palette-dark .cc-status-badge.is-normal,
-.ion-palette-dark .dashboard-current-conditions .accuracy-pill-trigger {
+.ion-palette-dark .cc-gauge-status-pill.is-normal {
   background: rgba(34, 197, 94, 0.14);
-  border-color: rgba(74, 222, 128, 0.32);
   color: #86efac;
 }
 
-.ion-palette-dark .cc-status-badge.is-elevated {
+.ion-palette-dark .cc-gauge-status-pill.is-elevated {
   background: rgba(239, 68, 68, 0.16);
   color: #fca5a5;
 }
 
+.ion-palette-dark .cc-next-tide-pill.high .cc-tide-arrow {
+  color: #4ade80;
+}
+
+.ion-palette-dark .cc-next-tide-pill.low .cc-tide-arrow {
+  color: #7dd3fc;
+}
+
 @media (max-width: 600px) {
   .dashboard-current-conditions {
-    padding: 6px 12px 8px;
-    gap: 6px 10px;
+    padding: 5px 10px;
+    gap: 6px;
   }
-  .cc-telemetry-group {
-    width: 100%;
-    justify-content: space-between;
+  .cc-gauge-status-pill {
+    padding: 4px 8px;
+    font-size: 11.5px;
+    gap: 5px;
+  }
+  .cc-gauge-time,
+  .cc-tide-delta {
+    display: none;
+  }
+  .cc-next-tide-pill {
+    padding: 4px 8px;
+    font-size: 11.5px;
   }
 }
 
 @media (pointer: coarse) {
-  .dashboard-current-conditions button,
-  .dashboard-current-conditions .location-select {
-    min-height: 44px;
+  .dashboard-current-conditions button {
+    min-height: 36px;
   }
 }

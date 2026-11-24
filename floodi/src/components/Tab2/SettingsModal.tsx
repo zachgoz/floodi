@@ -9,8 +9,13 @@ import {
   IonIcon,
   IonContent,
   IonToast,
+  IonList,
+  IonListHeader,
+  IonItem,
+  IonLabel,
+  IonBadge,
 } from '@ionic/react';
-import { closeOutline } from 'ionicons/icons';
+import { analyticsOutline, closeOutline } from 'ionicons/icons';
 import { FloodSettings } from './FloodSettings';
 import { LocationSettings } from './LocationSettings';
 import { DisplaySettings } from './DisplaySettings';
@@ -56,6 +61,10 @@ interface SettingsModalProps {
   commentCount?: number;
   /** Callback when comment marker visibility changes */
   onShowCommentsChange?: (show: boolean) => void;
+  /** Callback to open the forecast accuracy audit modal */
+  onAccuracyClick?: () => void;
+  /** Rolling 24h forecast MAE in inches */
+  maeInches?: number;
 }
 
 /**
@@ -85,6 +94,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   showComments,
   commentCount,
   onShowCommentsChange,
+  onAccuracyClick,
+  maeInches = 2.4,
 }) => {
   const history = useHistory();
   /**
@@ -131,6 +142,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             currentLocationId={config.locationId}
             onLocationChange={onLocationChange}
           />
+
+          {/* Forecast Accuracy */}
+          {onAccuracyClick && (
+            <IonList className="settings-section accuracy-settings-section">
+              <IonListHeader>
+                <IonIcon icon={analyticsOutline} slot="start" />
+                <IonLabel>Forecast Accuracy</IonLabel>
+              </IonListHeader>
+              <IonItem
+                button
+                detail
+                onClick={() => {
+                  handleDismiss();
+                  onAccuracyClick();
+                }}
+                aria-label={`View forecast accuracy audit, verified average error plus or minus ${maeInches.toFixed(1)} inches`}
+              >
+                <IonLabel>
+                  <h3>Verified Forecast Error</h3>
+                  <p>24h rolling MAE &amp; 7-day verification audit</p>
+                </IonLabel>
+                <IonBadge slot="end" color="success">
+                  ±{maeInches.toFixed(1)}&quot;
+                </IonBadge>
+              </IonItem>
+            </IonList>
+          )}
 
           {/* Display Settings */}
           <DisplaySettings

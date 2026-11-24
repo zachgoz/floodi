@@ -289,6 +289,38 @@ describe('ChartViewer with comments', () => {
     expect(floodPill?.querySelector('rect')?.getAttribute('stroke')).toBe('#ffdc1e');
     expect(floodPill?.querySelector('rect')?.getAttribute('fill')).toBe('var(--chart-pill-bg, rgba(248, 250, 252, 0.88))');
   });
+
+  it('prevents browser text selection during mouse dragging on the hydrograph', () => {
+    const { container } = render(
+      <ChartViewer
+        locationId="carolina-beach"
+        observedPoints={[pt(start, 4.1), pt(now, 4.4)]}
+        predictedPoints={[pt(start, 4.0), pt(end, 4.2)]}
+        adjustedPoints={[pt(now, 4.4), pt(end, 4.2)]}
+        deltaPoints={[]}
+        domainStart={start}
+        domainEnd={end}
+        now={now}
+        thresholds={{ minor: 5.6, moderate: 7.0, major: 7.7, extreme: 8.5 }}
+        showDelta={false}
+        timezone="local"
+      />,
+    );
+
+    const wrapper = container.querySelector('.chart-viewer') as HTMLElement;
+    const svg = container.querySelector('svg') as SVGSVGElement;
+    expect(wrapper.style.userSelect).toBe('none');
+    expect(svg.style.userSelect).toBe('none');
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 900, height: 420, right: 900, bottom: 420, x: 0, y: 0, toJSON: () => {},
+    });
+
+    const downEvent = new MouseEvent('pointerdown', { bubbles: true, cancelable: true, clientX: 400, clientY: 180 });
+    Object.defineProperty(downEvent, 'pointerId', { value: 1 });
+    Object.defineProperty(downEvent, 'pointerType', { value: 'mouse' });
+    fireEvent(svg, downEvent);
+    expect(downEvent.defaultPrevented).toBe(true);
+  });
 });
 
 

@@ -78,94 +78,30 @@
   outline-offset: 2px;
 }
 
-.header-next-tide-pill {
-  appearance: none;
-  font: inherit;
+.reset-to-live-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px;
-  min-height: 28px;
-  border-radius: 999px;
-  font-size: var(--dash-type-label, .75rem);
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  background: var(--chart-plot-bg, rgba(148, 163, 184, 0.1));
-  border: 1px solid var(--chart-plot-stroke, rgba(148, 163, 184, 0.25));
-  color: var(--dash-title-color, var(--ion-text-color));
-  font-variant-numeric: tabular-nums;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.header-next-tide-pill:hover {
-  border-color: var(--ion-color-primary);
-}
-
-.header-next-tide-pill:focus-visible {
-  outline: 2px solid var(--ion-color-primary);
-  outline-offset: 2px;
-}
-
-.header-next-tide-pill.high .header-tide-arrow {
-  color: #dc2626;
-}
-
-.header-next-tide-pill.low .header-tide-arrow {
-  color: var(--ion-color-primary, #0284c7);
-}
-
-.header-tide-delta {
-  color: var(--dash-subtitle-color, #64748b);
-  font-weight: 500;
-}
-
-@media (prefers-color-scheme: dark) {
-  .header-next-tide-pill.high .header-tide-arrow {
-    color: #fca5a5;
-  }
-  .header-next-tide-pill.low .header-tide-arrow {
-    color: #7dd3fc;
-  }
-}
-
-.ion-palette-dark .header-next-tide-pill.high .header-tide-arrow {
-  color: #fca5a5;
-}
-
-.ion-palette-dark .header-next-tide-pill.low .header-tide-arrow {
-  color: #7dd3fc;
-}
-
-@media (pointer: coarse) {
-  .header-next-tide-pill {
-    min-height: 44px;
-    padding: 6px 12px;
-  }
-}
-
-.is-live .viewing-time-pill {
-  background: rgba(var(--ion-color-success-rgb), 0.1);
-  color: var(--ion-color-success);
-  border-color: rgba(var(--ion-color-success-rgb), 0.2);
-}
-
-.reset-to-live-btn {
+  min-height: 30px;
   background: var(--ion-color-primary);
   color: white;
   border: none;
-  border-radius: 12px;
-  padding: 4px 10px;
-  font-size: 0.7rem;
-  font-weight: 800;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
   cursor: pointer;
-  margin-left: 4px;
-  transition: all 0.2s ease;
+  margin-left: auto;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
   box-shadow: 0 2px 6px rgba(var(--ion-color-primary-rgb), 0.3);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.01em;
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.reset-to-live-btn:focus-visible {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 2px;
 }
 
 .reset-to-live-btn:hover {

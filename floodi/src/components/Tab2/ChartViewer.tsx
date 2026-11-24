@@ -584,6 +584,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
     // For mouse, start panning immediately (hover effects disabled so scrolling owns the playhead)
     if (event.pointerType === 'mouse') {
+      event.preventDefault();
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
       } catch (e) { /* Ignore capture errors */ }
@@ -826,7 +827,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
   return (
     <div className="chart-viewer-layout">
-    <div className="chart-viewer chart-plot" ref={containerRef} onKeyDown={handleContainerKeyDown} tabIndex={0} aria-keyshortcuts={onTimePointSelect ? 'ArrowLeft ArrowRight C N' : 'ArrowLeft ArrowRight C'} style={{ width: '100%', overflow: 'hidden', position: 'relative' }}>
+    <div className="chart-viewer chart-plot" ref={containerRef} onKeyDown={handleContainerKeyDown} tabIndex={0} aria-keyshortcuts={onTimePointSelect ? 'ArrowLeft ArrowRight C N' : 'ArrowLeft ArrowRight C'} style={{ width: '100%', overflow: 'hidden', position: 'relative', userSelect: 'none', WebkitUserSelect: 'none' }}>
 
       <svg
         ref={svgRef}
@@ -842,11 +843,12 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
+        onDragStart={e => e.preventDefault()}
         // touch-action: pan-y — allow the browser to naturally handle vertical scrolling
         // over the chart, but defer horizontal gestures to our custom pointer/touch events.
         // Once a horizontal pan is detected, e.preventDefault() in onTouchMove stops
         // the browser from cancelling the gesture.
-        style={{ touchAction: 'pan-y', cursor: isTouchDeviceRef.current ? 'default' : 'crosshair' }}
+        style={{ touchAction: 'pan-y', userSelect: 'none', WebkitUserSelect: 'none', cursor: isTouchDeviceRef.current ? 'default' : 'grab' }}
       >
         {/* Background */}
         <rect x={0} y={0} width={size.w} height={size.h} fill="var(--chart-bg)" />

@@ -10,7 +10,7 @@
 .surge-controls { display:flex; gap:6px; flex-wrap:wrap; margin:16px 0 8px; }
 .surge-controls button { border:1px solid var(--chart-grid, #dce4e9); background:transparent; color:var(--ion-text-color); border-radius:12px; padding:10px 12px; min-height:44px; cursor:pointer; }
 .surge-controls button[aria-pressed=true] { background:var(--ion-color-primary); color:white; border-color:var(--ion-color-primary); }
-.surge-svg { width:100%; display:block; overflow:visible; user-select:none; }
+.surge-svg { width:100%; display:block; overflow:visible; user-select:none; -webkit-user-select:none; }
 .positive-key { color:#b25a1e; } .negative-key { color:#137bbb; }
 .confidence-badge { padding:5px 9px; border-radius:8px; background:rgba(0,124,174,.1); color:var(--ion-color-primary, #007cae); font-size:.75rem; font-weight:600; white-space:nowrap; }
 .forecast-toggle { display:flex; gap:10px; align-items:center; font-size:.9rem; padding:12px 0; }

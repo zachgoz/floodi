@@ -248,9 +248,11 @@ export function SurgeChart({ points, estimatedPoints = [], forecast = [], experi
       }} viewBox={`0 0 ${width} 270`} role="img"
         data-domain-start={domain.start.toISOString()} data-domain-end={domain.end.toISOString()}
         aria-label={`Anomaly chart. ${readout ? `${readout.source}: ${readout.value.toFixed(2)} feet at ${time(readout.at)}` : 'No value at selected time'}. Positive anomalies above zero; negative anomalies below zero.`}
-        className="surge-svg" style={{ touchAction: 'pan-y' }}
+        className="surge-svg" style={{ touchAction: 'pan-y', userSelect: 'none', WebkitUserSelect: 'none' }}
+        onDragStart={e => e.preventDefault()}
         onPointerDown={e => {
           if (e.pointerType === 'touch') return;
+          if (e.pointerType === 'mouse') e.preventDefault();
           e.currentTarget.setPointerCapture(e.pointerId);
           pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
           beginGesture();
