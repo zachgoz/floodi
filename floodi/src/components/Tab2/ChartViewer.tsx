@@ -6,7 +6,6 @@ import { HourlyWeatherDetails } from './HourlyWeatherDetails';
 import { formatTooltipTime, findNearestPoint } from './hooks/useChartInteraction';
 import { isCommentTimeRange, type Comment, type CommentTimeRange } from 'src/types/comment';
 import type { FloodEvent } from 'src/types/data';
-import { useHistoricalComparisonEvents } from 'src/components/dashboard/useSimilarFloodEvents';
 import { getFloodSeverityColor, getFloodSeverityForLevel } from 'src/utils/floodSeverity';
 import { getTimeRangeFromChartSelection } from 'src/utils/timeRangeHelpers';
 import { findTideExtrema } from 'src/utils/tideExtrema';
@@ -233,8 +232,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   viewMode = 'basic',
   timeOffsetMins,
   locationId,
-  onJumpToTime,
-  floodEvents = []
+  onJumpToTime
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -802,25 +800,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally empty – all current values accessed via refs
 
-  // Active water level at the scrolled center playhead (single source of truth across mobile & desktop)
-  const activeInspectLevel = useMemo(() => {
-    const activeMs = centerTime.getTime();
-    const isFutureTime = activeMs > now.getTime();
-    const primary = isFutureTime
-      ? (findNearestPoint(adjustedPoints, centerTime) || findNearestPoint(predictedPoints, centerTime))
-      : (findNearestPoint(observedPoints, centerTime) || findNearestPoint(predictedPoints, centerTime));
-    if (!primary || primary.dtMin > 60) return null;
-    return primary.point.v;
-  }, [centerTime, now, adjustedPoints, predictedPoints, observedPoints]);
-
-  const activeFloodComparison = useHistoricalComparisonEvents(
-    floodEvents,
-    activeInspectLevel !== null && activeInspectLevel >= thresholds.minor ? activeInspectLevel : null,
-    now,
-    1,
-  );
-  const matchedPastFlood = activeFloodComparison.items[0] ?? null;
-
   /** Handle reset of both local zoom and global absolute range */
   const handleReset = () => {
     setViewDomain(liveViewport(activeStart, activeEnd, new Date(), nowRatio));
@@ -1247,58 +1226,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         />}
 
         {/* Legend - REMOVED per user request */}
-
-
-
-        {/* Single subtle horizontal reference tick when scrolled above flood stage */}
-        {matchedPastFlood && activeInspectLevel !== null && activeInspectLevel >= thresholds.minor && (() => {
-          const refY = yOf(matchedPastFlood.event.peakValue);
-          if (!Number.isFinite(refY) || refY < margins.t || refY > margins.t + innerH) return null;
-          const shortDate = new Intl.DateTimeFormat('en-US', {
-            timeZone: timezone === 'gmt' ? 'UTC' : 'America/New_York',
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-          }).format(new Date(matchedPastFlood.event.peakTime));
-          const label = `Past ${shortDate} · ${matchedPastFlood.event.peakValue.toFixed(2)}'`;
-          const pillW = Math.max(124, label.length * 6.2 + 14);
-          const pillX = margins.l + innerW - pillW - 6;
-          return (
-            <g className="past-flood-reference-tick" pointerEvents="none">
-              <line
-                x1={margins.l}
-                x2={margins.l + innerW}
-                y1={refY}
-                y2={refY}
-                stroke="var(--ion-color-primary, #3880ff)"
-                strokeWidth={1.25}
-                strokeDasharray="4 4"
-                opacity={0.55}
-              />
-              <rect
-                x={pillX}
-                y={Math.max(margins.t + 2, refY - 19)}
-                width={pillW}
-                height={17}
-                rx={8.5}
-                fill="var(--chart-pill-bg, rgba(248, 250, 252, 0.88))"
-                stroke="var(--ion-color-primary, #3880ff)"
-                strokeWidth={1.25}
-                style={{ filter: 'drop-shadow(0 1px 2px rgba(15, 23, 42, 0.16))' }}
-              />
-              <text
-                x={pillX + pillW / 2}
-                y={Math.max(margins.t + 13.5, refY - 7.5)}
-                textAnchor="middle"
-                fill="var(--chart-pill-ref-text, #1d4ed8)"
-                fontSize="10"
-                fontWeight="700"
-              >
-                {label}
-              </text>
-            </g>
-          );
-        })()}
 
         {/* VIEWING/Center Time Marker (Solid, always visible) */}
         {(() => {

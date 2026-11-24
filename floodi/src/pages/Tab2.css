@@ -11,7 +11,6 @@
   --chart-pill-bg: rgba(248, 250, 252, 0.88);
   --chart-pill-text: #0f172a;
   --chart-pill-subtext: #334155;
-  --chart-pill-ref-text: #1d4ed8;
   --settings-bg: #ffffff;
   --settings-border: #e5e7eb;
   --settings-header-bg: #f3f4f6; /* subtle tint for headers */
@@ -31,7 +30,6 @@
     --chart-pill-bg: rgba(241, 245, 249, 0.88);
     --chart-pill-text: #0f172a;
     --chart-pill-subtext: #334155;
-    --chart-pill-ref-text: #1d4ed8;
     --settings-bg: #111827;
     --settings-border: #243040;
     --settings-header-bg: #0f172a;

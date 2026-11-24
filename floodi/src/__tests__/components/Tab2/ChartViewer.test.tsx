@@ -214,7 +214,7 @@ describe('ChartViewer with comments', () => {
     expect(screen.queryByText(/Jump to last similar/i)).toBeNull();
   });
 
-  it('renders unified clickable tide extremum pills and shows the past-flood reference tick ONLY above flood stage', () => {
+  it('renders unified clickable tide extremum pills without any duplicate Past pill on the hydrograph', () => {
     const onJumpToTime = vi.fn();
     const peakT = new Date(start.getTime() + 30 * 60_000);
     const pastPeakTime = peakT.toISOString();
@@ -249,6 +249,7 @@ describe('ChartViewer with comments', () => {
 
     // Unified tide pill renders with light translucent fill and green outline/dot below flood stage
     expect(container.querySelector('.historical-flood-pin')).toBeNull();
+    expect(container.querySelector('.past-flood-reference-tick')).toBeNull();
     const pill = container.querySelector('.tide-extremum-pill');
     expect(pill).not.toBeNull();
     expect(pill?.textContent).toContain("5.10'");
@@ -259,16 +260,14 @@ describe('ChartViewer with comments', () => {
     expect(onJumpToTime).toHaveBeenCalledTimes(1);
     expect(onJumpToTime).toHaveBeenCalledWith(peakT);
 
-    // Below flood stage at playhead -> no horizontal reference tick
-    expect(container.querySelector('.past-flood-reference-tick')).toBeNull();
-
-    // Above flood stage at playhead -> single horizontal reference tick with weekday appears cleanly
+    // Above flood stage at playhead -> still no Past pill on the hydrograph (handled above the chart),
+    // while flood-stage peak pill keeps its severity color (#ffdc1e for minor)
     rerender(
       <ChartViewer
         locationId="carolina-beach"
-        observedPoints={[pt(start, 4.1), pt(peakT, 6.2), pt(now, 6.4)]}
-        predictedPoints={[pt(start, 4.0), pt(peakT, 6.0), pt(end, 6.4)]}
-        adjustedPoints={[pt(now, 6.4), pt(end, 6.4)]}
+        observedPoints={[pt(start, 4.1), pt(peakT, 6.2), pt(now, 5.8)]}
+        predictedPoints={[pt(start, 4.0), pt(peakT, 6.0), pt(end, 5.5)]}
+        adjustedPoints={[pt(now, 5.8), pt(end, 5.5)]}
         deltaPoints={[]}
         domainStart={start}
         domainEnd={end}
@@ -281,10 +280,14 @@ describe('ChartViewer with comments', () => {
       />,
     );
 
-    const refTick = container.querySelector('.past-flood-reference-tick');
-    expect(refTick).not.toBeNull();
-    expect(refTick?.textContent).toContain('Sat, Oct 10');
-    expect(refTick?.textContent).toContain("6.20'");
+    expect(container.querySelector('.past-flood-reference-tick')).toBeNull();
+    expect(screen.queryByText(/^Past /i)).toBeNull();
+    const floodPill = container.querySelector('.tide-extremum-pill.is-flood');
+    expect(floodPill).not.toBeNull();
+    expect(floodPill?.textContent).toContain("6.20'");
+    expect(floodPill?.querySelector('circle')?.getAttribute('fill')).toBe('#ffdc1e');
+    expect(floodPill?.querySelector('rect')?.getAttribute('stroke')).toBe('#ffdc1e');
+    expect(floodPill?.querySelector('rect')?.getAttribute('fill')).toBe('var(--chart-pill-bg, rgba(248, 250, 252, 0.88))');
   });
 });
 
