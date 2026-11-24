@@ -299,6 +299,15 @@ function mockChartSize(svg: SVGSVGElement) {
 }
 
 describe('linked forecast and residual charts', () => {
+  it('places the tide chart plot above the time controls and legend for immediate mobile visibility', () => {
+    const { container } = render(<LinkedCharts />);
+    const plot = container.querySelector('.hydrograph-chart-wrapper')!;
+    const controls = container.querySelector('.forecast-time-controls')!;
+    const legend = container.querySelector('.chart-legend-row')!;
+    expect(plot.compareDocumentPosition(controls) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(plot.compareDocumentPosition(legend) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it.each(['tide', 'surge'])('keeps both charts aligned and preserves zoom after keyboard panning the %s chart and returning live', async plot => {
     const { container } = render(<LinkedCharts />);
     fireEvent.click(screen.getByRole('button', { name: /12 hours$/ }));

@@ -227,16 +227,38 @@
   }
 }
 
+.hydrograph-footer-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.hydrograph-footer-controls .forecast-time-controls {
+  position: static;
+  margin: 0;
+  padding: 2px 0;
+  background: transparent;
+}
+
+.hydrograph-footer-controls .chart-legend-row {
+  margin: 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--chart-grid, rgba(148, 163, 184, 0.2));
+}
+
 @media (max-width: 600px) {
-  .hydrograph-container { padding: 18px; }
+  .hydrograph-container { padding: 14px 14px 16px; }
+  .hydrograph-header { gap: 8px; margin-bottom: 8px; padding-bottom: 8px; }
   .hydrograph-subtitle { flex-wrap: wrap; }
   .hydrograph-header .atmospheric-sentinel.view-basic { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); width:100%; align-items:stretch; }
-  .hydrograph-header .view-basic .sentinel-metrics { min-width:0; width:100%; justify-content:center; margin:0; padding:10px 8px; }
+  .hydrograph-header .view-basic .sentinel-metrics { min-width:0; width:100%; justify-content:center; margin:0; padding:8px; }
   .hydrograph-header .view-basic .tidal-group { min-width:0; }
   .hydrograph-header .view-basic .metric-value-row { flex-wrap:wrap; }
   .hydrograph-header .view-basic .metric-status-label { white-space:normal; }
   .hydrograph-header .view-basic .meteo-group { flex-wrap:wrap; }
   .hydrograph-header .view-basic .next-tide-badge { grid-column:1 / -1; justify-content:flex-start; }
+  .hydrograph-header .view-basic .similar-peak-chip { grid-column: 1 / -1; justify-content: center; }
 }
 
 @media (max-width:360px) {

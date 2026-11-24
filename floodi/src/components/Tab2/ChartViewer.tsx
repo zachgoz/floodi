@@ -6,6 +6,7 @@ import { HourlyWeatherDetails } from './HourlyWeatherDetails';
 import { useChartInteraction, formatTooltipTime, findNearestPoint } from './hooks/useChartInteraction';
 import { isCommentTimeRange, type Comment, type CommentTimeRange } from 'src/types/comment';
 import type { FloodEvent } from 'src/types/data';
+import { deduplicateFloodEvents, useHistoricalComparisonEvents } from 'src/components/dashboard/useSimilarFloodEvents';
 import { getTimeRangeFromChartSelection } from 'src/utils/timeRangeHelpers';
 import { findTideExtrema } from 'src/utils/tideExtrema';
 import { IonButton, IonIcon, IonText } from '@ionic/react';
@@ -506,22 +507,28 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     const svg = svgRef.current;
     if (!svg) return;
 
-    // On pointer move, update hover crosshair/tooltip for mouse and touch scrubbing
-    const overWeather = (event.target as Element).closest?.('[data-testid="weather-timeline"]');
-    const hoverTime = overWeather ? null : computeTimeAtPointer(event);
-    if (hoverTime) {
-      setHoverT(hoverTime);
-      onHoverTimeChange?.(hoverTime);
-    } else if (event.pointerType === 'mouse') {
+    // On pointer move, update hover crosshair for mouse only when not panning.
+    // On mobile touch, horizontal scrolling drives the center playhead directly.
+    if (event.pointerType === 'mouse' && !panStateRef.current) {
+      const overWeather = (event.target as Element).closest?.('[data-testid="weather-timeline"]');
+      const hoverTime = overWeather ? null : computeTimeAtPointer(event);
+      if (hoverTime) {
+        setHoverT(hoverTime);
+        onHoverTimeChange?.(hoverTime);
+      } else {
+        setHoverT(null);
+        onHoverTimeChange?.(null);
+        onChartInteraction?.(null);
+      }
+
+      if (onChartInteraction && hoverTime) {
+        const nearestDelta = findNearestPoint(deltaPoints, hoverTime);
+        const nearestObs = findNearestPoint(observedPoints, hoverTime);
+        onChartInteraction(nearestObs?.point || nearestDelta?.point || null);
+      }
+    } else if (panStateRef.current) {
       setHoverT(null);
       onHoverTimeChange?.(null);
-      onChartInteraction?.(null);
-    }
-
-    if (onChartInteraction && hoverTime) {
-      const nearestDelta = findNearestPoint(deltaPoints, hoverTime);
-      const nearestObs = findNearestPoint(observedPoints, hoverTime);
-      onChartInteraction(nearestObs?.point || nearestDelta?.point || null);
     }
 
     // ─── Mouse Pan ───
@@ -655,11 +662,19 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   const innerWRef = useRef(innerW);
   const sizeRef = useRef(size);
   const marginsRef = useRef(margins);
+  const clearHoverRef = useRef(() => {
+    setHoverT(null);
+    onHoverTimeChange?.(null);
+  });
   t0Ref.current = t0;
   t1Ref.current = t1;
   innerWRef.current = innerW;
   sizeRef.current = size;
   marginsRef.current = margins;
+  clearHoverRef.current = () => {
+    setHoverT(null);
+    onHoverTimeChange?.(null);
+  };
 
   // Native touch + wheel handlers.
   //
@@ -749,6 +764,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
         if (isHorizontalPan || (Math.abs(dx) > 0 && Math.abs(dx) > Math.abs(dy))) {
           if (e.cancelable) e.preventDefault();
+          clearHoverRef.current();
           // dx in CSS pixels → SVG units → fraction of domain
           const timeShift = -(dx / scaleX) / iw * (touchStartT1 - touchStartT0);
           setViewDomain({
@@ -801,6 +817,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
       const cur1 = t1Ref.current;
 
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && !e.ctrlKey) {
+        clearHoverRef.current();
         const scaleX = rect.width / sw;
         const timeShift = (e.deltaX / scaleX) / iw * (cur1 - cur0);
         setViewDomain({ start: new Date(cur0 + timeShift), end: new Date(cur1 + timeShift) });
@@ -836,6 +853,35 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     if (!hoverT) return null;
     return calculateTooltipData(hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, now, thresholds.minor, showDelta, viewMode, null);
   }, [hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, now, thresholds.minor, showDelta, viewMode, calculateTooltipData]);
+
+  // Active level at either hover cursor (mouse) or scrolled center playhead (mobile/pan)
+  const activeInspectTime = hoverT ?? centerTime;
+  const activeInspectLevel = useMemo(() => {
+    const activeMs = activeInspectTime.getTime();
+    const isFutureTime = activeMs > now.getTime();
+    const primary = isFutureTime
+      ? (findNearestPoint(adjustedPoints, activeInspectTime) || findNearestPoint(predictedPoints, activeInspectTime))
+      : (findNearestPoint(observedPoints, activeInspectTime) || findNearestPoint(predictedPoints, activeInspectTime));
+    if (!primary || primary.dtMin > 60) return null;
+    return primary.point.v;
+  }, [activeInspectTime, now, adjustedPoints, predictedPoints, observedPoints]);
+
+  const activeFloodComparison = useHistoricalComparisonEvents(
+    floodEvents,
+    activeInspectLevel !== null && activeInspectLevel >= thresholds.minor ? activeInspectLevel : null,
+    now,
+    1,
+  );
+  const matchedPastFlood = activeFloodComparison.items[0] ?? null;
+
+  // Deduplicated historical flood peaks inside the currently visible time window (past only)
+  const visibleHistoricalPeaks = useMemo(() => {
+    const uniquePast = deduplicateFloodEvents(floodEvents, now);
+    return uniquePast.filter(ev => {
+      const ms = Date.parse(ev.peakTime);
+      return Number.isFinite(ms) && ms >= t0 && ms <= t1 && ev.peakValue >= thresholds.minor;
+    });
+  }, [floodEvents, now, t0, t1, thresholds.minor]);
 
   /** Handle reset of both local zoom and global absolute range */
   const handleReset = () => {
@@ -1238,6 +1284,105 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
         {/* Legend - REMOVED per user request */}
 
 
+
+        {/* Single subtle horizontal reference tick when scrolled/hovered above flood stage */}
+        {matchedPastFlood && activeInspectLevel !== null && activeInspectLevel >= thresholds.minor && (() => {
+          const refY = yOf(matchedPastFlood.event.peakValue);
+          if (!Number.isFinite(refY) || refY < margins.t || refY > margins.t + innerH) return null;
+          const shortDate = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone === 'gmt' ? 'UTC' : 'America/New_York',
+            month: 'short',
+            day: 'numeric',
+          }).format(new Date(matchedPastFlood.event.peakTime));
+          const label = `Past ${shortDate} · ${matchedPastFlood.event.peakValue.toFixed(2)}'`;
+          const pillW = Math.max(106, label.length * 6.4 + 14);
+          const pillX = margins.l + innerW - pillW - 6;
+          return (
+            <g className="past-flood-reference-tick" pointerEvents="none">
+              <line
+                x1={margins.l}
+                x2={margins.l + innerW}
+                y1={refY}
+                y2={refY}
+                stroke="var(--ion-color-primary, #3880ff)"
+                strokeWidth={1.25}
+                strokeDasharray="4 4"
+                opacity={0.55}
+              />
+              <rect
+                x={pillX}
+                y={Math.max(margins.t + 2, refY - 19)}
+                width={pillW}
+                height={17}
+                rx={8.5}
+                fill="var(--chart-bg, #ffffff)"
+                stroke="var(--ion-color-primary, #3880ff)"
+                strokeWidth={1}
+                opacity={0.92}
+              />
+              <text
+                x={pillX + pillW / 2}
+                y={Math.max(margins.t + 13.5, refY - 7.5)}
+                textAnchor="middle"
+                fill="var(--ion-color-primary, #3880ff)"
+                fontSize="10"
+                fontWeight="600"
+              >
+                {label}
+              </text>
+            </g>
+          );
+        })()}
+
+        {/* Subtle tappable pins on past flood crests when scrolling backward in time */}
+        {visibleHistoricalPeaks.map(ev => {
+          const peakDate = new Date(ev.peakTime);
+          const px = xOf(peakDate);
+          const py = yOf(ev.peakValue);
+          if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
+          const pillY = Math.max(margins.t + 4, py - 24);
+          return (
+            <g
+              key={`hist-flood-${ev.peakTime}`}
+              className="historical-flood-pin"
+              style={{ cursor: onJumpToTime ? 'pointer' : 'default' }}
+              onClick={e => {
+                e.stopPropagation();
+                onJumpToTime?.(peakDate);
+              }}
+            >
+              <circle
+                cx={px}
+                cy={py}
+                r={4.5}
+                fill="var(--ion-color-warning, #f59e0b)"
+                stroke="var(--chart-bg, #ffffff)"
+                strokeWidth={1.75}
+              />
+              <rect
+                x={px - 20}
+                y={pillY}
+                width={40}
+                height={16}
+                rx={8}
+                fill="var(--chart-bg, #ffffff)"
+                stroke="var(--ion-color-warning, #f59e0b)"
+                strokeWidth={1}
+                opacity={0.92}
+              />
+              <text
+                x={px}
+                y={pillY + 11.5}
+                textAnchor="middle"
+                fill="var(--chart-label-text, #1e293b)"
+                fontSize="9.5"
+                fontWeight="700"
+              >
+                {ev.peakValue.toFixed(1)}&apos;
+              </text>
+            </g>
+          );
+        })}
 
         {/* Lightweight crosshair + point markers (details update cleanly in the header strip above the chart) */}
         {hoverT && (

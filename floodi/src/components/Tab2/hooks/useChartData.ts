@@ -295,7 +295,7 @@ export function useChartData(config: AppConfiguration) {
           ...result.data, floodEvents: previous.data.floodEvents || result.data.floodEvents,
         } }));
       }).catch(() => { /* Retain the already usable foreground viewport. */ });
-      void fetchFloodEvents(locationId, 50).then(events => {
+      void fetchFloodEvents(locationId, 250).then(events => {
         if (revision !== fetchRevisionRef.current) return;
         setDataState(previous => ({ ...previous, data: { ...previous.data, floodEvents: events } }));
       }).catch(() => { /* Historical comparisons are optional. */ });

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { IonIcon, IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent, IonSkeletonText } from '@ionic/react';
-import { chevronForwardOutline, closeOutline, timeOutline } from 'ionicons/icons';
+import { chevronForwardOutline, closeOutline, timeOutline, videocamOutline } from 'ionicons/icons';
 import './AtmosphericOverlay.css';
 import { AtmosphereMetrics, WaterLevelMetric } from './MetricPills';
 import { ViewingTimePill } from './ViewingTimePill';
 import { HydrologicalInsightContent } from './HydrologicalInsightContent';
-import { useSimilarFloodEvents } from './useSimilarFloodEvents';
+import { useHistoricalComparisonEvents } from './useSimilarFloodEvents';
 import type { FloodEvent } from 'src/types/data';
 import {
   getFloodSeverityColor,
@@ -30,6 +30,11 @@ function formatFullPeakDate(date: Date): string {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+function formatInchDelta(deltaInches: number): string {
+  if (deltaInches === 0) return 'same height';
+  return `${Math.abs(deltaInches)}" ${deltaInches < 0 ? 'lower' : 'higher'}`;
 }
 
 interface AtmosphericOverlayProps {
@@ -100,13 +105,14 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
   const wlColor = getFloodSeverityColor(floodSeverity);
 
   const referenceNow = now ?? new Date();
-  const isNearOrAboveFlood = !loading && Number.isFinite(observedWaterLevel) && observedWaterLevel >= minorThreshold - 0.5;
-  const similarEvents = useSimilarFloodEvents(
+  // Only show past-flood comparison cues when the focused/scrolled level is at or above flood stage
+  const isAtOrAboveFlood = !loading && Number.isFinite(observedWaterLevel) && observedWaterLevel >= minorThreshold;
+  const comparison = useHistoricalComparisonEvents(
     floodEvents,
-    isNearOrAboveFlood ? observedWaterLevel : null,
+    isAtOrAboveFlood ? observedWaterLevel : null,
     referenceNow,
   );
-  const topSimilar = similarEvents[0] ?? null;
+  const topComparison = comparison.items[0] ?? null;
   const hasSurge = typeof surge === 'number' && Number.isFinite(surge);
 
   // Format time for the modal
@@ -233,17 +239,21 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
         </button>
       )}
 
-      {/* Stationary, mobile-friendly Past Similar Tide chip (replaces unclickable SVG hover tooltip) */}
-      {!loading && topSimilar && onJumpToTime && (
+      {/* Stationary, mobile-friendly Past Flood visual cue (lets users jump directly to historical webcam photos) */}
+      {!loading && topComparison && onJumpToTime && (
         <button
           type="button"
-          className="similar-peak-chip"
-          onClick={() => handleJumpSimilar(topSimilar)}
-          aria-label={`Jump to similar past tide on ${formatShortPeakDate(new Date(topSimilar.peakTime))} at ${topSimilar.peakValue.toFixed(2)} feet`}
+          className={`similar-peak-chip ${comparison.matchType === 'closest' ? 'is-closest' : 'is-similar'}`}
+          onClick={() => handleJumpSimilar(topComparison.event)}
+          aria-label={`Jump to ${comparison.matchType === 'closest' ? 'closest' : 'similar'} past flood on ${formatShortPeakDate(new Date(topComparison.event.peakTime))} at ${topComparison.event.peakValue.toFixed(2)} feet`}
         >
-          <IonIcon icon={timeOutline} aria-hidden="true" />
+          <span className="similar-peak-dot" aria-hidden="true" />
+          <IonIcon icon={videocamOutline} aria-hidden="true" />
           <span>
-            Past similar: <strong>{formatShortPeakDate(new Date(topSimilar.peakTime))}</strong> ({topSimilar.peakValue.toFixed(1)} ft)
+            {comparison.matchType === 'closest' ? 'Closest past flood: ' : 'Past similar: '}
+            <strong>{formatShortPeakDate(new Date(topComparison.event.peakTime))}</strong>
+            {' '}({topComparison.event.peakValue.toFixed(2)} ft
+            {comparison.matchType === 'closest' ? `, ${formatInchDelta(topComparison.deltaInches)}` : ''})
           </span>
           <IonIcon icon={chevronForwardOutline} aria-hidden="true" />
         </button>
@@ -298,15 +308,19 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
             statusLabel={statusLabel}
             onClose={() => setShowWLInfo(false)}
           >
-            {isNearOrAboveFlood && onJumpToTime && (
+            {isAtOrAboveFlood && onJumpToTime && (
               <div className="similar-events-section">
                 <div className="similar-events-header">
                   <IonIcon icon={timeOutline} aria-hidden="true" />
-                  <h3>View Similar Past Events</h3>
+                  <h3>
+                    {comparison.matchType === 'closest'
+                      ? 'Closest Past Floods on Record'
+                      : 'View Similar Past Events'}
+                  </h3>
                 </div>
-                {similarEvents.length > 0 ? (
+                {comparison.items.length > 0 ? (
                   <div className="similar-events-actions">
-                    {similarEvents.map(event => (
+                    {comparison.items.map(({ event, deltaInches }) => (
                       <IonButton
                         key={`${event.peakTime}-${event.peakValue}`}
                         expand="block"
@@ -315,12 +329,12 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
                         style={{ '--event-color': wlColor } as React.CSSProperties}
                         onClick={() => handleJumpSimilar(event)}
                       >
-                        {formatFullPeakDate(new Date(event.peakTime))} - {event.peakValue.toFixed(2)}&apos;
+                        {formatFullPeakDate(new Date(event.peakTime))} · {event.peakValue.toFixed(2)}&apos; ({formatInchDelta(deltaInches)})
                       </IonButton>
                     ))}
                   </div>
                 ) : (
-                  <p className="similar-events-empty">No historical flood peaks within 1 inch of this level.</p>
+                  <p className="similar-events-empty">No historical flood peaks on record within 1 ft of this level.</p>
                 )}
               </div>
             )}

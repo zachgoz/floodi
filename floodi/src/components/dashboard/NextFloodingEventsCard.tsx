@@ -29,7 +29,7 @@ import {
 } from 'src/utils/floodSeverity';
 import { ViewingTimePill } from './ViewingTimePill';
 import { HydrologicalInsightContent } from './HydrologicalInsightContent';
-import { useSimilarFloodEvents } from './useSimilarFloodEvents';
+import { useHistoricalComparisonEvents } from './useSimilarFloodEvents';
 import { ChartInfo } from './ChartInfo';
 import './NextFloodingEventsCard.css';
 import { floodWindows, inundation, eventDate, eventWindow, LOCAL_ZONE, type StreetCalibration } from 'src/utils/waterForecast';
@@ -143,7 +143,7 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
   const visibleEvents = showAllEvents ? upcomingEvents : upcomingEvents.slice(0, INITIAL_VISIBLE_EVENTS);
   const floodPossible = useMemo(() => buildUpcomingFloodEvents(upperForecastPoints, thresholds, now).length > 0, [upperForecastPoints, thresholds, now]);
   const hiddenEventCount = Math.max(0, upcomingEvents.length - visibleEvents.length);
-  const similarEvents = useSimilarFloodEvents(floodEvents, selectedEvent?.peakValue ?? null, now);
+  const comparison = useHistoricalComparisonEvents(floodEvents, selectedEvent?.peakValue ?? null, now);
   const selectedWind = selectedEvent ? nearestEventWeather(windPoints, selectedEvent.peakTime) : null;
   const selectedPrecip = selectedEvent ? nearestEventWeather(precipPoints, selectedEvent.peakTime) : null;
   const hasStreetCalibration = inundation(0, thresholds.minor, 'MLLW', streetCalibration).label === 'Max Street Inundation';
@@ -296,11 +296,15 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
               <div className="similar-events-section">
                 <div className="similar-events-header">
                   <IonIcon icon={timeOutline} />
-                  <h3>View Similar Past Events</h3>
+                  <h3>
+                    {comparison.matchType === 'closest'
+                      ? 'Closest Past Floods on Record'
+                      : 'View Similar Past Events'}
+                  </h3>
                 </div>
-                {similarEvents.length > 0 ? (
+                {comparison.items.length > 0 ? (
                   <div className="similar-events-actions">
-                    {similarEvents.map(event => (
+                    {comparison.items.map(({ event, deltaInches }) => (
                       <IonButton
                         key={`${event.peakTime}-${event.peakValue}`}
                         expand="block"
@@ -309,12 +313,12 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
                         style={{ '--event-color': selectedColor } as React.CSSProperties}
                         onClick={() => handleSimilarSelect(event)}
                       >
-                        {formatDateTime(new Date(event.peakTime))} - {event.peakValue.toFixed(2)}'
+                        {formatDateTime(new Date(event.peakTime))} · {event.peakValue.toFixed(2)}&apos; ({deltaInches === 0 ? 'same height' : `${Math.abs(deltaInches)}" ${deltaInches < 0 ? 'lower' : 'higher'}`})
                       </IonButton>
                     ))}
                   </div>
                 ) : (
-                  <p className="similar-events-empty">No historical flood peaks within 1 inch of this forecast peak.</p>
+                  <p className="similar-events-empty">No historical flood peaks on record within 1 ft of this forecast peak.</p>
                 )}
               </div>
             </HydrologicalInsightContent>

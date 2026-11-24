@@ -116,13 +116,38 @@ describe('AtmosphericOverlay decluttered readout & tappable past events', () => 
     );
 
     // Sep 20 (6.79 ft) is closer to 6.80 ft than Oct 15 (6.82 ft)
-    const pastChip = screen.getByRole('button', { name: /Jump to similar past tide on Sep 20 at 6\.79 feet/i });
+    const pastChip = screen.getByRole('button', { name: /Jump to similar past flood on Sep 20 at 6\.79 feet/i });
     expect(pastChip.tagName).toBe('BUTTON');
-    expect(pastChip).toHaveTextContent('Past similar: Sep 20 (6.8 ft)');
+    expect(pastChip).toHaveTextContent('Past similar: Sep 20 (6.79 ft)');
 
     fireEvent.click(pastChip);
     expect(onJumpToTime).toHaveBeenCalledTimes(1);
     expect(onJumpToTime.mock.calls[0][0]).toEqual(new Date('2026-09-20T11:15:00Z'));
+  });
+
+  it('shows Closest past flood with exact inch delta when forecast exceeds recorded peaks', () => {
+    const onJumpToTime = vi.fn();
+    render(
+      <AtmosphericOverlay
+        observedWaterLevel={7.24}
+        surge={1.45}
+        windSpeed={28}
+        windDirection={35}
+        precipitationAccumulation={0.78}
+        statusLabel="Predicted"
+        isLive={false}
+        targetTime={new Date('2026-11-25T12:45:00Z')}
+        thresholds={thresholds}
+        floodEvents={pastFloodEvents}
+        now={now}
+        onJumpToTime={onJumpToTime}
+      />,
+    );
+
+    const closestChip = screen.getByRole('button', { name: /Jump to closest past flood on Oct 15 at 6\.82 feet/i });
+    expect(closestChip).toHaveTextContent('Closest past flood: Oct 15 (6.82 ft, 5" lower)');
+    fireEvent.click(closestChip);
+    expect(onJumpToTime).toHaveBeenCalledWith(new Date('2026-10-15T13:30:00Z'));
   });
 
   it('exposes all matching similar past events inside the Flood Insight modal when opened', () => {

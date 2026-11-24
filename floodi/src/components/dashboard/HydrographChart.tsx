@@ -104,40 +104,6 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
         {sentinel}
       </div>
 
-      {controls}
-
-      <div className="chart-legend-row">
-        <div className="chart-legend" aria-label="Water level chart legend">
-          <span><i className="legend-line observed-line" />Observed</span>
-          {chartProps.observedPoints?.some(p => p.estimated) && <span><i className="legend-line estimated-line" />Estimated</span>}
-          <span><i className="legend-line tide-line" />Tide</span>
-          <span><i className="legend-line forecast-line" />{forecastLabel}</span>
-          {chartProps.experimentalPoints?.length && !onToggleChallenger ? <span><i className="legend-line experimental-line" />{experimentalLabel}</span> : null}
-        </div>
-        <div className="chart-legend-actions">
-          {onToggleChallenger && (
-            <label className="hydrograph-challenger-toggle" title={challengerToggleLabel}>
-              <input
-                type="checkbox"
-                aria-label={challengerToggleLabel}
-                checked={!!showChallenger}
-                onChange={onToggleChallenger}
-              />
-              <i className="legend-line experimental-line" />
-              <span className="challenger-toggle-text">{challengerToggleLabel}</span>
-              <span className="challenger-badge-mini">{challengerBadgeText}</span>
-            </label>
-          )}
-          <ChartInfo label="About water level forecasts">
-            <p>Water levels in feet MLLW. Line colors indicate flood thresholds. Both charts share their time window.</p>
-            {forecastDescription && <p>{forecastDescription}</p>}
-            {(chartProps.experimentalLower?.length || 0) > 1 && <p>Thin dashed lines show uncertainty bounds; weather forecast uncertainty can add further error.</p>}
-            {warnings?.map((warning, i) => <p key={i}>{warning}</p>)}
-            {chartProps.experimentalPoints?.length ? <p>{experimentalDescription || 'Purple: optional TimesFM-3 challenger comparison.'}</p> : null}
-            {onResetView && <button className="chart-info-action" onClick={onResetView}>Reset to default view</button>}
-          </ChartInfo>
-        </div>
-      </div>
       <div className="hydrograph-chart-wrapper">
         {loading && (
           <div className="chart-loading-overlay">
@@ -150,6 +116,44 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
           floodEvents={floodEvents} 
         />
       </div>
+
+      <div className="hydrograph-footer-controls">
+        {controls}
+
+        <div className="chart-legend-row">
+          <div className="chart-legend" aria-label="Water level chart legend">
+            <span><i className="legend-line observed-line" />Observed</span>
+            {chartProps.observedPoints?.some(p => p.estimated) && <span><i className="legend-line estimated-line" />Estimated</span>}
+            <span><i className="legend-line tide-line" />Tide</span>
+            <span><i className="legend-line forecast-line" />{forecastLabel}</span>
+            {chartProps.experimentalPoints?.length && !onToggleChallenger ? <span><i className="legend-line experimental-line" />{experimentalLabel}</span> : null}
+          </div>
+          <div className="chart-legend-actions">
+            {onToggleChallenger && (
+              <label className="hydrograph-challenger-toggle" title={challengerToggleLabel}>
+                <input
+                  type="checkbox"
+                  aria-label={challengerToggleLabel}
+                  checked={!!showChallenger}
+                  onChange={onToggleChallenger}
+                />
+                <i className="legend-line experimental-line" />
+                <span className="challenger-toggle-text">{challengerToggleLabel}</span>
+                <span className="challenger-badge-mini">{challengerBadgeText}</span>
+              </label>
+            )}
+            <ChartInfo label="About water level forecasts">
+              <p>Water levels in feet MLLW. Line colors indicate flood thresholds. Both charts share their time window.</p>
+              {forecastDescription && <p>{forecastDescription}</p>}
+              {(chartProps.experimentalLower?.length || 0) > 1 && <p>Thin dashed lines show uncertainty bounds; weather forecast uncertainty can add further error.</p>}
+              {warnings?.map((warning, i) => <p key={i}>{warning}</p>)}
+              {chartProps.experimentalPoints?.length ? <p>{experimentalDescription || 'Purple: optional TimesFM-3 challenger comparison.'}</p> : null}
+              {onResetView && <button className="chart-info-action" onClick={onResetView}>Reset to default view</button>}
+            </ChartInfo>
+          </div>
+        </div>
+      </div>
+
       {children}
     </section>
   );

@@ -223,6 +223,70 @@ describe('ChartViewer with comments', () => {
     expect(onHoverTimeChange).toHaveBeenLastCalledWith(null);
     expect(container.querySelector('.chart-scrub-indicator')).toBeNull();
   });
+
+  it('draws a single subtle past-flood reference tick ONLY when viewed level is above flood stage and renders clickable past peak pins', () => {
+    const onJumpToTime = vi.fn();
+    const pastPeakTime = new Date(start.getTime() + 20 * 60_000).toISOString();
+    const pastEvents = [{
+      startTime: start.toISOString(),
+      endTime: now.toISOString(),
+      peakTime: pastPeakTime,
+      peakValue: 6.20,
+      thresholdType: 'minor' as const,
+      thresholdValue: 5.6,
+      source: 'fiman' as const,
+    }];
+
+    // Below flood stage at playhead -> no horizontal reference tick
+    const { container, rerender } = render(
+      <ChartViewer
+        locationId="carolina-beach"
+        observedPoints={[pt(start, 4.1), pt(now, 4.8)]}
+        predictedPoints={[pt(start, 4.0), pt(end, 4.9)]}
+        adjustedPoints={[pt(now, 4.8), pt(end, 4.9)]}
+        deltaPoints={[]}
+        domainStart={start}
+        domainEnd={end}
+        now={now}
+        thresholds={{ minor: 5.6, moderate: 7.0, major: 7.7, extreme: 8.5 }}
+        showDelta={false}
+        timezone="local"
+        floodEvents={pastEvents}
+        onJumpToTime={onJumpToTime}
+      />,
+    );
+
+    expect(container.querySelector('.past-flood-reference-tick')).toBeNull();
+    // Past flood pin inside visible viewport IS clickable
+    const pin = container.querySelector('.historical-flood-pin');
+    expect(pin).not.toBeNull();
+    fireEvent.click(pin!);
+    expect(onJumpToTime).toHaveBeenCalledTimes(1);
+    expect(onJumpToTime).toHaveBeenCalledWith(new Date(pastPeakTime));
+
+    // Above flood stage at playhead -> horizontal reference tick appears cleanly
+    rerender(
+      <ChartViewer
+        locationId="carolina-beach"
+        observedPoints={[pt(start, 4.1), pt(now, 6.4)]}
+        predictedPoints={[pt(start, 4.0), pt(end, 6.4)]}
+        adjustedPoints={[pt(now, 6.4), pt(end, 6.4)]}
+        deltaPoints={[]}
+        domainStart={start}
+        domainEnd={end}
+        now={now}
+        thresholds={{ minor: 5.6, moderate: 7.0, major: 7.7, extreme: 8.5 }}
+        showDelta={false}
+        timezone="local"
+        floodEvents={pastEvents}
+        onJumpToTime={onJumpToTime}
+      />,
+    );
+
+    const refTick = container.querySelector('.past-flood-reference-tick');
+    expect(refTick).not.toBeNull();
+    expect(refTick?.textContent).toContain("6.20'");
+  });
 });
 
 
