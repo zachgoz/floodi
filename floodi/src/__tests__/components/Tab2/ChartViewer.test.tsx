@@ -178,6 +178,51 @@ describe('ChartViewer with comments', () => {
     fireEvent.keyDown(plot, { key: 'n', metaKey: true });
     expect(onTimePointSelect).not.toHaveBeenCalled();
   });
+
+  it('scrubs with a lightweight crosshair and emits onHoverTimeChange without rendering an unclickable floating SVG tooltip box', () => {
+    const onHoverTimeChange = vi.fn();
+    const { container } = render(
+      <ChartViewer
+        locationId="carolina-beach"
+        observedPoints={[pt(start, 4.1), pt(now, 5.2)]}
+        predictedPoints={[pt(start, 4.0), pt(end, 6.4)]}
+        adjustedPoints={[pt(now, 5.2), pt(end, 6.8)]}
+        deltaPoints={[]}
+        domainStart={start}
+        domainEnd={end}
+        now={now}
+        thresholds={{ minor: 5.6, moderate: 7.0, major: 7.7, extreme: 8.5 }}
+        showDelta={false}
+        timezone="local"
+        onHoverTimeChange={onHoverTimeChange}
+      />,
+    );
+
+    const svg = container.querySelector('svg')!;
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 900, height: 420, right: 900, bottom: 420, x: 0, y: 0, toJSON: () => {},
+    });
+
+    const moveEvent = new MouseEvent('pointermove', { bubbles: true, clientX: 600, clientY: 180 });
+    Object.defineProperty(moveEvent, 'pointerId', { value: 1 });
+    Object.defineProperty(moveEvent, 'pointerType', { value: 'mouse' });
+    fireEvent(svg, moveEvent);
+
+    expect(onHoverTimeChange).toHaveBeenCalledTimes(1);
+    const emittedTime = onHoverTimeChange.mock.calls[0][0] as Date;
+    expect(emittedTime).toBeInstanceOf(Date);
+    expect(emittedTime.getTime()).toBeGreaterThan(start.getTime());
+    expect(emittedTime.getTime()).toBeLessThanOrEqual(end.getTime());
+
+    // Crosshair indicator renders cleanly, while the old floating tooltip box & unclickable jump link are gone
+    expect(container.querySelector('.chart-scrub-indicator')).not.toBeNull();
+    expect(container.querySelector('rect[fill="var(--chart-tooltip-bg)"]')).toBeNull();
+    expect(screen.queryByText(/Jump to last similar/i)).toBeNull();
+
+    fireEvent.pointerLeave(svg);
+    expect(onHoverTimeChange).toHaveBeenLastCalledWith(null);
+    expect(container.querySelector('.chart-scrub-indicator')).toBeNull();
+  });
 });
 
 

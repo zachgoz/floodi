@@ -127,6 +127,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   const [resetCount, setResetCount] = useState(0);
   const [currentViewport, setCurrentViewport] = useState<{ start: Date; end: Date; focusTime: Date } | null>(null);
   const [manualFocusTime, setManualFocusTime] = useState<Date | null>(null);
+  const [hoverTime, setHoverTime] = useState<Date | null>(null);
   const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
   const [viewportRequest, setViewportRequest] = useState<{ start: Date; end: Date; id: number } | undefined>();
   const [selectedCameraId, setSelectedCameraId] = useState<string>(WEBCAMS[0].id);
@@ -420,7 +421,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   }, [isTimesFmPrimary, challengerUpperPoints, anchoredChallengerUpper, anchoredChallengerTotal, selectedBounds.upper, processedData?.observedPoints, processedData?.predictedPoints, operationalForecastPoints, FORECAST_INTERPOLATE_GAP_MS]);
 
   const operationalForecastLabel = isTimesFmPrimary
-    ? 'Forecast (TimesFM AI + NOAA)'
+    ? 'Forecast'
     : selectedForecast.method === 'steady'
     ? 'Steady forecast'
     : 'Tide only';
@@ -446,13 +447,13 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     });
   }, [loading, error, processedData]);
 
-  // Modularized atmospheric and simulation state
+  // Modularized atmospheric and simulation state (live-updates cleanly when hovering/scrubbing the chart)
   const {
     activeAtmo,
     simulationLevel,
     setSimulationLevel,
     setIsUserSimulating,
-  } = useAtmosphericState(forecastData, manualFocusTime, currentViewport);
+  } = useAtmosphericState(forecastData, hoverTime ?? manualFocusTime, currentViewport);
 
   const resetToLive = useCallback(() => {
     lastPersistedDomainRef.current = null;
@@ -711,55 +712,9 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
           />
         </IonRefresher>
 
-        {/* Main dashboard — always render the shell once we have a station or are loading */}
+        {/* Main dashboard — chart-first layout once we have a station or are loading */}
         {(processedData || error || loading) && (
           <div className="dashboard-scroll-container">
-            {/* Quick jump navigation pill bar for rapid mobile exploration */}
-            <nav className="dashboard-jump-nav" aria-label="Dashboard sections">
-              <button
-                type="button"
-                className="jump-chip"
-                onClick={() => document.getElementById('dashboard-section-events')?.scrollIntoView({ behavior: 'smooth' })}
-              >
-                Overview
-              </button>
-              <button
-                type="button"
-                className="jump-chip"
-                onClick={() => document.getElementById('dashboard-section-chart')?.scrollIntoView({ behavior: 'smooth' })}
-              >
-                Tide Chart
-              </button>
-              <button
-                type="button"
-                className="jump-chip"
-                onClick={() => document.getElementById('dashboard-section-outlook')?.scrollIntoView({ behavior: 'smooth' })}
-              >
-                Factors
-              </button>
-              <button
-                type="button"
-                className="jump-chip"
-                onClick={() => document.getElementById('dashboard-section-cams')?.scrollIntoView({ behavior: 'smooth' })}
-              >
-                Live Cams
-              </button>
-              <button
-                type="button"
-                className="jump-chip"
-                onClick={() => document.getElementById('dashboard-section-map')?.scrollIntoView({ behavior: 'smooth' })}
-              >
-                Street Map
-              </button>
-              <button
-                type="button"
-                className="jump-chip"
-                onClick={() => setShowAccuracyModal(true)}
-              >
-                Accuracy Audit
-              </button>
-            </nav>
-
             <div className="dashboard-grid">
               {(processedData || loading) && (
                 <div className="dashboard-sidebar" id="dashboard-section-events">
@@ -872,6 +827,9 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                               loading={loading}
                               showWLInfo={showWLInfo}
                               onShowWLInfoChange={setShowWLInfo}
+                              floodEvents={processedData?.floodEvents}
+                              now={processedData?.timeDomain.now}
+                              onJumpToTime={handleTimeChange}
                             />}
                           </div>
                         }
@@ -908,6 +866,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         onViewportChange={handleViewportChange}
                         onViewportDomainCommit={persistViewedDomain}
                         onDomainChangeRequest={handleDomainChangeRequest}
+                        onHoverTimeChange={setHoverTime}
                         loading={loading}
                         mode={config.timeRange.mode}
                         onResetToLive={resetToLive}

@@ -3,11 +3,9 @@ import React, { useRef, useEffect, useState, useMemo, useCallback, useId } from 
 import type { Point, ChartConfig, WindPoint, PrecipPoint } from './types';
 import { WeatherTimeline, WEATHER_TIMELINE_HEIGHT } from './WeatherTimeline';
 import { HourlyWeatherDetails } from './HourlyWeatherDetails';
-import { compassDirection } from 'src/utils/weatherTimeline';
 import { useChartInteraction, formatTooltipTime, findNearestPoint } from './hooks/useChartInteraction';
 import { isCommentTimeRange, type Comment, type CommentTimeRange } from 'src/types/comment';
-import { findLastSimilarLevel } from 'src/lib/dataService';
-import type { WaterLevelPeak, FloodEvent } from 'src/types/data';
+import type { FloodEvent } from 'src/types/data';
 import { getTimeRangeFromChartSelection } from 'src/utils/timeRangeHelpers';
 import { findTideExtrema } from 'src/utils/tideExtrema';
 import { IonButton, IonIcon, IonText } from '@ionic/react';
@@ -242,43 +240,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   const [size, setSize] = useState({ w: 900, h: 420 });
   const [hourlyWeather, setHourlyWeather] = useState(false);
 
-  const { hoverT, setHoverT, calculateTooltipData, calculateCommentTooltipData } = useChartInteraction();
-  const [lastSimilarPeak, setLastSimilarPeak] = useState<WaterLevelPeak | null>(null);
-
-  const handleJumpToPeak = (peak: WaterLevelPeak) => {
-    onJumpToTime?.(new Date(peak.t));
-  };
-
-  useEffect(() => {
-    if (!hoverT) {
-      setLastSimilarPeak(null);
-      return;
-    }
-
-    // Only look for similar peaks if we are hovering on a prediction (future)
-    if (hoverT.getTime() < now.getTime()) {
-      setLastSimilarPeak(null);
-      return;
-    }
-
-    // Find the level at hoverT
-    const nearestPoint = findNearestPoint(adjustedPoints, hoverT) || findNearestPoint(predictedPoints, hoverT);
-    if (!nearestPoint || nearestPoint.point.v < thresholds.minor - 1.0) { 
-      setLastSimilarPeak(null);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-       try {
-         const peak = await findLastSimilarLevel(locationId, nearestPoint.point.v, now);
-         setLastSimilarPeak(peak);
-       } catch (err) {
-         console.warn('Failed to fetch similar peak:', err);
-       }
-    }, 200);
-
-    return () => clearTimeout(timer);
-  }, [hoverT, now, adjustedPoints, predictedPoints, locationId, thresholds.minor]);
+  const { hoverT, setHoverT, calculateTooltipData } = useChartInteraction();
 
   // Detect touch-primary devices (iOS / Android) once at mount
   const isTouchDeviceRef = useRef(
@@ -530,10 +492,11 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     const svg = svgRef.current;
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
+    if (!rect.width || !Number.isFinite(event.clientX)) return null;
     const pixelX = event.clientX - rect.left;
     const fraction = Math.max(0, Math.min(1, (pixelX - margins.l * (rect.width / size.w)) / (innerW * (rect.width / size.w))));
     const timeMs = t0 + fraction * (t1 - t0);
-    return new Date(timeMs);
+    return Number.isFinite(timeMs) ? new Date(timeMs) : null;
   };
 
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -868,11 +831,11 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally empty – all current values accessed via refs
 
-  // Tooltip data calculation
+  // Scrub crosshair point calculation (readout values live in the header strip above the chart)
   const tooltipData = useMemo(() => {
     if (!hoverT) return null;
-    return calculateTooltipData(hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, now, thresholds.minor, showDelta, viewMode, lastSimilarPeak);
-  }, [hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, thresholds.minor, showDelta, viewMode, calculateTooltipData, lastSimilarPeak]);
+    return calculateTooltipData(hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, now, thresholds.minor, showDelta, viewMode, null);
+  }, [hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, now, thresholds.minor, showDelta, viewMode, calculateTooltipData]);
 
   /** Handle reset of both local zoom and global absolute range */
   const handleReset = () => {
@@ -1276,196 +1239,33 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
 
 
-        {/* Interactive tooltip (active on hover and touch scrubbing) */}
-        {Boolean(tooltipData || (showComments && comments.length > 0)) && hoverT && (
-          <g>
-            {/* Crosshair */}
+        {/* Lightweight crosshair + point markers (details update cleanly in the header strip above the chart) */}
+        {hoverT && (
+          <g className="chart-scrub-indicator" pointerEvents="none">
             <line
               x1={xOf(hoverT)}
               x2={xOf(hoverT)}
               y1={margins.t}
               y2={margins.t + innerH}
-              stroke="#bbb"
+              stroke="var(--chart-axis-text, #94a3b8)"
+              strokeWidth={1.25}
               strokeDasharray="3 3"
+              opacity={0.75}
             />
 
-            {/* Data point markers */}
             {tooltipData?.rows?.map((row, i) => (
               row.point && (
                 <circle
                   key={`marker-${i}`}
                   cx={xOf(row.point.t)}
                   cy={yOf(row.point.v)}
-                  r={3.5}
+                  r={4.5}
                   fill={row.color}
-                  stroke="#000"
+                  stroke="var(--chart-bg, #ffffff)"
+                  strokeWidth={2}
                 />
               )
             ))}
-
-            {/* Tooltip box */}
-            {(() => {
-              const baseX = xOf(hoverT) + 8;
-              const boxWidth = 230;
-              const lineHeight = 14;
-              const rowsCount = tooltipData ? tooltipData.rows.length : 0;
-              const commentTip = showComments ? calculateCommentTooltipData(hoverT, comments, { max: 3 }) : null;
-              const commentRows = commentTip ? Math.min(3, commentTip.preview.length) + 1 : 0;
-
-              // Find nearest-hour wind & precip
-              const hoverMs = hoverT.getTime();
-              const nearestWind = windPoints.length > 0
-                ? windPoints.reduce((best, wp) =>
-                  Math.abs(wp.t.getTime() - hoverMs) < Math.abs(best.t.getTime() - hoverMs) ? wp : best
-                )
-                : null;
-              const nearestPrecip = precipPoints.length > 0
-                ? precipPoints.reduce((best, pp) =>
-                  Math.abs(pp.t.getTime() - hoverMs) < Math.abs(best.t.getTime() - hoverMs) ? pp : best
-                )
-                : null;
-              const atmoItems = [
-                ...(nearestWind && Math.abs(+nearestWind.t - hoverMs) < 3600000 && Number.isFinite(nearestWind.speed) ? [{ type: 'wind', data: nearestWind }] : []),
-                ...(nearestPrecip && Math.abs(+nearestPrecip.t - hoverMs) < 3600000 && Number.isFinite(nearestPrecip.value) && nearestPrecip.value >= 0 ? [{ type: 'precip', data: nearestPrecip }] : []),
-              ];
-              const extraRows = atmoItems.length;
-
-              const similarRow = lastSimilarPeak ? 1.4 : 0;
-              const boxHeight = (rowsCount + 1 + commentRows + extraRows + similarRow) * lineHeight + 12;
-              const adjustedX = Math.min(baseX, margins.l + innerW - boxWidth - 4);
-
-              let baseY = margins.t + 8;
-              if (tooltipData && tooltipData.rows.length > 0) {
-                const targetPoint = tooltipData.rows.find(r => r.point)?.point;
-                if (targetPoint) {
-                  // float tooltip above the point, or below if it hits top
-                  const pointY = yOf(targetPoint.v);
-                  if (pointY - boxHeight - 12 > margins.t) {
-                    baseY = pointY - boxHeight - 12;
-                  } else {
-                    baseY = pointY + 12;
-                  }
-                }
-              }
-              // final clamp to chart area
-              baseY = Math.max(margins.t, Math.min(baseY, margins.t + innerH - boxHeight));
-
-              return (
-                <g>
-                  <rect
-                    x={adjustedX}
-                    y={baseY}
-                    width={boxWidth}
-                    height={boxHeight}
-                    rx={6}
-                    ry={6}
-                    fill="var(--chart-tooltip-bg)"
-                    stroke="var(--chart-tooltip-stroke)"
-                  />
-                  <text
-                    x={adjustedX + 8}
-                    y={baseY + 16}
-                    fill="var(--chart-label-text)"
-                    fontSize="12"
-                  >
-                    {formatTooltipTime(hoverT, timezone)} {timezone === 'gmt' ? 'GMT' : ''}
-                  </text>
-                  {tooltipData && tooltipData.rows.map((row, i) => (
-                    <g key={`tooltip-row-${i}`}>
-                      <line
-                        x1={adjustedX + 6}
-                        x2={adjustedX + 16}
-                        y1={baseY + 30 + i * lineHeight - 4}
-                        y2={baseY + 30 + i * lineHeight - 4}
-                        stroke={row.color}
-                        strokeWidth={2}
-                        strokeDasharray={row.dashed ? '5 4' : undefined}
-                      />
-                      <text
-                        x={adjustedX + 20}
-                        y={baseY + 30 + i * lineHeight}
-                        fill="var(--chart-label-text)"
-                        fontSize="12"
-                      >
-                        {row.label}: {row.value}
-                      </text>
-                    </g>
-                  ))}
-
-                  {lastSimilarPeak && (
-                    <g 
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => handleJumpToPeak(lastSimilarPeak)}
-                    >
-                      <rect 
-                        x={adjustedX + 4}
-                        y={baseY + 16 + (rowsCount + 1 + extraRows) * lineHeight - 10}
-                        width={boxWidth - 8}
-                        height={lineHeight + 4}
-                        fill="rgba(52, 152, 219, 0.1)"
-                        rx={4}
-                      />
-                      <text
-                        x={adjustedX + 8}
-                        y={baseY + 16 + (rowsCount + 1 + extraRows) * lineHeight + 2}
-                        fill="#3498db"
-                        fontSize="10"
-                        fontWeight="bold"
-                      >
-                        Jump to last similar: {lastSimilarPeak.v.toFixed(1)}ft ({new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: '2-digit' }).format(new Date(lastSimilarPeak.t))})
-                      </text>
-                    </g>
-                  )}
-                  {/* Atmospheric rows with icons */}
-                  {atmoItems.map((item, i) => {
-                    const y = baseY + 30 + (rowsCount + i) * lineHeight;
-                    if (item.type === 'wind') {
-                      const wind = item.data as WindPoint;
-                      const color = 'var(--chart-label-text)';
-                      return (
-                        <g key="atmo-wind" className="sentinel-metrics">
-                          {Number.isFinite(wind.dir) && <g transform={`translate(${adjustedX + 14}, ${y - 4}) rotate(${wind.dir + 180})`}>
-                            <line x1={0} y1={4} x2={0} y2={-4} stroke={color} strokeWidth={1.5} strokeLinecap="round" />
-                            <path d="M -2 -2 L 0 -5 L 2 -2" fill={color} />
-                          </g>}
-                          <text x={adjustedX + 26} y={y} fill={color} fontSize="11" className="metric-label">
-                            Wind: {wind.speed.toFixed(0)} mph {compassDirection(wind.dir)}
-                          </text>
-                        </g>
-                      );
-                    } else {
-                      const precip = item.data as PrecipPoint;
-                      const color = 'var(--ion-color-primary, #0077b6)';
-                      return (
-                        <g key="atmo-precip" className="sentinel-metrics">
-                          <path 
-                            d="M 14 0 Q 14 3 12 5 Q 10 7 7 7 Q 4 7 2 5 Q 0 3 0 0 Q 0 -4 7 -8 Q 14 -4 14 0 Z" 
-                            fill={color} 
-                            transform={`translate(${adjustedX + 8}, ${y - 4}) scale(0.6)`}
-                          />
-                          <text x={adjustedX + 26} y={y} fill={color} fontSize="11">
-                            Precip: {precip.value.toFixed(2)} in
-                          </text>
-                        </g>
-                      );
-                    }
-                  })}
-                  {commentTip && (
-                    <>
-                      <line x1={adjustedX + 6} x2={adjustedX + boxWidth - 6} y1={baseY + 30 + (rowsCount + extraRows) * lineHeight - 8} y2={baseY + 30 + (rowsCount + extraRows) * lineHeight - 8} stroke="var(--chart-grid)" />
-                      <text x={adjustedX + 8} y={baseY + 30 + (rowsCount + extraRows) * lineHeight} fill="var(--chart-label-text)" fontSize="12">
-                        Comments: {commentTip.total}
-                      </text>
-                      {commentTip.preview.map((c, j) => (
-                        <text key={`ctip-${c.id}`} x={adjustedX + 8} y={baseY + 30 + (rowsCount + extraRows + 1 + j) * lineHeight} fill="var(--chart-axis-text)" fontSize="11">
-                          {c.author}: {c.contentPreview}
-                        </text>
-                      ))}
-                    </>
-                  )}
-                </g>
-              );
-            })()}
           </g>
         )}
 

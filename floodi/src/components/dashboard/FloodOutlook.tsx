@@ -149,7 +149,7 @@ export function FloodOutlook({
         </div>
         <span className="confidence-badge">
           {operationalActive
-            ? "TimesFM AI + NOAA Operational"
+            ? "Operational Model"
             : selection.confidence === "limited"
             ? "Active 72-Hour Outlook"
             : "Outlook unavailable"}
@@ -221,15 +221,6 @@ export function FloodOutlook({
           </div>
         </div>
       )}
-
-      {/* Plain English Resident Overview */}
-      <p className="outlook-plain-summary">
-        {nextEvent || floodExpected
-          ? `Water levels are projected to crest above the ${effectiveMinorFt.toFixed(1)} ft minor flood threshold during upcoming high tide windows. Low-lying roads along Canal Dr and Florida Ave may experience tidal inundation.`
-          : floodPossible
-          ? `Upcoming high tides are forecast to peak just below the ${effectiveMinorFt.toFixed(1)} ft minor flood stage. While no flooding is officially forecast, minor street puddles along Canal Dr and Florida Ave are possible if coastal winds push extra water into the sound.`
-          : `Water levels are projected to remain safely below the ${effectiveMinorFt.toFixed(1)} ft minor flood stage across the active forecast horizon.`}
-      </p>
 
       {updatedAtIso ? (
         <>

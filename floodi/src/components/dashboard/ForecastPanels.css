@@ -103,21 +103,21 @@
 .surge-svg:focus-visible { outline:2px solid var(--ion-color-primary); outline-offset:3px; }
 
 .dashboard-outlook-card.forecast-panel {
-  padding: 22px 24px;
-  margin-bottom: 24px;
-  border-radius: 24px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+  border-radius: 20px;
   background: var(--dash-card-bg, var(--ion-card-background, #fff));
   border: 1px solid var(--chart-grid, rgba(220, 228, 233, 0.6));
-  box-shadow: 0 4px 24px rgba(22, 54, 73, 0.05);
+  box-shadow: 0 2px 16px rgba(22, 54, 73, 0.05);
 }
 .dashboard-outlook-card .forecast-panel-heading {
-  gap: 12px;
-  align-items: flex-start;
-  margin-bottom: 14px;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
 }
 .dashboard-outlook-card .outlook-risk-label {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1.0625rem;
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--dash-title-color, var(--ion-text-color));
@@ -126,16 +126,60 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 12px;
+  padding: 4px 10px;
   border-radius: 9999px;
-  background: rgba(34, 197, 94, 0.1);
-  color: #16a34a;
-  border: 1px solid rgba(34, 197, 94, 0.25);
-  font-size: 0.75rem;
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803d;
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
+
+@media (prefers-color-scheme: dark) {
+  .dashboard-outlook-card .confidence-badge {
+    background: rgba(34, 197, 94, 0.14);
+    color: #86efac;
+    border-color: rgba(74, 222, 128, 0.3);
+  }
+  .is-flooding .hero-status-headline,
+  .metric-card-sub.sub-danger {
+    color: #fca5a5;
+  }
+  .is-possible .hero-status-headline {
+    color: #fde047;
+  }
+  .is-safe .hero-status-headline,
+  .metric-card-sub.sub-safe {
+    color: #86efac;
+  }
+  .thresh-pill.minor { color: #fde047; }
+  .thresh-pill.moderate { color: #fdba74; }
+  .thresh-pill.major { color: #fca5a5; }
+  .thresh-pill.extreme { color: #d8b4fe; }
+}
+
+.ion-palette-dark .dashboard-outlook-card .confidence-badge {
+  background: rgba(34, 197, 94, 0.14);
+  color: #86efac;
+  border-color: rgba(74, 222, 128, 0.3);
+}
+.ion-palette-dark .is-flooding .hero-status-headline,
+.ion-palette-dark .metric-card-sub.sub-danger {
+  color: #fca5a5;
+}
+.ion-palette-dark .is-possible .hero-status-headline {
+  color: #fde047;
+}
+.ion-palette-dark .is-safe .hero-status-headline,
+.ion-palette-dark .metric-card-sub.sub-safe {
+  color: #86efac;
+}
+.ion-palette-dark .thresh-pill.minor { color: #fde047; }
+.ion-palette-dark .thresh-pill.moderate { color: #fdba74; }
+.ion-palette-dark .thresh-pill.major { color: #fca5a5; }
+.ion-palette-dark .thresh-pill.extreme { color: #d8b4fe; }
 
 /* Novice-Friendly Hero Status Alert */
 .outlook-hero-card {
