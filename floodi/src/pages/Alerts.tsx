@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { IonButton, IonContent, IonHeader, IonIcon, IonPage, IonTitle, IonToolbar } from '@ionic/react';
-import { notificationsOutline, mailOutline, checkmarkCircleOutline } from 'ionicons/icons';
+import { notificationsOutline, mailOutline, checkmarkCircleOutline, settingsOutline } from 'ionicons/icons';
 import { sendEmailVerification } from 'firebase/auth';
 import { useCitizenAlerts } from 'src/components/alerts/useCitizenAlerts';
 import * as citizenAlertsLib from 'src/lib/citizenAlerts';
@@ -10,7 +10,10 @@ import type {
   PublicFloodAdvisory,
 } from 'src/lib/citizenAlerts';
 import { trackEvent } from 'src/lib/analytics';
-import { OutlookAndEventsSection } from 'src/components/alerts/OutlookAndEventsSection';
+import { LOCATIONS } from 'src/constants/locations';
+import { useSettingsStorage } from 'src/components/Tab2/hooks/useSettingsStorage';
+import { useOperationalForecast } from 'src/components/dashboard/useOperationalForecast';
+import { reconcileOutlookAdvisories } from 'src/components/alerts/reconcileAdvisories';
 import 'src/components/alerts/Alerts.css';
 
 const FALLBACK_PREFERENCES: CitizenAlertPreferences = {
@@ -56,14 +59,17 @@ const bulletinCategoryLabels: Record<string, string> = {
   all_clear: 'All Clear',
 };
 
-const timeLabel = (at: string) =>
+export const formatAlertDateTime = (at: string | Date): string =>
   new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
+    weekday: 'short',
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-  }).format(new Date(at));
+  })
+    .format(typeof at === 'string' ? new Date(at) : at)
+    .replace(/\s+at\s+/i, ', ');
 
 function formatDurationMinutes(mins: number): string {
   if (!Number.isFinite(mins) || mins <= 0) return '< 30m';
@@ -124,10 +130,358 @@ function getOptionalChartUrl(generatedAt?: string): string {
   return '/api/alerts?chart=1';
 }
 
+/**
+ * Parent Page (`/alerts`): Unified Outlook & Flood Advisories.
+ * Reconciles backend advisory snapshots with the live 6-minute operational
+ * forecast curve so crest heights and weekday peak timings match the
+ * interactive hydrograph identically. Email alert configuration lives on the
+ * dedicated child page (`/alerts/settings`).
+ */
 export function Alerts() {
   const hookState = useCitizenAlerts();
-  const { data, busy, error, refresh, change, user, authLoading } = hookState;
+  const { data, user } = hookState;
   const feed = 'feed' in hookState ? hookState.feed : null;
+
+  const { config } = useSettingsStorage();
+  const {
+    loading: forecastLoading,
+    processedData,
+    operationalForecastPoints,
+    operationalForecastDescription,
+  } = useOperationalForecast(config);
+
+  const [showAllWindows, setShowAllWindows] = useState(false);
+
+  useEffect(() => {
+    trackEvent('alert_outlook_view');
+  }, []);
+
+  const locationMeta = LOCATIONS[config.locationId];
+  const locationLabel = locationMeta
+    ? `${locationMeta.name}, ${locationMeta.state}`
+    : `${config.location.name}, ${config.location.state}`;
+  const referenceNow = processedData?.timeDomain.now ?? (feed?.generatedAt ? new Date(feed.generatedAt) : new Date());
+
+  const reconciled = useMemo(
+    () =>
+      reconcileOutlookAdvisories({
+        feedAdvisories: feed?.activeAdvisories ?? [],
+        feedNextPeakFt: feed?.nextPeakFt ?? null,
+        feedNextPeakAt: feed?.nextPeakAt ?? null,
+        feedCurrentSurgeFt: feed?.currentSurgeFt ?? null,
+        operationalForecastPoints,
+        predictedPoints: processedData?.predictedPoints ?? [],
+        deltaPoints: processedData?.deltaPoints ?? [],
+        windPoints: processedData?.windPoints ?? [],
+        precipPoints: processedData?.precipPoints ?? [],
+        thresholds: config.thresholds,
+        now: referenceNow,
+        streetCalibration: locationMeta?.streetCalibration,
+      }),
+    [feed, operationalForecastPoints, processedData, config.thresholds, referenceNow, locationMeta?.streetCalibration]
+  );
+
+  const subscription = data?.subscription;
+  const enrolled = !!subscription && subscription.status !== 'unsubscribed';
+  const chartUrl = getOptionalChartUrl(feed?.generatedAt);
+
+  const floodAdvisories = reconciled.advisories.filter(a => !a.isProbabilisticWatch);
+  const watchAdvisories = reconciled.advisories.filter(a => a.isProbabilisticWatch);
+  const visibleAdvisories = showAllWindows ? reconciled.advisories : reconciled.advisories.slice(0, 3);
+  const hiddenCount = Math.max(0, reconciled.advisories.length - visibleAdvisories.length);
+
+  const emailStatusText =
+    subscription?.status === 'active'
+      ? 'Alerts On'
+      : subscription?.status === 'verification-required'
+      ? 'Verify Email'
+      : enrolled
+      ? statusLabels[subscription.status]
+      : 'Email Alerts';
+
+  return (
+    <IonPage>
+      <IonHeader>
+        <IonToolbar>
+          <div className="alerts-toolbar-row">
+            <Link to="/tab2" className="alerts-back-link">
+              ← Forecast
+            </Link>
+            <IonTitle className="alerts-toolbar-title">Outlook &amp; Alerts</IonTitle>
+            <Link
+              to="/alerts/settings"
+              className={`alerts-settings-link${subscription?.status === 'active' ? ' is-active' : ''}`}
+              aria-label="Open email alert settings"
+            >
+              <IonIcon icon={settingsOutline} aria-hidden="true" />
+              <span>{emailStatusText}</span>
+            </Link>
+          </div>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent>
+        <div className="alerts-page">
+          {/* Unified Flood Outlook & Active Advisories (Single Source of Truth) */}
+          <section className="alerts-card alerts-outlook-card" aria-label={`Flood outlook and advisories for ${locationLabel}`}>
+            <div className="alerts-card-heading">
+              <div>
+                <p className="alerts-eyebrow">{locationLabel}</p>
+                <h1>
+                  {floodAdvisories.length > 0
+                    ? floodAdvisories[0].startClipped
+                      ? 'Flooding underway'
+                      : `${floodAdvisories.length} Upcoming Flood ${floodAdvisories.length === 1 ? 'Window' : 'Windows'}`
+                    : watchAdvisories.length > 0
+                    ? 'Near-Threshold High Tide Watch'
+                    : 'No Flooding Forecast'}
+                </h1>
+              </div>
+              {(feed?.generatedAt || reconciled.forecastHorizon) && (
+                <span className="alerts-bulletin-time">
+                  {feed?.generatedAt
+                    ? `Updated ${formatAlertDateTime(feed.generatedAt)} ET`
+                    : reconciled.forecastHorizon
+                    ? `Through ${formatAlertDateTime(reconciled.forecastHorizon)} ET`
+                    : ''}
+                </span>
+              )}
+            </div>
+
+            {forecastLoading && reconciled.advisories.length === 0 && !feed ? (
+              <p role="status" className="alerts-bulletin-summary">
+                Loading unified flood outlook…
+              </p>
+            ) : reconciled.advisories.length > 0 ? (
+              <>
+                <ul className="alerts-advisory-list" role="list">
+                  {visibleAdvisories.map(adv => {
+                    const topDrivers = topDriversForAdvisory(adv);
+                    const refNowMs = referenceNow.getTime();
+                    const hoursUntilStart = (Date.parse(adv.startAt) - refNowMs) / 3600_000;
+                    const phaseText = adv.isExtendedOutlook
+                      ? 'Extended Outlook'
+                      : adv.startClipped || hoursUntilStart <= 0
+                      ? 'Flooding Now'
+                      : hoursUntilStart <= 3.5
+                      ? `Imminent · In ${hoursUntilStart.toFixed(1)}h`
+                      : `Upcoming · In ${Math.round(hoursUntilStart)}h`;
+
+                    return (
+                      <li
+                        key={adv.episodeId}
+                        className={`alerts-advisory-item sev-${adv.isProbabilisticWatch ? 'watch' : adv.severity}`}
+                      >
+                        <div className="alerts-advisory-top">
+                          <span className={`alerts-sev-pill ${adv.isProbabilisticWatch ? 'watch' : adv.severity}`}>
+                            {adv.isProbabilisticWatch ? 'Near-Threshold Watch' : severityLabels[adv.severity]}
+                          </span>
+                          <span className="alerts-phase-tag">{phaseText}</span>
+                        </div>
+
+                        <div className="alerts-advisory-grid">
+                          <div className="alerts-metric-box">
+                            <span>Forecast Crest</span>
+                            <strong>
+                              {adv.peakFt.toFixed(2)} ft MLLW
+                              {adv.isProbabilisticWatch && typeof adv.upperPeakFt === 'number'
+                                ? ` (P90 ${adv.upperPeakFt.toFixed(2)} ft)`
+                                : ''}
+                            </strong>
+                          </div>
+                          <div className="alerts-metric-box">
+                            <span>Peak Timing</span>
+                            <strong>{formatAlertDateTime(adv.peakAt)} ET</strong>
+                          </div>
+                          <div className="alerts-metric-box">
+                            <span>Flood Duration</span>
+                            <strong>{formatDurationMinutes(adv.durationMinutes)}</strong>
+                          </div>
+                          <div className="alerts-metric-box">
+                            <span>Est. Low-Street Water</span>
+                            <strong>~{adv.estimatedStreetDepthIn.toFixed(1)} in</strong>
+                          </div>
+                        </div>
+
+                        {(adv.windSpeedMph !== null || adv.precipWindowIn > 0) && (
+                          <p className="alerts-bulletin-summary">
+                            Conditions at peak:{' '}
+                            {adv.windSpeedMph !== null
+                              ? `${adv.windCompass ?? ''} ${Math.round(adv.windSpeedMph)} mph wind`.trim()
+                              : 'Wind unavailable'}
+                            {adv.precipWindowIn > 0
+                              ? ` · ${adv.precipWindowIn.toFixed(2)} in rain`
+                              : ''}
+                          </p>
+                        )}
+
+                        {topDrivers.length > 0 && (
+                          <div className="alerts-driver-chips">
+                            {topDrivers.map(d => (
+                              <span key={d.label} className="alerts-driver-chip">
+                                {d.text}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <Link
+                          className="alerts-deep-link"
+                          to={`/tab2?t=${encodeURIComponent(adv.peakAt)}`}
+                        >
+                          View Peak on Live Hydrograph →
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                {reconciled.advisories.length > 3 && (
+                  <button
+                    type="button"
+                    className="alerts-customize-toggle"
+                    onClick={() => setShowAllWindows(v => !v)}
+                  >
+                    {showAllWindows
+                      ? 'Show fewer flood windows ▴'
+                      : `Show ${hiddenCount} more upcoming flood ${hiddenCount === 1 ? 'window' : 'windows'} ▾`}
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="alerts-calm-banner">
+                <div className="alerts-calm-header">
+                  <span className="alerts-calm-pill">
+                    ✓ Below {config.thresholds.minor.toFixed(1)} ft Flood Stage
+                  </span>
+                  <span className="alerts-bulletin-time">
+                    {reconciled.forecastHorizon
+                      ? `Clear through ${formatAlertDateTime(reconciled.forecastHorizon)} ET`
+                      : 'Next 48 Hours Clear'}
+                  </span>
+                </div>
+                <div className="alerts-calm-metrics">
+                  {reconciled.next48hPeak && (
+                    <span>
+                      Next 48h Peak:{' '}
+                      <strong>{reconciled.next48hPeak.peakFt.toFixed(2)} ft MLLW</strong> (
+                      {formatAlertDateTime(reconciled.next48hPeak.peakAt)} ET)
+                    </span>
+                  )}
+                  {reconciled.currentSurgeFt !== null && (
+                    <span>
+                      Current Surge:{' '}
+                      <strong>
+                        {reconciled.currentSurgeFt >= 0 ? '+' : ''}
+                        {reconciled.currentSurgeFt.toFixed(2)} ft
+                      </strong>
+                    </span>
+                  )}
+                </div>
+                <Link className="alerts-deep-link" to="/tab2">
+                  Open Interactive Hydrograph &amp; Street Map →
+                </Link>
+              </div>
+            )}
+
+            {feed && (
+              <details className="alerts-chart-disclosure" open={reconciled.advisories.length > 0}>
+                <summary>48-hour operational forecast chart &amp; model notes</summary>
+                <div className="alerts-chart-preview">
+                  <img
+                    src={chartUrl}
+                    alt="48-hour Carolina Beach operational water-level forecast hydrograph with 5.6, 7.0, and 7.7 ft MLLW flood thresholds"
+                    className="alerts-chart-img"
+                    loading="lazy"
+                  />
+                  <p className="alerts-chart-caption">
+                    {operationalForecastDescription ||
+                      'Live 48-hour operational forecast hydrograph (embedded automatically in FloodCast email alerts).'}
+                  </p>
+                </div>
+              </details>
+            )}
+          </section>
+
+          {/* Recent Advisory Bulletins */}
+          {feed && feed.recentBulletins.length > 0 && (
+            <section className="alerts-card" aria-label="Recent advisory bulletins">
+              <div className="alerts-card-heading">
+                <h2>Recent Advisory Bulletins</h2>
+                <span className="alerts-bulletin-time">Latest forecast changes</span>
+              </div>
+              <ul className="alerts-bulletin-list" role="list">
+                {feed.recentBulletins.slice(0, 5).map(b => (
+                  <li key={b.id} className="alerts-bulletin-item">
+                    <div className="alerts-bulletin-head">
+                      <div>
+                        <span className={`alerts-sev-pill ${b.severity ?? 'minor'}`}>
+                          {bulletinCategoryLabels[b.category] ?? b.category}
+                        </span>{' '}
+                        <strong>{b.headline}</strong>
+                      </div>
+                      <span className="alerts-bulletin-time">
+                        {formatAlertDateTime(b.issuedAt)} ET
+                      </span>
+                    </div>
+                    {b.whatChanged && (
+                      <p className="alerts-bulletin-change">{b.whatChanged}</p>
+                    )}
+                    <p className="alerts-bulletin-summary">{b.summary}</p>
+                    {b.peakAt && (
+                      <Link
+                        className="alerts-deep-link"
+                        to={`/tab2?t=${encodeURIComponent(b.peakAt)}`}
+                      >
+                        Inspect on Hydrograph →
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* Compact Entry Card into Child Page: Email Alert Settings */}
+          <section className="alerts-card alerts-settings-entry" aria-label="Email alert settings">
+            <div className="alerts-settings-entry-body">
+              <div className="alerts-settings-entry-icon" aria-hidden="true">
+                <IonIcon icon={notificationsOutline} />
+              </div>
+              <div className="alerts-settings-entry-copy">
+                <div className="alerts-card-heading">
+                  <h2>Email Flood Alerts</h2>
+                  <span className="alerts-state">
+                    {subscription
+                      ? statusLabels[subscription.status]
+                      : data?.deliveryReady
+                      ? 'Email pilot'
+                      : 'Early access'}
+                  </span>
+                </div>
+                <p className="alerts-bulletin-summary">
+                  {enrolled && user
+                    ? `Delivering customizable severity & category alerts to ${data?.email ?? user.email}.`
+                    : 'Get automatic flood watch, imminent warning, and severity escalation emails with embedded 48h charts.'}
+                </p>
+              </div>
+            </div>
+            <Link to="/alerts/settings" className="alerts-settings-cta">
+              {enrolled ? 'Manage Email Alert Settings →' : 'Set Up Email Alerts →'}
+            </Link>
+          </section>
+        </div>
+      </IonContent>
+    </IonPage>
+  );
+}
+
+/**
+ * Child Page (`/alerts/settings`): Focused Email Alert Enrollment, Verification,
+ * Severity/Category Preferences, and Delivery History.
+ */
+export function AlertSettings() {
+  const hookState = useCitizenAlerts();
+  const { data, busy, error, refresh, change, user, authLoading } = hookState;
 
   const defaultPrefs = getOptionalDefaultPrefs();
 
@@ -179,7 +533,7 @@ export function Alerts() {
     setNotice(null);
     try {
       await sendEmailVerification(user, {
-        url: new URL('/alerts', citizenAlertsLib.citizenPublicBaseUrl()).href,
+        url: new URL('/alerts/settings', citizenAlertsLib.citizenPublicBaseUrl()).href,
       });
       if (!current()) return;
       setResendAfter(Date.now() + 60_000);
@@ -245,7 +599,6 @@ export function Alerts() {
 
   const enrolled = !!subscription && subscription.status !== 'unsubscribed';
   const prefsDirty = !prefsEqual(prefs, serverPrefs);
-  const chartUrl = getOptionalChartUrl(feed?.generatedAt);
 
   const renderPreferenceControls = () => (
     <div className="alerts-pref-section">
@@ -311,7 +664,7 @@ export function Alerts() {
             <div className="alerts-pref-text">
               <label htmlFor="pref-sev-extreme">Extreme Flood Alerts</label>
               <span id="pref-sev-extreme-desc" className="alerts-pref-desc">
-                8.5+ ft MLLW · Severe coastal &amp; hurricane storm surge
+                ≥ 8.5 ft MLLW · Life-threatening coastal surge &amp; evacuation
               </span>
             </div>
           </div>
@@ -319,7 +672,7 @@ export function Alerts() {
       </fieldset>
 
       <fieldset className="alerts-pref-fieldset">
-        <legend className="alerts-pref-legend">Alert Lifecycle Categories</legend>
+        <legend className="alerts-pref-legend">Alert Categories</legend>
         <div className="alerts-pref-grid">
           <div className="alerts-pref-option">
             <input
@@ -332,7 +685,7 @@ export function Alerts() {
             <div className="alerts-pref-text">
               <label htmlFor="pref-cat-watch">Upcoming Flood Watch</label>
               <span id="pref-cat-watch-desc" className="alerts-pref-desc">
-                First alert when a high-tide crest enters the 48-hour forecast
+                Advance notice 12 – 48 hours before a forecasted flood crest
               </span>
             </div>
           </div>
@@ -348,7 +701,7 @@ export function Alerts() {
             <div className="alerts-pref-text">
               <label htmlFor="pref-cat-imminent">Imminent Flood Warning</label>
               <span id="pref-cat-imminent-desc" className="alerts-pref-desc">
-                Final heads-up ~3 hours before water crosses flood stage
+                Actionable alert ~2 – 3 hours before water crosses flood stage
               </span>
             </div>
           </div>
@@ -362,9 +715,9 @@ export function Alerts() {
               onChange={() => toggleCategory('forecastChange')}
             />
             <div className="alerts-pref-text">
-              <label htmlFor="pref-cat-change">Forecast Change &amp; Escalation</label>
+              <label htmlFor="pref-cat-change">Severity Escalation &amp; Shifts</label>
               <span id="pref-cat-change-desc" className="alerts-pref-desc">
-                Severity tier upgrades or ≥0.30 ft / 60m shifts (6h anti-spam cooldown)
+                Immediate update if severity upgrades or crest rises ≥ 0.25 ft
               </span>
             </div>
           </div>
@@ -394,10 +747,10 @@ export function Alerts() {
       <IonHeader>
         <IonToolbar>
           <div className="alerts-toolbar-row">
-            <Link to="/tab2" className="alerts-back-link">
-              ← Forecast
+            <Link to="/alerts" className="alerts-back-link">
+              ← Outlook
             </Link>
-            <IonTitle className="alerts-toolbar-title">Outlook &amp; Alerts</IonTitle>
+            <IonTitle className="alerts-toolbar-title">Email Alert Settings</IonTitle>
           </div>
         </IonToolbar>
       </IonHeader>
@@ -416,180 +769,14 @@ export function Alerts() {
                 : 'Stay ahead of high water'}
             </h1>
             <p>
-              Live in-app flood advisories and customizable email alerts with peak timing,
-              48-hour hydrograph charts, wind setup, and street water estimates.
+              Customize which flood severity tiers and forecast shift alerts are emailed to you,
+              complete with 48-hour hydrograph charts and peak timing.
             </p>
             <span className="alerts-state">
               {data?.deliveryReady ? 'Email pilot' : 'Early access'}
             </span>
           </section>
 
-          {/* Combined Next Flooding Events & Multi-Day Flood Outlook */}
-          <OutlookAndEventsSection />
-
-          {/* Public In-App Live Advisories & 48h Hydrograph (No Login Required) */}
-          {feed && (
-            <section className="alerts-card" aria-label="Live Carolina Beach flood advisories">
-              <div className="alerts-card-heading">
-                <h2>Live 48-Hour Flood Advisories</h2>
-                <span className="alerts-bulletin-time">
-                  Updated {timeLabel(feed.generatedAt)} ET
-                </span>
-              </div>
-
-              {feed.activeAdvisories.length > 0 ? (
-                <ul className="alerts-advisory-list" role="list">
-                  {feed.activeAdvisories.map(adv => {
-                    const topDrivers = topDriversForAdvisory(adv);
-                    const refNowMs = Date.parse(feed.generatedAt) || Date.now();
-                    const hoursUntilStart = (Date.parse(adv.startAt) - refNowMs) / 3600_000;
-                    const phaseText =
-                      adv.startClipped || hoursUntilStart <= 0
-                        ? 'Flooding Now'
-                        : hoursUntilStart <= 3.5
-                        ? `Imminent · In ${hoursUntilStart.toFixed(1)}h`
-                        : `Upcoming · In ${Math.round(hoursUntilStart)}h`;
-                    return (
-                      <li
-                        key={adv.episodeId}
-                        className={`alerts-advisory-item sev-${adv.severity}`}
-                      >
-                        <div className="alerts-advisory-top">
-                          <span className={`alerts-sev-pill ${adv.severity}`}>
-                            {severityLabels[adv.severity]}
-                          </span>
-                          <span className="alerts-phase-tag">{phaseText}</span>
-                        </div>
-
-                        <div className="alerts-advisory-grid">
-                          <div className="alerts-metric-box">
-                            <span>Forecast Crest</span>
-                            <strong>{adv.peakFt.toFixed(2)} ft MLLW</strong>
-                          </div>
-                          <div className="alerts-metric-box">
-                            <span>Peak Timing</span>
-                            <strong>{timeLabel(adv.peakAt)} ET</strong>
-                          </div>
-                          <div className="alerts-metric-box">
-                            <span>Flood Duration</span>
-                            <strong>{formatDurationMinutes(adv.durationMinutes)}</strong>
-                          </div>
-                          <div className="alerts-metric-box">
-                            <span>Est. Low-Street Water</span>
-                            <strong>~{adv.estimatedStreetDepthIn.toFixed(1)} in</strong>
-                          </div>
-                        </div>
-
-                        {(adv.windSpeedMph !== null || adv.precipWindowIn > 0) && (
-                          <p className="alerts-bulletin-summary">
-                            Conditions at peak:{' '}
-                            {adv.windSpeedMph !== null
-                              ? `${adv.windCompass ?? ''} ${Math.round(adv.windSpeedMph)} mph wind`.trim()
-                              : 'Wind unavailable'}
-                            {adv.precipWindowIn > 0
-                              ? ` · ${adv.precipWindowIn.toFixed(2)} in rain`
-                              : ''}
-                          </p>
-                        )}
-
-                        {topDrivers.length > 0 && (
-                          <div className="alerts-driver-chips">
-                            {topDrivers.map(d => (
-                              <span key={d.label} className="alerts-driver-chip">
-                                {d.text}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        <Link
-                          className="alerts-deep-link"
-                          to={`/tab2?t=${encodeURIComponent(adv.peakAt)}`}
-                        >
-                          View Peak on Live Hydrograph →
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <div className="alerts-calm-banner">
-                  <div className="alerts-calm-header">
-                    <span className="alerts-calm-pill">✓ Below 5.6 ft Flood Stage</span>
-                    <span className="alerts-bulletin-time">Next 48 Hours Clear</span>
-                  </div>
-                  <div className="alerts-calm-metrics">
-                    {feed.nextPeakFt !== null && feed.nextPeakAt && (
-                      <span>
-                        Next 48h Peak: <strong>{feed.nextPeakFt.toFixed(2)} ft MLLW</strong> (
-                        {timeLabel(feed.nextPeakAt)} ET)
-                      </span>
-                    )}
-                    {feed.currentSurgeFt !== null && (
-                      <span>
-                        Current Surge:{' '}
-                        <strong>
-                          {feed.currentSurgeFt >= 0 ? '+' : ''}
-                          {feed.currentSurgeFt.toFixed(2)} ft
-                        </strong>
-                      </span>
-                    )}
-                  </div>
-                  <Link className="alerts-deep-link" to="/tab2">
-                    Open Interactive Hydrograph &amp; Street Map →
-                  </Link>
-                </div>
-              )}
-
-              <div className="alerts-chart-preview">
-                <img
-                  src={chartUrl}
-                  alt="48-hour Carolina Beach operational water-level forecast hydrograph with 5.6, 7.0, and 7.7 ft MLLW flood thresholds"
-                  className="alerts-chart-img"
-                  loading="lazy"
-                />
-                <p className="alerts-chart-caption">
-                  Live 48-hour operational forecast hydrograph (embedded automatically in FloodCast
-                  email alerts)
-                </p>
-              </div>
-
-              {feed.recentBulletins.length > 0 && (
-                <>
-                  <h3>Recent Advisory Bulletins</h3>
-                  <ul className="alerts-bulletin-list" role="list">
-                    {feed.recentBulletins.slice(0, 5).map(b => (
-                      <li key={b.id} className="alerts-bulletin-item">
-                        <div className="alerts-bulletin-head">
-                          <div>
-                            <span className={`alerts-sev-pill ${b.severity ?? 'minor'}`}>
-                              {bulletinCategoryLabels[b.category] ?? b.category}
-                            </span>{' '}
-                            <strong>{b.headline}</strong>
-                          </div>
-                          <span className="alerts-bulletin-time">{timeLabel(b.issuedAt)} ET</span>
-                        </div>
-                        {b.whatChanged && (
-                          <p className="alerts-bulletin-change">{b.whatChanged}</p>
-                        )}
-                        <p className="alerts-bulletin-summary">{b.summary}</p>
-                        {b.peakAt && (
-                          <Link
-                            className="alerts-deep-link"
-                            to={`/tab2?t=${encodeURIComponent(b.peakAt)}`}
-                          >
-                            Inspect on Hydrograph →
-                          </Link>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </section>
-          )}
-
-          {/* Account & Email Alert Preferences */}
           {!authLoading && !user ? (
             <section className="alerts-card">
               <h2>Set up personalized email alerts</h2>
@@ -598,10 +785,10 @@ export function Alerts() {
                 and alert categories you want emailed to you. Live in-app advisories remain
                 available without an account.
               </p>
-              <IonButton expand="block" routerLink="/register?redirect=%2Falerts">
+              <IonButton expand="block" routerLink="/register?redirect=%2Falerts%2Fsettings">
                 Create account
               </IonButton>
-              <IonButton expand="block" fill="outline" routerLink="/login?redirect=%2Falerts">
+              <IonButton expand="block" fill="outline" routerLink="/login?redirect=%2Falerts%2Fsettings">
                 Sign in
               </IonButton>
             </section>
@@ -783,7 +970,7 @@ export function Alerts() {
                   <li key={item.id}>
                     <div>
                       <strong>{item.subject}</strong>
-                      <span>{timeLabel(item.createdAt)} ET</span>
+                      <span>{formatAlertDateTime(item.createdAt)} ET</span>
                     </div>
                     <span>{states[item.state] ?? item.state}</span>
                   </li>
@@ -806,6 +993,7 @@ export function Alerts() {
           </details>
           <p className="alerts-support">
             <a href="mailto:floodcastapp@gmail.com">Contact support</a> ·{' '}
+            <Link to="/alerts">Back to Outlook</Link> ·{' '}
             <Link to="/tab2">View forecast</Link>
           </p>
         </div>
@@ -870,7 +1058,7 @@ export function UnsubscribeAlerts() {
               </p>
             )}
             {error && <p role="alert">{error}</p>}
-            <Link to="/alerts">Manage alerts</Link>
+            <Link to="/alerts/settings">Manage alerts</Link>
           </section>
         </div>
       </IonContent>

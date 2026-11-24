@@ -74,6 +74,7 @@ const Profile = lazy(() => import('./pages/auth/Profile'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
 const UserRoleManager = lazy(() => import('./components/admin/UserRoleManager').then(m => ({ default: m.UserRoleManager })));
 const Alerts = lazy(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })));
+const AlertSettings = lazy(() => import('./pages/Alerts').then(m => ({ default: m.AlertSettings })));
 const UnsubscribeAlerts = lazy(() => import('./pages/Alerts').then(m => ({ default: m.UnsubscribeAlerts })));
 const RouteLoading = () => <IonPage><IonContent><p role="status" className="ion-padding">Loading…</p></IonContent></IonPage>;
 const DeferredRoute = ({ children }: React.PropsWithChildren) => <Suspense fallback={<RouteLoading />}>{children}</Suspense>;
@@ -189,6 +190,7 @@ const AppTabs: React.FC = () => {
           <DeferredRoute><UserRoleManager /></DeferredRoute>
         </AdminRoute>
         <Route exact path="/alerts/unsubscribe"><DeferredRoute><UnsubscribeAlerts /></DeferredRoute></Route>
+        <Route exact path="/alerts/settings"><DeferredRoute><AlertSettings /></DeferredRoute></Route>
         <Route exact path="/alerts"><DeferredRoute><Alerts /></DeferredRoute></Route>
         <Route exact path="/admin/bootstrap"><Redirect to="/profile" /></Route>
         {/* Root route with conditional intro/main app logic */}

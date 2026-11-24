@@ -3,10 +3,16 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CitizenStatusResponse, PublicAlertFeedDocument } from 'src/lib/citizenAlerts';
+import type { AppConfiguration, Point } from 'src/components/Tab2/types';
 
 vi.mock('src/lib/analytics', () => ({ trackEvent: vi.fn() }));
 vi.mock('src/components/alerts/useCitizenAlerts', () => ({ useCitizenAlerts: () => hook }));
-vi.mock('src/components/alerts/OutlookAndEventsSection', () => ({ OutlookAndEventsSection: () => <div data-testid="outlook-and-events-section" /> }));
+vi.mock('src/components/Tab2/hooks/useSettingsStorage', () => ({
+  useSettingsStorage: () => ({ config: testConfig }),
+}));
+vi.mock('src/components/dashboard/useOperationalForecast', () => ({
+  useOperationalForecast: () => forecastHook,
+}));
 vi.mock('firebase/auth', () => ({ sendEmailVerification: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('src/lib/citizenAlerts', () => ({
   unsubscribeCitizenAlerts: vi.fn().mockResolvedValue(undefined),
@@ -36,9 +42,19 @@ vi.mock('@ionic/react', () => ({
     ),
 }));
 
-import { Alerts, UnsubscribeAlerts } from 'src/pages/Alerts';
+import { Alerts, AlertSettings, UnsubscribeAlerts } from 'src/pages/Alerts';
 import { sendEmailVerification } from 'firebase/auth';
 import { unsubscribeCitizenAlerts } from 'src/lib/citizenAlerts';
+
+const testConfig: AppConfiguration = {
+  locationId: 'carolina-beach',
+  location: { id: 'carolina-beach', name: 'Carolina Beach', state: 'NC' },
+  station: { id: '8658163', name: 'Carolina Beach' },
+  thresholds: { minor: 5.6, moderate: 7.0, major: 7.7, extreme: 8.5 },
+  offset: { mode: 'auto', value: '' },
+  timeRange: { mode: 'relative', lookbackH: 36, lookaheadH: 48, absStart: '', absEnd: '' },
+  display: { timezone: 'local', dataSource: 'fiman', showDelta: false, viewMode: 'basic' },
+};
 
 const change = vi.fn();
 const refresh = vi.fn();
@@ -72,6 +88,19 @@ let hook = {
   authLoading: false,
 };
 
+let forecastHook = {
+  loading: false,
+  processedData: null as {
+    timeDomain: { now: Date };
+    predictedPoints: Point[];
+    deltaPoints: Point[];
+    windPoints: Array<{ t: Date; speed: number; dir: number }>;
+    precipPoints: Array<{ t: Date; value: number }>;
+  } | null,
+  operationalForecastPoints: [] as Point[],
+  operationalForecastDescription: '',
+};
+
 const subscription = (status: 'early-access' | 'active' | 'verification-required') =>
   ({
     status,
@@ -96,27 +125,31 @@ beforeEach(() => {
     user: null,
     authLoading: false,
   };
+  forecastHook = {
+    loading: false,
+    processedData: null,
+    operationalForecastPoints: [],
+    operationalForecastDescription: '',
+  };
 });
 afterEach(() => cleanup());
-const show = () =>
+
+const showOutlook = () =>
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={['/alerts']}>
       <Alerts />
     </MemoryRouter>
   );
 
-describe('resident alert setup & Alerts 2.0 public advisories', () => {
-  it('gives guests a clear account flow back to alerts without claiming delivery is active', () => {
-    show();
-    expect(screen.getByRole('link', { name: 'Create account' })).toHaveAttribute(
-      'href',
-      '/register?redirect=%2Falerts'
-    );
-    expect(screen.getByText('Early access')).toBeInTheDocument();
-    expect(screen.queryByText('Alerts active')).not.toBeInTheDocument();
-  });
+const showSettings = () =>
+  render(
+    <MemoryRouter initialEntries={['/alerts/settings']}>
+      <AlertSettings />
+    </MemoryRouter>
+  );
 
-  it('displays live 48-hour flood advisories, chart PNG, and deep links to unauthenticated guests without login', () => {
+describe('Outlook & Alerts parent page (/alerts)', () => {
+  it('displays unified flood advisories with day-of-week peak timing, drivers, chart preview, and child settings link', () => {
     hook.feed = {
       version: 2,
       locationId: 'carolina-beach',
@@ -177,8 +210,10 @@ describe('resident alert setup & Alerts 2.0 public advisories', () => {
       ],
     };
 
-    show();
+    showOutlook();
     expect(screen.getByText('6.42 ft MLLW')).toBeInTheDocument();
+    // Peak timing includes day of week (Thu, Oct 29, 3:30 PM ET)
+    expect(screen.getByText('Thu, Oct 29, 3:30 PM ET')).toBeInTheDocument();
     expect(screen.getByText('2h 30m')).toBeInTheDocument();
     expect(screen.getByText('~9.8 in')).toBeInTheDocument();
     expect(screen.getByText(/NE 22 mph wind · 0\.14 in rain/)).toBeInTheDocument();
@@ -193,12 +228,139 @@ describe('resident alert setup & Alerts 2.0 public advisories', () => {
       name: /48-hour Carolina Beach operational water-level forecast hydrograph/i,
     });
     expect(img).toHaveAttribute('src', '/api/alerts?chart=1&v=2026-10-29T16%3A00%3A00Z');
+
+    // Child settings route links are present from the parent Outlook page
+    const settingsLink = screen.getByRole('link', { name: 'Set Up Email Alerts →' });
+    expect(settingsLink).toHaveAttribute('href', '/alerts/settings');
+  });
+
+  it('reconciles backend snapshot discrepancies to the live operational hydrograph crest so peak values always match', () => {
+    const now = new Date('2026-10-29T16:00:00Z');
+    const pt = (min: number, v: number) => ({ t: new Date(+now + min * 60_000), v });
+    forecastHook = {
+      loading: false,
+      processedData: {
+        timeDomain: { now },
+        predictedPoints: [pt(0, 3.5), pt(216, 5.6), pt(276, 4.7)],
+        deltaPoints: [pt(0, 0.9)],
+        windPoints: [],
+        precipPoints: [],
+      },
+      operationalForecastPoints: [
+        pt(0, 4.4),
+        pt(135, 5.65),
+        pt(150, 5.95),
+        pt(165, 6.22),
+        pt(180, 6.40),
+        pt(195, 6.52),
+        pt(210, 6.57),
+        pt(216, 6.61), // 19:36Z -> Thu, Oct 29, 3:36 PM ET
+        pt(228, 6.30),
+        pt(240, 5.98),
+        pt(255, 5.70),
+        pt(270, 5.45),
+      ],
+      operationalForecastDescription: 'Operational basin forecast',
+    };
+    hook.feed = {
+      version: 2,
+      locationId: 'carolina-beach',
+      generatedAt: '2026-10-29T16:00:00Z',
+      forecastGeneratedAt: '2026-10-29T16:00:00Z',
+      thresholds: testConfig.thresholds,
+      currentSurgeFt: 0.72,
+      nextPeakFt: 6.42,
+      nextPeakAt: '2026-10-29T19:30:00Z',
+      activeAdvisories: [
+        {
+          episodeId: 'ep-2026-10-29-pm',
+          severity: 'minor',
+          startAt: '2026-10-29T18:15:00Z',
+          endAt: '2026-10-29T20:45:00Z',
+          startClipped: false,
+          endClipped: false,
+          peakAt: '2026-10-29T19:30:00Z',
+          peakFt: 6.42,
+          aboveFloodStageFt: 0.82,
+          tideFt: 5.5,
+          surgeFt: 0.92,
+          estimatedStreetDepthIn: 9.8,
+          durationMinutes: 150,
+          windSpeedMph: 22,
+          windDirectionDeg: 38,
+          windCompass: 'NE',
+          precipWindowIn: 0.14,
+        },
+      ],
+      recentBulletins: [],
+    };
+
+    showOutlook();
+    // Displays live reconciled 6.61 ft (not stale 6.42 ft) and weekday peak timing
+    expect(screen.getByText('6.61 ft MLLW')).toBeInTheDocument();
+    expect(screen.queryByText('6.42 ft MLLW')).toBeNull();
+    expect(screen.getByText('Thu, Oct 29, 3:36 PM ET')).toBeInTheDocument();
+  });
+
+  it('labels probabilistic near-threshold watches cleanly instead of Minor Flood', () => {
+    hook.feed = {
+      version: 2,
+      locationId: 'carolina-beach',
+      generatedAt: '2026-10-29T16:00:00Z',
+      forecastGeneratedAt: '2026-10-29T16:00:00Z',
+      thresholds: testConfig.thresholds,
+      currentSurgeFt: 0.45,
+      nextPeakFt: 5.42,
+      nextPeakAt: '2026-10-29T19:30:00Z',
+      activeAdvisories: [
+        {
+          episodeId: 'ep-watch',
+          severity: 'minor',
+          startAt: '2026-10-29T18:45:00Z',
+          endAt: '2026-10-29T20:15:00Z',
+          startClipped: false,
+          endClipped: false,
+          peakAt: '2026-10-29T19:30:00Z',
+          peakFt: 5.42,
+          aboveFloodStageFt: 0,
+          tideFt: 5.0,
+          surgeFt: 0.42,
+          estimatedStreetDepthIn: 1.8,
+          durationMinutes: 90,
+          windSpeedMph: 14,
+          windDirectionDeg: 40,
+          windCompass: 'NE',
+          precipWindowIn: 0,
+          isProbabilisticWatch: true,
+          upperPeakFt: 5.75,
+        },
+      ],
+      recentBulletins: [],
+    };
+
+    showOutlook();
+    expect(screen.getByText('Near-Threshold Watch')).toBeInTheDocument();
+    expect(screen.queryByText('Minor Flood')).toBeNull();
+    expect(screen.getByText('5.42 ft MLLW (P90 5.75 ft)')).toBeInTheDocument();
+    expect(screen.getByText('Thu, Oct 29, 3:30 PM ET')).toBeInTheDocument();
+  });
+});
+
+describe('Email Alert Settings child page (/alerts/settings)', () => {
+  it('gives guests a clear account flow back to alert settings without claiming delivery is active', () => {
+    showSettings();
+    expect(screen.getByRole('link', { name: 'Create account' })).toHaveAttribute(
+      'href',
+      '/register?redirect=%2Falerts%2Fsettings'
+    );
+    expect(screen.getByText('Early access')).toBeInTheDocument();
+    expect(screen.queryByText('Alerts active')).not.toBeInTheDocument();
   });
 
   it('requires explicit consent before joining early access', async () => {
     hook.user = user;
     change.mockResolvedValue(base);
-    show();
+    showSettings();
     const button = screen.getByRole('button', { name: 'Join early access' });
     expect(button).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox'));
@@ -217,9 +379,8 @@ describe('resident alert setup & Alerts 2.0 public advisories', () => {
     };
     change.mockResolvedValue(hook.data);
 
-    const { container } = show();
+    const { container } = showSettings();
 
-    // Verify modern-web-guidance accessibility: checkboxes grouped in <fieldset>/<legend>, never inside <ul>/<li>
     const fieldsets = container.querySelectorAll('fieldset.alerts-pref-fieldset');
     expect(fieldsets.length).toBe(2);
     const minorCheckbox = screen.getByLabelText('Minor Flood Alerts') as HTMLInputElement;
@@ -230,7 +391,6 @@ describe('resident alert setup & Alerts 2.0 public advisories', () => {
     const allClearCheckbox = screen.getByLabelText('All-Clear Advisories') as HTMLInputElement;
     expect(allClearCheckbox.checked).toBe(false);
 
-    // Uncheck Minor Flood Alerts and enable All-Clear Advisories
     fireEvent.click(minorCheckbox);
     fireEvent.click(allClearCheckbox);
 
@@ -252,12 +412,12 @@ describe('resident alert setup & Alerts 2.0 public advisories', () => {
 
   it('sends verification only after the resident requests it, using the HTTPS continue URL', async () => {
     hook.user = user;
-    show();
+    showSettings();
     expect(sendEmailVerification).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Send verification link' }));
     await waitFor(() =>
       expect(sendEmailVerification).toHaveBeenCalledWith(user, {
-        url: 'https://demo-floodcast.web.app/alerts',
+        url: 'https://demo-floodcast.web.app/alerts/settings',
       })
     );
     expect(screen.getByRole('status')).toHaveTextContent('Verification link sent');
@@ -270,7 +430,7 @@ describe('resident alert setup & Alerts 2.0 public advisories', () => {
       emailVerified: true,
       subscription: { ...subscription('early-access'), emailVerified: true },
     };
-    show();
+    showSettings();
     expect(screen.getByText(/Flood email delivery is not active yet/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Send test email' })).not.toBeInTheDocument();
   });
@@ -281,13 +441,13 @@ describe('resident alert setup & Alerts 2.0 public advisories', () => {
       () => new Promise<void>(resolve => { complete = resolve; })
     );
     hook.user = user;
-    const { rerender } = show();
+    const { rerender } = showSettings();
     fireEvent.click(screen.getByRole('button', { name: 'Send verification link' }));
     hook.user = { ...user, uid: 'another-resident', email: 'another@example.com' };
     hook.data = { ...base, email: hook.user.email };
     rerender(
-      <MemoryRouter>
-        <Alerts />
+      <MemoryRouter initialEntries={['/alerts/settings']}>
+        <AlertSettings />
       </MemoryRouter>
     );
     await act(async () => {
@@ -307,12 +467,12 @@ describe('resident alert setup & Alerts 2.0 public advisories', () => {
       subscription: { ...subscription('verification-required'), emailVerified: true },
     };
     change.mockResolvedValue(hook.data);
-    show();
+    showSettings();
     fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }));
     await waitFor(() => expect(change).toHaveBeenCalledWith('resume'));
   });
 
-  it('shows real delivery acceptance instead of claiming inbox delivery', () => {
+  it('shows real delivery acceptance with weekday timestamps instead of claiming inbox delivery', () => {
     hook.user = user;
     hook.data = {
       ...base,
@@ -331,8 +491,9 @@ describe('resident alert setup & Alerts 2.0 public advisories', () => {
         },
       ],
     };
-    show();
+    showSettings();
     expect(screen.getByText('Accepted by email service')).toBeInTheDocument();
+    expect(screen.getByText('Sat, Oct 17, 8:00 AM ET')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pause alerts' })).toBeInTheDocument();
   });
 
