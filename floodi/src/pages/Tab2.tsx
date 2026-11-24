@@ -709,7 +709,7 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     >
       <IonHeader>
         <IonToolbar>
-          <IonTitle>
+          <IonTitle className="floodcast-toolbar-title">
             FloodCast{' '}
             <span className="toolbar-location-subtitle">
               · {LOCATIONS[config.locationId]?.name || config.location.name}

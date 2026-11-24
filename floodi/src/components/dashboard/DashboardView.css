@@ -103,6 +103,16 @@
   .dashboard-grid { gap: 12px; }
 }
 
+/* Left-align FloodCast toolbar title on iOS/mobile so it never overlaps the right-side action icons */
+.floodcast-page ion-header ion-toolbar ion-title.floodcast-toolbar-title {
+  position: static;
+  text-align: left;
+  padding-inline-start: 14px;
+  padding-inline-end: 8px;
+  font-size: 1.05rem;
+  min-width: 0;
+}
+
 /* Compact single-line maritime telemetry status bar under the main toolbar */
 .toolbar-location-subtitle {
   font-weight: 500;
@@ -118,9 +128,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 6px 10px;
+  flex-wrap: nowrap;
+  gap: 8px;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
 }
 
 .cc-gauge-status-pill {
@@ -179,7 +190,9 @@
   color: var(--dash-subtitle-color, #64748b);
   padding-left: 6px;
   border-left: 1px solid var(--chart-grid, rgba(148, 163, 184, 0.3));
-  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cc-reset-live-btn {
@@ -311,13 +324,12 @@
 @media (max-width: 600px) {
   .dashboard-current-conditions {
     padding: 5px 10px;
-    gap: 5px 8px;
+    gap: 6px;
   }
   .cc-gauge-status-pill {
     padding: 4px 8px;
     font-size: 11px;
     gap: 4px;
-    max-width: 100%;
   }
   .cc-gauge-time {
     font-size: 10.5px;

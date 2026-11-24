@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { CurrentConditions } from 'src/components/dashboard/CurrentConditions';
+import { CurrentConditions, formatCompactGaugeDateTime } from 'src/components/dashboard/CurrentConditions';
 import { HydrographChart } from 'src/components/dashboard/HydrographChart';
 import { PastSimilarFloodChip } from 'src/components/dashboard/AtmosphericOverlay';
 import { SettingsModal } from 'src/components/Tab2/SettingsModal';
@@ -56,20 +56,15 @@ describe('Dashboard header, hydrograph reset, and settings consolidation', () =>
     expect(container.querySelector('select.location-select')).toBeNull();
     expect(container.querySelector('.accuracy-pill-trigger')).toBeNull();
 
-    // Gauge + Below threshold + current weekday/date/time live together inside one compact status pill
+    // Normal gauge pill omits redundant "Below threshold" text and formats compact comma date/time without "at"
     const statusPill = container.querySelector('.cc-gauge-status-pill.is-normal');
     expect(statusPill).not.toBeNull();
     expect(statusPill?.textContent).toContain('4.12 ft');
-    expect(statusPill?.textContent).toContain('Below threshold');
-    const expectedDateTime = recent.toLocaleString('en-US', {
-      timeZone: 'America/New_York',
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-    expect(statusPill?.querySelector('.cc-gauge-time')?.textContent).toBe(expectedDateTime);
+    expect(statusPill?.textContent).not.toContain('Below threshold');
+    expect(statusPill?.getAttribute('aria-label')).toContain('Below flood threshold');
+    const timeText = statusPill?.querySelector('.cc-gauge-time')?.textContent ?? '';
+    expect(timeText).toBe(formatCompactGaugeDateTime(recent));
+    expect(timeText).not.toMatch(/\bat\b/i);
 
     // Next tide countdown lives in CurrentConditions and invokes callback
     const tideBtn = screen.getByRole('button', { name: /Next high tide in 2 hours 15 minutes/i });
@@ -102,7 +97,7 @@ describe('Dashboard header, hydrograph reset, and settings consolidation', () =>
     const elevatedPill = container.querySelector('.cc-gauge-status-pill.is-elevated');
     expect(elevatedPill).not.toBeNull();
     expect(elevatedPill?.textContent).toContain('6.05 ft');
-    expect(elevatedPill?.textContent).toContain('Above threshold');
+    expect(elevatedPill?.textContent).toContain('Flood');
     expect(container.querySelector('.cc-next-tide-pill')).toBeNull();
     const resetBtn = elevatedPill?.querySelector('.cc-reset-live-btn') as HTMLButtonElement | null;
     expect(resetBtn).not.toBeNull();

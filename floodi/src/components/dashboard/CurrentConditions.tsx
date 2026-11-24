@@ -3,10 +3,25 @@ import type { Point } from 'src/components/Tab2/types';
 import type { NextTideInfo } from 'src/utils/tideExtrema';
 import { currentGaugeStatus } from './currentGaugeStatus';
 
-function formatShortThresholdLabel(status: ReturnType<typeof currentGaugeStatus>): string {
+function formatAlertTag(status: ReturnType<typeof currentGaugeStatus>): string | null {
   if (!status.latest) return 'Unavailable';
-  if (!status.fresh) return 'Out of date';
-  return status.above ? 'Above threshold' : 'Below threshold';
+  if (!status.fresh) return 'Stale';
+  return status.above ? 'Flood' : null;
+}
+
+export function formatCompactGaugeDateTime(date: Date): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+    .format(date)
+    .replace(/\s+at\s+/i, ', ')
+    .replace(/\s?([AP])M$/, (_, p: string) => p.toLowerCase());
 }
 
 export function CurrentConditions({
@@ -44,20 +59,13 @@ export function CurrentConditions({
       }
     : fallbackStatus;
   const statusTone = status.above ? 'is-elevated' : status.fresh ? 'is-normal' : 'is-stale';
-  const shortStatus = formatShortThresholdLabel(status);
+  const alertTag = formatAlertTag(status);
   const showResetToLive = !isLive && Boolean(onResetToLive);
   const showNextTide = !showResetToLive && Boolean(nextTideInfo);
-  const dateTimeText = (status.latest?.t ?? now).toLocaleString('en-US', {
-    timeZone: 'America/New_York',
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  const dateTimeText = formatCompactGaugeDateTime(status.latest?.t ?? now);
   const fullGaugeAria = status.latest
-    ? `Current gauge ${status.latest.v.toFixed(2)} feet on ${dateTimeText} Eastern, ${status.label}`
-    : `Current gauge ${status.label} as of ${dateTimeText} Eastern`;
+    ? `Current gauge ${status.latest.v.toFixed(2)} feet, ${dateTimeText} Eastern, ${status.label}`
+    : `Current gauge ${status.label}, ${dateTimeText} Eastern`;
 
   return (
     <div className="dashboard-current-conditions">
@@ -70,13 +78,17 @@ export function CurrentConditions({
         {status.latest ? (
           <>
             <strong className="cc-gauge-val">{status.latest.v.toFixed(2)} ft</strong>
-            <span className="cc-sep" aria-hidden="true">·</span>
-            <span className="cc-threshold-label">{shortStatus}</span>
+            {alertTag && (
+              <>
+                <span className="cc-sep" aria-hidden="true">·</span>
+                <span className="cc-threshold-label">{alertTag}</span>
+              </>
+            )}
             <span className="cc-gauge-time">{dateTimeText}</span>
           </>
         ) : (
           <>
-            <span className="cc-threshold-label">{status.label}</span>
+            <span className="cc-threshold-label">{alertTag ?? status.label}</span>
             <span className="cc-gauge-time">{dateTimeText}</span>
           </>
         )}
