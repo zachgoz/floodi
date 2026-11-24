@@ -71,6 +71,48 @@ export const formatAlertDateTime = (at: string | Date): string =>
     .format(typeof at === 'string' ? new Date(at) : at)
     .replace(/\s+at\s+/i, ', ');
 
+const etDayKey = (d: Date): string =>
+  new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+
+const etShortTime = (d: Date): string =>
+  new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(d);
+
+export function formatFloodWindowRange(
+  startAt: string,
+  endAt: string,
+  startClipped?: boolean,
+  endClipped?: boolean,
+): string {
+  const start = new Date(startAt);
+  const end = new Date(endAt);
+  const validStart = Number.isFinite(start.getTime());
+  const validEnd = Number.isFinite(end.getTime());
+  if (!validStart && !validEnd) return 'Window unavailable';
+
+  const startText = startClipped
+    ? 'Now'
+    : validStart
+    ? etShortTime(start)
+    : 'Start unavailable';
+
+  if (endClipped || !validEnd) {
+    return `${startText} – End unavailable`;
+  }
+
+  const crossesMidnight = validStart && !startClipped && etDayKey(start) !== etDayKey(end);
+  const endText = crossesMidnight ? formatAlertDateTime(end) : etShortTime(end);
+  return `${startText} – ${endText} ET`;
+}
+
 function formatDurationMinutes(mins: number): string {
   if (!Number.isFinite(mins) || mins <= 0) return '< 30m';
   const h = Math.floor(mins / 60);
@@ -293,8 +335,13 @@ export function Alerts() {
                             <strong>{formatAlertDateTime(adv.peakAt)} ET</strong>
                           </div>
                           <div className="alerts-metric-box">
-                            <span>Flood Duration</span>
-                            <strong>{formatDurationMinutes(adv.durationMinutes)}</strong>
+                            <span>Flood Window</span>
+                            <strong>
+                              {formatFloodWindowRange(adv.startAt, adv.endAt, adv.startClipped, adv.endClipped)}
+                            </strong>
+                            <small className="alerts-metric-sub">
+                              {formatDurationMinutes(adv.durationMinutes)}
+                            </small>
                           </div>
                           <div className="alerts-metric-box">
                             <span>Est. Low-Street Water</span>

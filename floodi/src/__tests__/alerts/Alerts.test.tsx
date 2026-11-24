@@ -102,16 +102,16 @@ let forecastHook = {
 };
 
 const subscription = (status: 'early-access' | 'active' | 'verification-required') =>
-  ({
-    status,
-    email: user.email,
-    emailVerified: status === 'active',
-    coverage: 'carolina-beach-gauge',
-    channel: 'email',
-    consentVersion: 'citizen-email-v1',
-    createdAt: '2026-10-17T12:00:00Z',
-    updatedAt: '2026-10-17T12:00:00Z',
-  } as const);
+({
+  status,
+  email: user.email,
+  emailVerified: status === 'active',
+  coverage: 'carolina-beach-gauge',
+  channel: 'email',
+  consentVersion: 'citizen-email-v1',
+  createdAt: '2026-10-17T12:00:00Z',
+  updatedAt: '2026-10-17T12:00:00Z',
+} as const);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -214,6 +214,8 @@ describe('Outlook & Alerts parent page (/alerts)', () => {
     expect(screen.getByText('6.42 ft MLLW')).toBeInTheDocument();
     // Peak timing includes day of week (Thu, Oct 29, 3:30 PM ET)
     expect(screen.getByText('Thu, Oct 29, 3:30 PM ET')).toBeInTheDocument();
+    // Flood Window displays exact start–end range (18:15Z–20:45Z = 2:15 PM – 4:45 PM ET) + duration
+    expect(screen.getByText('2:15 PM – 4:45 PM ET')).toBeInTheDocument();
     expect(screen.getByText('2h 30m')).toBeInTheDocument();
     expect(screen.getByText('~9.8 in')).toBeInTheDocument();
     expect(screen.getByText(/NE 22 mph wind · 0\.14 in rain/)).toBeInTheDocument();
@@ -343,6 +345,65 @@ describe('Outlook & Alerts parent page (/alerts)', () => {
     expect(screen.queryByText('Minor Flood')).toBeNull();
     expect(screen.getByText('5.42 ft MLLW (P90 5.75 ft)')).toBeInTheDocument();
     expect(screen.getByText('Thu, Oct 29, 3:30 PM ET')).toBeInTheDocument();
+    expect(screen.getByText('2:45 PM – 4:15 PM ET')).toBeInTheDocument();
+  });
+
+  it('formats overnight flood windows with ending weekday/date and ongoing clipped windows cleanly', () => {
+    hook.feed = {
+      version: 2,
+      locationId: 'carolina-beach',
+      generatedAt: '2026-10-30T03:00:00Z',
+      forecastGeneratedAt: '2026-10-30T03:00:00Z',
+      thresholds: testConfig.thresholds,
+      currentSurgeFt: 0.7,
+      nextPeakFt: 6.1,
+      nextPeakAt: '2026-10-30T04:30:00Z',
+      activeAdvisories: [
+        {
+          episodeId: 'ep-overnight',
+          severity: 'minor',
+          startAt: '2026-10-30T03:15:00Z', // Thu, Oct 29, 11:15 PM ET
+          endAt: '2026-10-30T05:45:00Z',   // Fri, Oct 30, 1:45 AM ET
+          startClipped: false,
+          endClipped: false,
+          peakAt: '2026-10-30T04:30:00Z',
+          peakFt: 6.1,
+          aboveFloodStageFt: 0.5,
+          tideFt: 5.4,
+          surgeFt: 0.7,
+          estimatedStreetDepthIn: 6.0,
+          durationMinutes: 150,
+          windSpeedMph: 15,
+          windDirectionDeg: 40,
+          windCompass: 'NE',
+          precipWindowIn: 0,
+        },
+        {
+          episodeId: 'ep-ongoing',
+          severity: 'minor',
+          startAt: '2026-10-30T03:00:00Z',
+          endAt: '2026-10-30T04:15:00Z',   // Fri, Oct 30, 12:15 AM ET
+          startClipped: true,
+          endClipped: false,
+          peakAt: '2026-10-30T03:30:00Z',
+          peakFt: 5.9,
+          aboveFloodStageFt: 0.3,
+          tideFt: 5.3,
+          surgeFt: 0.6,
+          estimatedStreetDepthIn: 3.6,
+          durationMinutes: 75,
+          windSpeedMph: null,
+          windDirectionDeg: null,
+          windCompass: null,
+          precipWindowIn: 0,
+        },
+      ],
+      recentBulletins: [],
+    };
+
+    showOutlook();
+    expect(screen.getByText('11:15 PM – Fri, Oct 30, 1:45 AM ET')).toBeInTheDocument();
+    expect(screen.getByText('Now – 12:15 AM ET')).toBeInTheDocument();
   });
 });
 
@@ -509,7 +570,7 @@ describe('Email Alert Settings child page (/alerts/settings)', () => {
     );
     expect(unsubscribeCitizenAlerts).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Unsubscribe from email alerts' }));
-    await act(async () => {});
+    await act(async () => { });
     expect(unsubscribeCitizenAlerts).toHaveBeenCalledWith('a'.repeat(64));
     expect(screen.getByRole('heading', { name: 'Request processed' })).toBeInTheDocument();
   });
