@@ -3,7 +3,6 @@ import type { FloodEvent } from 'src/types/data';
 
 const ONE_INCH_FT = 1 / 12;
 const SIMILAR_WINDOW_FT = 0.25; // ±3 inches
-const CLOSEST_FALLBACK_FT = 1.0; // ±12 inches when forecast exceeds recorded peaks
 const EPISODE_GAP_MS = 4 * 3600_000;
 
 export interface HistoricalFloodComparison {
@@ -162,7 +161,7 @@ export function useHistoricalComparisonEvents(
       };
     }
 
-    const closest = ranked.filter(item => item.absDiffFt <= CLOSEST_FALLBACK_FT).slice(0, maxItems);
+    const closest = ranked.slice(0, maxItems);
     if (closest.length > 0) {
       return {
         matchType: 'closest',

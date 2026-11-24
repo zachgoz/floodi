@@ -4,6 +4,7 @@ import './HydrographChart.css';
 import ChartViewer from '../Tab2/ChartViewer';
 import { ViewingTimePill } from './ViewingTimePill';
 import { ChartInfo } from './ChartInfo';
+import type { NextTideInfo } from 'src/utils/tideExtrema';
 
 /**
  * HydrographChart wraps ChartViewer with a styled card shell that adds a
@@ -31,6 +32,10 @@ interface HydrographChartProps extends ChartViewerProps {
   floodEvents?: any[];
   /** Open time-window settings from the date pill */
   onTimeSettingsClick?: () => void;
+  /** Next high/low tide summary displayed cleanly beside the date pill */
+  nextTideInfo?: NextTideInfo;
+  /** Opens flood insight details when the next-tide pill is tapped */
+  onNextTideClick?: () => void;
   onResetView?: () => void;
   experimentalLabel?: string;
   experimentalDescription?: string;
@@ -55,6 +60,8 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
   warnings,
   floodEvents,
   onTimeSettingsClick,
+  nextTideInfo,
+  onNextTideClick,
   onResetView,
   experimentalLabel = 'Weather model',
   experimentalDescription,
@@ -89,6 +96,28 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
               {isLive && <span className="subtitle-dot" />}
               {isLive && <span className="subtitle-text">Live</span>}
               <ViewingTimePill time={time} onClick={onTimeSettingsClick} />
+              {nextTideInfo && (
+                <button
+                  type="button"
+                  className={`header-next-tide-pill ${nextTideInfo.type}`}
+                  data-tour-id="next-tide-badge"
+                  onClick={onNextTideClick}
+                  aria-label={`Next ${nextTideInfo.type} tide details`}
+                >
+                  <span className="header-tide-arrow" aria-hidden="true">
+                    {nextTideInfo.type === 'high' ? '▲' : '▼'}
+                  </span>
+                  <span>
+                    {nextTideInfo.type === 'high' ? 'High' : 'Low'} in{' '}
+                    {nextTideInfo.minutesRemaining >= 60
+                      ? `${Math.floor(nextTideInfo.minutesRemaining / 60)}h ${nextTideInfo.minutesRemaining % 60}m`
+                      : `${nextTideInfo.minutesRemaining}m`}
+                  </span>
+                  <span className="header-tide-delta">
+                    ({nextTideInfo.heightDelta >= 0 ? '+' : ''}{nextTideInfo.heightDelta.toFixed(1)}&apos;)
+                  </span>
+                </button>
+              )}
               {!controls && !isLive && onResetToLive && (
                 <button
                   className="reset-to-live-btn"

@@ -103,102 +103,208 @@
   .dashboard-grid { gap: 12px; }
 }
 
-/* Compact, high-contrast status bar under the main toolbar */
+/* Structured maritime telemetry status bar under the main toolbar */
 .dashboard-current-conditions {
   background: var(--ion-toolbar-background, var(--ion-background-color));
-  padding: 6px 16px 8px;
+  padding: 8px 16px;
   border-top: 1px solid var(--chart-grid);
   font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 6px 16px;
+  gap: 8px 16px;
+  font-variant-numeric: tabular-nums;
 }
-.dashboard-current-conditions > div {
+
+.cc-station-group,
+.cc-telemetry-group {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: 8px;
 }
-.dashboard-current-conditions strong { font-size: 13px; font-weight: 600; }
-.dashboard-current-conditions span,
-.dashboard-current-conditions small { color: var(--dash-subtitle-color); }
-.dashboard-current-conditions .condition-elevated {
-  color: var(--ion-color-danger-shade, #dc2626);
+
+.cc-location-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dash-title-color, var(--ion-text-color));
+}
+
+.dashboard-current-conditions .location-select {
+  background: var(--chart-plot-bg, rgba(148, 163, 184, 0.1));
+  border: 1px solid var(--chart-plot-stroke, rgba(148, 163, 184, 0.3));
+  border-radius: 10px;
+  color: var(--dash-title-color, var(--ion-text-color));
+  font-size: 13px;
   font-weight: 600;
+  padding: 5px 10px;
+  cursor: pointer;
+  min-height: 32px;
 }
-.dashboard-current-conditions small { font-size: 12px; margin: 0; }
-.dashboard-current-conditions button {
+
+.cc-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--dash-subtitle-color, #475569);
+}
+
+.cc-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.cc-status-badge.is-normal {
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803d;
+}
+
+.cc-status-badge.is-elevated {
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+}
+
+.cc-gauge-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: var(--chart-plot-bg, rgba(148, 163, 184, 0.08));
+  border: 1px solid var(--chart-plot-stroke, rgba(148, 163, 184, 0.22));
+  color: var(--dash-title-color, var(--ion-text-color));
+  white-space: nowrap;
+}
+
+.cc-chip-kicker {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dash-subtitle-color, #64748b);
+}
+
+.cc-chip-val {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--dash-title-color, var(--ion-text-color));
+}
+
+.cc-chip-time {
+  font-size: 11.5px;
+  color: var(--dash-subtitle-color, #64748b);
+  padding-left: 6px;
+  border-left: 1px solid var(--chart-grid, rgba(148, 163, 184, 0.3));
+}
+
+.cc-chip-chevron {
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.dashboard-current-conditions .cc-custom-btn {
   min-height: 32px;
   padding: 4px 10px;
   border: 1px solid var(--ion-color-primary);
-  border-radius: 999px;
+  border-radius: 10px;
   color: var(--ion-color-primary);
   background: transparent;
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
+
 .dashboard-current-conditions button:focus-visible,
 .dashboard-current-conditions .location-select:focus-visible {
   outline: 2px solid var(--ion-color-primary);
   outline-offset: 2px;
 }
+
 .dashboard-current-conditions .accuracy-pill-trigger {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(22, 163, 74, 0.12);
-  border: 1px solid rgba(22, 163, 74, 0.35);
+  min-height: 32px;
+  background: rgba(22, 163, 74, 0.1);
+  border: 1px solid rgba(22, 163, 74, 0.3);
   color: #15803d;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  border-radius: 999px;
+  border-radius: 10px;
   padding: 4px 10px;
+  white-space: nowrap;
   transition: background 0.18s ease, border-color 0.18s ease;
 }
-.dashboard-current-conditions .accuracy-pill-trigger:hover {
-  background: rgba(22, 163, 74, 0.2);
-  border-color: rgba(22, 163, 74, 0.55);
+
+.dashboard-current-conditions .accuracy-pill-trigger .cc-chip-kicker {
+  color: inherit;
+  opacity: 0.85;
 }
+
+.dashboard-current-conditions .accuracy-pill-trigger strong {
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.dashboard-current-conditions .accuracy-pill-trigger:hover {
+  background: rgba(22, 163, 74, 0.18);
+  border-color: rgba(22, 163, 74, 0.52);
+}
+
 .dashboard-current-conditions .accuracy-pill-trigger .accuracy-pill-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: #22c55e;
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
-}
-.dashboard-current-conditions .location-select {
-  background: var(--chart-plot-bg, rgba(255, 255, 255, 0.06));
-  border: 1px solid var(--chart-plot-stroke, rgba(148, 163, 184, 0.35));
-  border-radius: 8px;
-  color: var(--chart-label-text, inherit);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 4px 10px;
-  cursor: pointer;
-  min-height: 32px;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.55);
 }
 
 @media (prefers-color-scheme: dark) {
+  .cc-status-badge.is-normal,
   .dashboard-current-conditions .accuracy-pill-trigger {
     background: rgba(34, 197, 94, 0.14);
-    border-color: rgba(74, 222, 128, 0.35);
+    border-color: rgba(74, 222, 128, 0.32);
     color: #86efac;
   }
-  .dashboard-current-conditions .condition-elevated {
+  .cc-status-badge.is-elevated {
+    background: rgba(239, 68, 68, 0.16);
     color: #fca5a5;
   }
 }
 
+.ion-palette-dark .cc-status-badge.is-normal,
 .ion-palette-dark .dashboard-current-conditions .accuracy-pill-trigger {
   background: rgba(34, 197, 94, 0.14);
-  border-color: rgba(74, 222, 128, 0.35);
+  border-color: rgba(74, 222, 128, 0.32);
   color: #86efac;
 }
 
-.ion-palette-dark .dashboard-current-conditions .condition-elevated {
+.ion-palette-dark .cc-status-badge.is-elevated {
+  background: rgba(239, 68, 68, 0.16);
   color: #fca5a5;
+}
+
+@media (max-width: 600px) {
+  .dashboard-current-conditions {
+    padding: 6px 12px 8px;
+    gap: 6px 10px;
+  }
+  .cc-telemetry-group {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 @media (pointer: coarse) {

@@ -38,13 +38,15 @@ describe('similar flood episodes', () => {
 });
 
 describe('useHistoricalComparisonEvents & deduplicateFloodEvents', () => {
-  it('returns none for empty, null, NaN, or distant-only (>1 ft) inputs', () => {
+  it('returns none for empty, null, or NaN inputs and still returns closest on record even for extreme storms', () => {
     const past = event('2026-09-25T22:00:00Z', '2026-09-26T01:00:00Z', 5.70);
     expect(deduplicateFloodEvents(undefined, now)).toEqual([]);
     expect(renderHook(() => useHistoricalComparisonEvents([], 6.5, now)).result.current).toEqual({ matchType: 'none', items: [] });
     expect(renderHook(() => useHistoricalComparisonEvents([past], null, now)).result.current).toEqual({ matchType: 'none', items: [] });
     expect(renderHook(() => useHistoricalComparisonEvents([past], Number.NaN, now)).result.current).toEqual({ matchType: 'none', items: [] });
-    expect(renderHook(() => useHistoricalComparisonEvents([past], 7.0, now)).result.current).toEqual({ matchType: 'none', items: [] });
+    const extreme = renderHook(() => useHistoricalComparisonEvents([past], 7.0, now)).result.current;
+    expect(extreme.matchType).toBe('closest');
+    expect(extreme.items).toEqual([{ event: past, deltaInches: -16 }]);
   });
 
   it('matches similar episodes within ±3 inches and collapses rolling-window duplicates', () => {

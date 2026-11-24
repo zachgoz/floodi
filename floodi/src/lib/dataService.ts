@@ -372,14 +372,13 @@ export async function fetchPeaks(locationId: string, start: Date, end: Date) {
   return snap.docs.map(d => d.data() as WaterLevelPeak);
 }
 
-export async function fetchFloodEvents(locationId: string, limitCount = 50) {
-  const q = query(
-    collection(db, `locations/${locationId}/flood_events`),
-    orderBy('startTime', 'desc'),
-    limit(limitCount)
-  );
+export async function fetchFloodEvents(locationId: string, limitCount?: number) {
+  const baseQuery = collection(db, `locations/${locationId}/flood_events`);
+  const q = typeof limitCount === 'number' && limitCount > 0
+    ? query(baseQuery, orderBy('startTime', 'desc'), limit(limitCount))
+    : query(baseQuery, orderBy('startTime', 'desc'));
 
-  const snap = await measurePerf('firestore.floodEvents.getDocs', () => getDocs(q), { locationId, limitCount });
+  const snap = await measurePerf('firestore.floodEvents.getDocs', () => getDocs(q), { locationId, limitCount: limitCount ?? 'all' });
   return snap.docs.map(d => d.data() as FloodEvent);
 }
 

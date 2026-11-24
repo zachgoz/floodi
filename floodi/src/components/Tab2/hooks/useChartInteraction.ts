@@ -60,6 +60,7 @@ function calculateTooltipPosition(
  */
 export function formatTooltipTime(date: Date, timezone: 'local' | 'gmt'): string {
   const options: Intl.DateTimeFormatOptions = { 
+    weekday: 'short',
     month: 'short', 
     day: 'numeric', 
     hour: 'numeric', 
@@ -72,7 +73,7 @@ export function formatTooltipTime(date: Date, timezone: 'local' | 'gmt'): string
     options.timeZone = 'UTC';
   }
   
-  let formatted = new Intl.DateTimeFormat(undefined, options).format(date);
+  let formatted = new Intl.DateTimeFormat('en-US', options).format(date);
   // Clean up AM/PM formatting
   formatted = formatted.replace(/\s?([AP]M)$/, (match) => match.trim().toLowerCase());
   

@@ -15,6 +15,6 @@ export function webcamFrameStatus(capturedAt: Date, now: Date, isLive: boolean):
 export function formatWebcamCaptureTime(capturedAt: Date): string {
   if (!Number.isFinite(+capturedAt)) return 'Capture time unavailable';
   return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+    timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
   }).format(capturedAt);
 }

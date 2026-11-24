@@ -71,9 +71,9 @@ describe('AtmosphericOverlay decluttered readout & tappable past events', () => 
     expect(wlButton).toHaveTextContent('3.85');
     expect(wlButton).toHaveTextContent('+0.42 ft surge');
 
-    const tideButton = screen.getByRole('button', { name: 'Next high tide details' });
-    expect(tideButton.tagName).toBe('BUTTON');
-    expect(screen.queryByRole('button', { name: /Jump to similar past tide/i })).toBeNull();
+    // Next-tide badge lives in the HydrographChart date header now, not duplicated inside AtmosphericOverlay
+    expect(screen.queryByRole('button', { name: 'Next high tide details' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Jump to similar past/i })).toBeNull();
   });
 
   it('handles degenerate NaN/null weather and empty flood events without crashing or showing fake values', () => {
@@ -115,17 +115,17 @@ describe('AtmosphericOverlay decluttered readout & tappable past events', () => 
       />,
     );
 
-    // Sep 20 (6.79 ft) is closer to 6.80 ft than Oct 15 (6.82 ft)
-    const pastChip = screen.getByRole('button', { name: /Jump to similar past flood on Sep 20 at 6\.79 feet/i });
+    // Sun, Sep 20 (6.79 ft) is closer to 6.80 ft than Thu, Oct 15 (6.82 ft)
+    const pastChip = screen.getByRole('button', { name: /Jump to similar past flood on Sun, Sep 20 at 6\.79 feet/i });
     expect(pastChip.tagName).toBe('BUTTON');
-    expect(pastChip).toHaveTextContent('Past similar: Sep 20 (6.79 ft)');
+    expect(pastChip).toHaveTextContent('Past similar: Sun, Sep 20 (6.79 ft)');
 
     fireEvent.click(pastChip);
     expect(onJumpToTime).toHaveBeenCalledTimes(1);
     expect(onJumpToTime.mock.calls[0][0]).toEqual(new Date('2026-09-20T11:15:00Z'));
   });
 
-  it('shows Closest past flood with exact inch delta when forecast exceeds recorded peaks', () => {
+  it('shows Closest past flood with weekday and exact inch delta when forecast exceeds recorded peaks', () => {
     const onJumpToTime = vi.fn();
     render(
       <AtmosphericOverlay
@@ -144,8 +144,8 @@ describe('AtmosphericOverlay decluttered readout & tappable past events', () => 
       />,
     );
 
-    const closestChip = screen.getByRole('button', { name: /Jump to closest past flood on Oct 15 at 6\.82 feet/i });
-    expect(closestChip).toHaveTextContent('Closest past flood: Oct 15 (6.82 ft, 5" lower)');
+    const closestChip = screen.getByRole('button', { name: /Jump to closest past flood on Thu, Oct 15 at 6\.82 feet/i });
+    expect(closestChip).toHaveTextContent('Closest past flood: Thu, Oct 15 (6.82 ft, 5" lower)');
     fireEvent.click(closestChip);
     expect(onJumpToTime).toHaveBeenCalledWith(new Date('2026-10-15T13:30:00Z'));
   });

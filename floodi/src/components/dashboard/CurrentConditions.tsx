@@ -27,10 +27,11 @@ export function CurrentConditions({
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
   const status = currentGaugeStatus(points, thresholdFt, now);
+  const statusTone = status.above ? 'is-elevated' : status.fresh ? 'is-normal' : 'is-stale';
 
   return (
     <div className="dashboard-current-conditions">
-      <div>
+      <div className="cc-station-group">
         {onLocationChange && locationId ? (
           <label className="location-select-label">
             <span className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>Monitoring Station</span>
@@ -48,31 +49,48 @@ export function CurrentConditions({
             </select>
           </label>
         ) : (
-          <strong>{location}</strong>
+          <strong className="cc-location-name">{location}</strong>
         )}
-        <span className={status.above ? 'condition-elevated' : ''}>{status.label}</span>
+        <span className={`cc-status-badge ${statusTone}`}>
+          <span className="cc-status-dot" aria-hidden="true" />
+          {status.label}
+        </span>
       </div>
-      <div>
-        <small>
-          {status.latest
-            ? `Observed ${status.latest.v.toFixed(2)} ft · ${status.latest.t.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET`
-            : 'Waiting for a recent gauge reading'}
-        </small>
-        <div style={{ display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
-          {onAccuracyClick && (
-            <button
-              type="button"
-              className="accuracy-pill-trigger"
-              onClick={onAccuracyClick}
-              title="View scientific accuracy audit & error margins"
-              aria-label="View scientific accuracy audit"
-            >
-              <span className="accuracy-pill-dot" />
-              Verified {maeInches.toFixed(1)}" MAE
-            </button>
+
+      <div className="cc-telemetry-group">
+        <div className="cc-gauge-chip" aria-label="Latest observed canal gauge reading">
+          <span className="cc-chip-kicker">Gauge</span>
+          {status.latest ? (
+            <>
+              <strong className="cc-chip-val">{status.latest.v.toFixed(2)} ft</strong>
+              <span className="cc-chip-time">
+                {status.latest.t.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET
+              </span>
+            </>
+          ) : (
+            <span className="cc-chip-time">Waiting for reading</span>
           )}
-          {customView && <button type="button" onClick={onSettings}>Custom chart view</button>}
         </div>
+
+        {onAccuracyClick && (
+          <button
+            type="button"
+            className="accuracy-pill-trigger"
+            onClick={onAccuracyClick}
+            aria-label={`View forecast accuracy audit, average error plus or minus ${maeInches.toFixed(1)} inches`}
+          >
+            <span className="accuracy-pill-dot" aria-hidden="true" />
+            <span className="cc-chip-kicker">Accuracy</span>
+            <strong>±{maeInches.toFixed(1)}&quot;</strong>
+            <span className="cc-chip-chevron" aria-hidden="true">›</span>
+          </button>
+        )}
+
+        {customView && (
+          <button type="button" className="cc-custom-btn" onClick={onSettings}>
+            Custom view
+          </button>
+        )}
       </div>
     </div>
   );

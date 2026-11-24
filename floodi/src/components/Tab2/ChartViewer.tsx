@@ -3,10 +3,11 @@ import React, { useRef, useEffect, useState, useMemo, useCallback, useId } from 
 import type { Point, ChartConfig, WindPoint, PrecipPoint } from './types';
 import { WeatherTimeline, WEATHER_TIMELINE_HEIGHT } from './WeatherTimeline';
 import { HourlyWeatherDetails } from './HourlyWeatherDetails';
-import { useChartInteraction, formatTooltipTime, findNearestPoint } from './hooks/useChartInteraction';
+import { formatTooltipTime, findNearestPoint } from './hooks/useChartInteraction';
 import { isCommentTimeRange, type Comment, type CommentTimeRange } from 'src/types/comment';
 import type { FloodEvent } from 'src/types/data';
-import { deduplicateFloodEvents, useHistoricalComparisonEvents } from 'src/components/dashboard/useSimilarFloodEvents';
+import { useHistoricalComparisonEvents } from 'src/components/dashboard/useSimilarFloodEvents';
+import { getFloodSeverityColor, getFloodSeverityForLevel } from 'src/utils/floodSeverity';
 import { getTimeRangeFromChartSelection } from 'src/utils/timeRangeHelpers';
 import { findTideExtrema } from 'src/utils/tideExtrema';
 import { IonButton, IonIcon, IonText } from '@ionic/react';
@@ -240,8 +241,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   const forecastClipId = `water-forecast-${useId().replace(/:/g, '')}`;
   const [size, setSize] = useState({ w: 900, h: 420 });
   const [hourlyWeather, setHourlyWeather] = useState(false);
-
-  const { hoverT, setHoverT, calculateTooltipData } = useChartInteraction();
 
   // Detect touch-primary devices (iOS / Android) once at mount
   const isTouchDeviceRef = useRef(
@@ -507,31 +506,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     const svg = svgRef.current;
     if (!svg) return;
 
-    // On pointer move, update hover crosshair for mouse only when not panning.
-    // On mobile touch, horizontal scrolling drives the center playhead directly.
-    if (event.pointerType === 'mouse' && !panStateRef.current) {
-      const overWeather = (event.target as Element).closest?.('[data-testid="weather-timeline"]');
-      const hoverTime = overWeather ? null : computeTimeAtPointer(event);
-      if (hoverTime) {
-        setHoverT(hoverTime);
-        onHoverTimeChange?.(hoverTime);
-      } else {
-        setHoverT(null);
-        onHoverTimeChange?.(null);
-        onChartInteraction?.(null);
-      }
-
-      if (onChartInteraction && hoverTime) {
-        const nearestDelta = findNearestPoint(deltaPoints, hoverTime);
-        const nearestObs = findNearestPoint(observedPoints, hoverTime);
-        onChartInteraction(nearestObs?.point || nearestDelta?.point || null);
-      }
-    } else if (panStateRef.current) {
-      setHoverT(null);
-      onHoverTimeChange?.(null);
-    }
-
-    // ─── Mouse Pan ───
+    // ─── Mouse Pan (hover effects intentionally removed so scrolling/panning owns the playhead cleanly) ───
     if (event.pointerType === 'mouse' && panStateRef.current) {
       const dx = event.clientX - panStateRef.current.startX;
       const rect = svg.getBoundingClientRect();
@@ -571,11 +546,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   }, [viewDomain]);
 
   const handlePointerLeave = () => {
-    setHoverT(null);
-    onHoverTimeChange?.(null);
-    if (onChartInteraction) {
-      onChartInteraction(null);
-    }
     if (panStateRef.current) {
       panStateRef.current = null;
       persistDomainChange();
@@ -594,15 +564,18 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     activePointersRef.current.delete(event.pointerId);
     panStateRef.current = null;
     pointerDownPosRef.current = null;
-    setHoverT(null);
-    onHoverTimeChange?.(null);
   };
 
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
-    // Interactive markers and weather cells handle their own clicks. Capturing
-    // the pointer on the SVG would redirect a weather cell's click away from it.
+    // Interactive markers, tide pills, and weather cells handle their own clicks.
     const target = event.target as HTMLElement;
-    if (target && target.closest && (target.closest('[data-comment-marker]') || target.closest('[data-testid="weather-timeline"] [role="button"]'))) {
+    if (
+      target &&
+      target.closest &&
+      (target.closest('[data-comment-marker]') ||
+        target.closest('.tide-extremum-pill') ||
+        target.closest('[data-testid="weather-timeline"] [role="button"]'))
+    ) {
       return;
     }
 
@@ -611,16 +584,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     const t = computeTimeAtPointer(event);
     if (!t) return;
 
-    // Activate hover readout on touch or mouse press
-    setHoverT(t);
-    onHoverTimeChange?.(t);
-    if (onChartInteraction) {
-      const nearestDelta = findNearestPoint(deltaPoints, t);
-      const nearestObs = findNearestPoint(observedPoints, t);
-      onChartInteraction(nearestObs?.point || nearestDelta?.point || null);
-    }
-
-    // For mouse, we start panning immediately
+    // For mouse, start panning immediately (hover effects disabled so scrolling owns the playhead)
     if (event.pointerType === 'mouse') {
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -662,19 +626,11 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   const innerWRef = useRef(innerW);
   const sizeRef = useRef(size);
   const marginsRef = useRef(margins);
-  const clearHoverRef = useRef(() => {
-    setHoverT(null);
-    onHoverTimeChange?.(null);
-  });
   t0Ref.current = t0;
   t1Ref.current = t1;
   innerWRef.current = innerW;
   sizeRef.current = size;
   marginsRef.current = margins;
-  clearHoverRef.current = () => {
-    setHoverT(null);
-    onHoverTimeChange?.(null);
-  };
 
   // Native touch + wheel handlers.
   //
@@ -764,7 +720,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
         if (isHorizontalPan || (Math.abs(dx) > 0 && Math.abs(dx) > Math.abs(dy))) {
           if (e.cancelable) e.preventDefault();
-          clearHoverRef.current();
           // dx in CSS pixels → SVG units → fraction of domain
           const timeShift = -(dx / scaleX) / iw * (touchStartT1 - touchStartT0);
           setViewDomain({
@@ -817,7 +772,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
       const cur1 = t1Ref.current;
 
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && !e.ctrlKey) {
-        clearHoverRef.current();
         const scaleX = rect.width / sw;
         const timeShift = (e.deltaX / scaleX) / iw * (cur1 - cur0);
         setViewDomain({ start: new Date(cur0 + timeShift), end: new Date(cur1 + timeShift) });
@@ -848,23 +802,16 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally empty – all current values accessed via refs
 
-  // Scrub crosshair point calculation (readout values live in the header strip above the chart)
-  const tooltipData = useMemo(() => {
-    if (!hoverT) return null;
-    return calculateTooltipData(hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, now, thresholds.minor, showDelta, viewMode, null);
-  }, [hoverT, observedPoints, predictedPoints, adjustedPoints, deltaPoints, now, thresholds.minor, showDelta, viewMode, calculateTooltipData]);
-
-  // Active level at either hover cursor (mouse) or scrolled center playhead (mobile/pan)
-  const activeInspectTime = hoverT ?? centerTime;
+  // Active water level at the scrolled center playhead (single source of truth across mobile & desktop)
   const activeInspectLevel = useMemo(() => {
-    const activeMs = activeInspectTime.getTime();
+    const activeMs = centerTime.getTime();
     const isFutureTime = activeMs > now.getTime();
     const primary = isFutureTime
-      ? (findNearestPoint(adjustedPoints, activeInspectTime) || findNearestPoint(predictedPoints, activeInspectTime))
-      : (findNearestPoint(observedPoints, activeInspectTime) || findNearestPoint(predictedPoints, activeInspectTime));
+      ? (findNearestPoint(adjustedPoints, centerTime) || findNearestPoint(predictedPoints, centerTime))
+      : (findNearestPoint(observedPoints, centerTime) || findNearestPoint(predictedPoints, centerTime));
     if (!primary || primary.dtMin > 60) return null;
     return primary.point.v;
-  }, [activeInspectTime, now, adjustedPoints, predictedPoints, observedPoints]);
+  }, [centerTime, now, adjustedPoints, predictedPoints, observedPoints]);
 
   const activeFloodComparison = useHistoricalComparisonEvents(
     floodEvents,
@@ -873,15 +820,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
     1,
   );
   const matchedPastFlood = activeFloodComparison.items[0] ?? null;
-
-  // Deduplicated historical flood peaks inside the currently visible time window (past only)
-  const visibleHistoricalPeaks = useMemo(() => {
-    const uniquePast = deduplicateFloodEvents(floodEvents, now);
-    return uniquePast.filter(ev => {
-      const ms = Date.parse(ev.peakTime);
-      return Number.isFinite(ms) && ms >= t0 && ms <= t1 && ev.peakValue >= thresholds.minor;
-    });
-  }, [floodEvents, now, t0, t1, thresholds.minor]);
 
   /** Handle reset of both local zoom and global absolute range */
   const handleReset = () => {
@@ -1163,51 +1101,77 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 />
                 {showPeakLabel && (() => {
                   const compactLabel = size.w < 600;
-                  let finalY = isHigh ? yOf(extremum.v) - 16 : yOf(extremum.v) + 26;
+                  const curveY = yOf(extremum.v);
+                  const severity = isHigh ? getFloodSeverityForLevel(extremum.v, thresholds) : null;
+                  const isFloodPeak = severity !== null;
+                  const accentColor = isFloodPeak
+                    ? getFloodSeverityColor(severity)
+                    : isHigh
+                    ? 'var(--ion-color-danger, #eb445a)'
+                    : 'var(--ion-color-primary, #3880ff)';
+                  const timeStr = new Intl.DateTimeFormat(undefined, {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true,
+                    timeZone: timezone === 'gmt' ? 'UTC' : 'America/New_York'
+                  }).format(tick).replace(/\s?([AP])M$/, (_, p) => p.toLowerCase());
 
-                  // De-collision check against flood thresholds
-                  const thresholdValues = Object.values(thresholds).filter((val): val is number => typeof val === 'number');
-                  for (const thresh of thresholdValues) {
-                    const threshY = yOf(thresh);
-                    if (Math.abs(finalY - threshY) < 14) {
-                      finalY = isHigh ? threshY - 15 : threshY + 15;
-                    }
-                  }
+                  const pillW = compactLabel ? 52 : 58;
+                  const pillH = compactLabel ? 26 : 28;
+                  let pillY = isHigh ? curveY - pillH - 8 : curveY + 8;
 
-                  // Safety: keep labels within SVG bounds (plus some padding)
-                  const minVisibleY = margins.t - 5;
-                  const maxVisibleY = margins.t + innerH + 30;
-                  if (finalY < minVisibleY) finalY = minVisibleY + 14;
-                  if (finalY > maxVisibleY) finalY = maxVisibleY - 5;
+                  // Safety clamp inside plot vertical bounds
+                  pillY = Math.max(margins.t + 2, Math.min(pillY, margins.t + innerH - pillH - 2));
+                  const pillX = Math.max(margins.l + 2, Math.min(x - pillW / 2, margins.l + innerW - pillW - 2));
 
                   return (
-                    <g key={`plabel-${i}`}>
+                    <g
+                      key={`plabel-${i}`}
+                      className={`tide-extremum-pill ${isHigh ? 'is-high' : 'is-low'}${isFloodPeak ? ' is-flood' : ''}`}
+                      style={{ cursor: onJumpToTime ? 'pointer' : 'default' }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        onJumpToTime?.(tick);
+                      }}
+                    >
+                      <circle
+                        cx={x}
+                        cy={curveY}
+                        r={isFloodPeak ? 4.5 : 3.25}
+                        fill={accentColor}
+                        stroke="var(--chart-bg, #ffffff)"
+                        strokeWidth={1.75}
+                      />
+                      <rect
+                        x={pillX}
+                        y={pillY}
+                        width={pillW}
+                        height={pillH}
+                        rx={8}
+                        fill="var(--chart-bg, #ffffff)"
+                        stroke={accentColor}
+                        strokeWidth={isFloodPeak ? 1.5 : 1}
+                        opacity={0.94}
+                      />
                       <text
-                        x={x}
-                        y={finalY - 11}
+                        x={pillX + pillW / 2}
+                        y={pillY + (compactLabel ? 11.5 : 12.5)}
                         textAnchor="middle"
-                        fill={isHigh ? "var(--ion-color-danger)" : "var(--ion-color-primary)"}
-                        fontSize={compactLabel ? "11" : "12"}
-                        fontWeight="600"
-                        style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3px' }}
+                        fill={isFloodPeak ? accentColor : 'var(--chart-label-text, #1e293b)'}
+                        fontSize={compactLabel ? '10.5' : '11'}
+                        fontWeight="700"
                       >
-                        {isHigh ? 'High' : 'Low'} {extremum.v.toFixed(2)} ft
+                        {extremum.v.toFixed(2)}&apos;
                       </text>
                       <text
-                        x={x}
-                        y={finalY + 1}
+                        x={pillX + pillW / 2}
+                        y={pillY + (compactLabel ? 21.5 : 23)}
                         textAnchor="middle"
                         fill="var(--chart-axis-text)"
-                        fontSize={compactLabel ? "10" : "12"}
+                        fontSize={compactLabel ? '9' : '9.5'}
                         fontWeight="500"
-                        style={{ paintOrder: 'stroke', stroke: 'var(--chart-bg, #ffffff)', strokeWidth: '3.1px' }}
                       >
-                        {new Intl.DateTimeFormat(undefined, { 
-                          hour: 'numeric', 
-                          minute: '2-digit',
-                          hour12: true,
-                          timeZone: timezone === 'gmt' ? 'UTC' : 'America/New_York'
-                        }).format(tick).replace(/\s?[AP]M$/, (m) => m.trim().toLowerCase())}
+                        {timeStr}
                       </text>
                     </g>
                   );
@@ -1217,7 +1181,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                   y={margins.t + innerH + 34}
                   textAnchor="middle"
                   fill="var(--chart-axis-text)"
-                  fontSize="12"
+                  fontSize="11.5"
                   fontWeight="500"
                 >
                   {(() => {
@@ -1225,11 +1189,12 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                     const prevTick = i > 0 ? peaks[i-1] : null;
                     const isNewDay = prevTick ? tick.getDate() !== prevTick.getDate() : true;
                     
-                    // Clutter control for date labels: only show on new day and if space permits (>60px)
-                    const showDateLabel = (isNewDay || isFirstTick) && (x - lastDateLabelX > 60);
+                    // Clutter control for date labels: include weekday abbreviation when space permits
+                    const showDateLabel = (isNewDay || isFirstTick) && (x - lastDateLabelX > 78);
                     if (showDateLabel) {
                       lastDateLabelX = x;
-                      return new Intl.DateTimeFormat(undefined, {
+                      return new Intl.DateTimeFormat('en-US', {
+                        weekday: 'short',
                         month: 'short',
                         day: 'numeric',
                         timeZone: timezone === 'gmt' ? 'UTC' : 'America/New_York'
@@ -1285,17 +1250,18 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
 
 
 
-        {/* Single subtle horizontal reference tick when scrolled/hovered above flood stage */}
+        {/* Single subtle horizontal reference tick when scrolled above flood stage */}
         {matchedPastFlood && activeInspectLevel !== null && activeInspectLevel >= thresholds.minor && (() => {
           const refY = yOf(matchedPastFlood.event.peakValue);
           if (!Number.isFinite(refY) || refY < margins.t || refY > margins.t + innerH) return null;
           const shortDate = new Intl.DateTimeFormat('en-US', {
             timeZone: timezone === 'gmt' ? 'UTC' : 'America/New_York',
+            weekday: 'short',
             month: 'short',
             day: 'numeric',
           }).format(new Date(matchedPastFlood.event.peakTime));
           const label = `Past ${shortDate} · ${matchedPastFlood.event.peakValue.toFixed(2)}'`;
-          const pillW = Math.max(106, label.length * 6.4 + 14);
+          const pillW = Math.max(124, label.length * 6.2 + 14);
           const pillX = margins.l + innerW - pillW - 6;
           return (
             <g className="past-flood-reference-tick" pointerEvents="none">
@@ -1333,86 +1299,6 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
             </g>
           );
         })()}
-
-        {/* Subtle tappable pins on past flood crests when scrolling backward in time */}
-        {visibleHistoricalPeaks.map(ev => {
-          const peakDate = new Date(ev.peakTime);
-          const px = xOf(peakDate);
-          const py = yOf(ev.peakValue);
-          if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
-          const pillY = Math.max(margins.t + 4, py - 24);
-          return (
-            <g
-              key={`hist-flood-${ev.peakTime}`}
-              className="historical-flood-pin"
-              style={{ cursor: onJumpToTime ? 'pointer' : 'default' }}
-              onClick={e => {
-                e.stopPropagation();
-                onJumpToTime?.(peakDate);
-              }}
-            >
-              <circle
-                cx={px}
-                cy={py}
-                r={4.5}
-                fill="var(--ion-color-warning, #f59e0b)"
-                stroke="var(--chart-bg, #ffffff)"
-                strokeWidth={1.75}
-              />
-              <rect
-                x={px - 20}
-                y={pillY}
-                width={40}
-                height={16}
-                rx={8}
-                fill="var(--chart-bg, #ffffff)"
-                stroke="var(--ion-color-warning, #f59e0b)"
-                strokeWidth={1}
-                opacity={0.92}
-              />
-              <text
-                x={px}
-                y={pillY + 11.5}
-                textAnchor="middle"
-                fill="var(--chart-label-text, #1e293b)"
-                fontSize="9.5"
-                fontWeight="700"
-              >
-                {ev.peakValue.toFixed(1)}&apos;
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Lightweight crosshair + point markers (details update cleanly in the header strip above the chart) */}
-        {hoverT && (
-          <g className="chart-scrub-indicator" pointerEvents="none">
-            <line
-              x1={xOf(hoverT)}
-              x2={xOf(hoverT)}
-              y1={margins.t}
-              y2={margins.t + innerH}
-              stroke="var(--chart-axis-text, #94a3b8)"
-              strokeWidth={1.25}
-              strokeDasharray="3 3"
-              opacity={0.75}
-            />
-
-            {tooltipData?.rows?.map((row, i) => (
-              row.point && (
-                <circle
-                  key={`marker-${i}`}
-                  cx={xOf(row.point.t)}
-                  cy={yOf(row.point.v)}
-                  r={4.5}
-                  fill={row.color}
-                  stroke="var(--chart-bg, #ffffff)"
-                  strokeWidth={2}
-                />
-              )
-            ))}
-          </g>
-        )}
 
         {/* VIEWING/Center Time Marker (Solid, always visible) */}
         {(() => {

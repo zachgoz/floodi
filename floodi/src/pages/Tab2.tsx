@@ -127,7 +127,6 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
   const [resetCount, setResetCount] = useState(0);
   const [currentViewport, setCurrentViewport] = useState<{ start: Date; end: Date; focusTime: Date } | null>(null);
   const [manualFocusTime, setManualFocusTime] = useState<Date | null>(null);
-  const [hoverTime, setHoverTime] = useState<Date | null>(null);
   const [centerRequest, setCenterRequest] = useState<{ time: Date; id: number } | undefined>(undefined);
   const [viewportRequest, setViewportRequest] = useState<{ start: Date; end: Date; id: number } | undefined>();
   const [selectedCameraId, setSelectedCameraId] = useState<string>(WEBCAMS[0].id);
@@ -447,13 +446,13 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     });
   }, [loading, error, processedData]);
 
-  // Modularized atmospheric and simulation state (live-updates cleanly when hovering/scrubbing the chart)
+  // Modularized atmospheric and simulation state driven cleanly by the scrolled playhead
   const {
     activeAtmo,
     simulationLevel,
     setSimulationLevel,
     setIsUserSimulating,
-  } = useAtmosphericState(forecastData, hoverTime ?? manualFocusTime, currentViewport);
+  } = useAtmosphericState(forecastData, manualFocusTime, currentViewport);
 
   const resetToLive = useCallback(() => {
     lastPersistedDomainRef.current = null;
@@ -792,6 +791,8 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                           setResetCount(c => c + 1);
                         }}
                         locationName="Water Level Forecast"
+                        nextTideInfo={nextTideInfo ?? undefined}
+                        onNextTideClick={() => setShowWLInfo(true)}
                         controls={<ForecastTimeControls
                           viewport={currentViewport || processedData?.timeDomain || { start: new Date(Date.now() - 36 * 3600_000), end: new Date(Date.now() + 48 * 3600_000) }}
                           now={processedData?.timeDomain.now || new Date()}
@@ -866,7 +867,6 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                         onViewportChange={handleViewportChange}
                         onViewportDomainCommit={persistViewedDomain}
                         onDomainChangeRequest={handleDomainChangeRequest}
-                        onHoverTimeChange={setHoverTime}
                         loading={loading}
                         mode={config.timeRange.mode}
                         onResetToLive={resetToLive}

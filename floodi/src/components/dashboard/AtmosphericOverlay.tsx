@@ -17,6 +17,7 @@ import { LOCAL_ZONE } from 'src/utils/waterForecast';
 function formatShortPeakDate(date: Date): string {
   return date.toLocaleDateString('en-US', {
     timeZone: LOCAL_ZONE,
+    weekday: 'short',
     month: 'short',
     day: 'numeric',
   });
@@ -25,6 +26,7 @@ function formatShortPeakDate(date: Date): string {
 function formatFullPeakDate(date: Date): string {
   return date.toLocaleString('en-US', {
     timeZone: LOCAL_ZONE,
+    weekday: 'short',
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
@@ -211,33 +213,6 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
         windDirection={windDirection}
         loading={loading}
       />
-
-      {/* Next Tide Glanceable Badge */}
-      {!loading && nextTideInfo && (
-        <button
-          type="button"
-          className="next-tide-badge"
-          data-tour-id="next-tide-badge"
-          onClick={() => setShowWLInfo(true)}
-          aria-label={`Next ${nextTideInfo.type} tide details`}
-        >
-          <div className="metric-details" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div className="metric-value-row">
-              <span className={`tide-type ${nextTideInfo.type}`}>
-                {nextTideInfo.type === 'high' ? '▲' : '▼'} {nextTideInfo.type === 'high' ? 'High' : 'Low'}
-              </span>
-              <span className="tide-countdown">
-                in {nextTideInfo.minutesRemaining >= 60 ? `${Math.floor(nextTideInfo.minutesRemaining / 60)}h ${nextTideInfo.minutesRemaining % 60}m` : `${nextTideInfo.minutesRemaining}m`}
-              </span>
-            </div>
-            <div className="metric-label-row">
-              <span className="metric-label">
-                {nextTideInfo.heightDelta >= 0 ? '+' : ''}{nextTideInfo.heightDelta.toFixed(2)} ft
-              </span>
-            </div>
-          </div>
-        </button>
-      )}
 
       {/* Stationary, mobile-friendly Past Flood visual cue (lets users jump directly to historical webcam photos) */}
       {!loading && topComparison && onJumpToTime && (

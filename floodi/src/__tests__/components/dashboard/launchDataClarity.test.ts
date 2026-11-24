@@ -13,9 +13,9 @@ describe('camera freshness follows the captured image', () => {
     expect(webcamFrameStatus(new Date('invalid'), now, true).label).toBe('Time unavailable');
     expect(webcamFrameStatus(new Date(+now + 120_000), now, true).label).toBe('Time unavailable');
   });
-  it('formats camera captures in Eastern time including daylight saving transitions', () => {
-    expect(formatWebcamCaptureTime(new Date('2026-10-17T12:00:00Z'))).toBe('Oct 17, 8:00 AM EDT');
-    expect(formatWebcamCaptureTime(new Date('2026-11-01T06:00:00Z'))).toBe('Nov 1, 1:00 AM EST');
+  it('formats camera captures in Eastern time including weekday and daylight saving transitions', () => {
+    expect(formatWebcamCaptureTime(new Date('2026-10-17T12:00:00Z'))).toBe('Sat, Oct 17, 8:00 AM EDT');
+    expect(formatWebcamCaptureTime(new Date('2026-11-01T06:00:00Z'))).toBe('Sun, Nov 1, 1:00 AM EST');
     expect(formatWebcamCaptureTime(new Date('invalid'))).toBe('Capture time unavailable');
   });
 });

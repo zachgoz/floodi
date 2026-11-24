@@ -179,7 +179,7 @@ describe('ChartViewer with comments', () => {
     expect(onTimePointSelect).not.toHaveBeenCalled();
   });
 
-  it('scrubs with a lightweight crosshair and emits onHoverTimeChange without rendering an unclickable floating SVG tooltip box', () => {
+  it('disables hover effects so scrolling/panning cleanly owns the playhead without floating tooltips or crosshairs', () => {
     const onHoverTimeChange = vi.fn();
     const { container } = render(
       <ChartViewer
@@ -208,25 +208,16 @@ describe('ChartViewer with comments', () => {
     Object.defineProperty(moveEvent, 'pointerType', { value: 'mouse' });
     fireEvent(svg, moveEvent);
 
-    expect(onHoverTimeChange).toHaveBeenCalledTimes(1);
-    const emittedTime = onHoverTimeChange.mock.calls[0][0] as Date;
-    expect(emittedTime).toBeInstanceOf(Date);
-    expect(emittedTime.getTime()).toBeGreaterThan(start.getTime());
-    expect(emittedTime.getTime()).toBeLessThanOrEqual(end.getTime());
-
-    // Crosshair indicator renders cleanly, while the old floating tooltip box & unclickable jump link are gone
-    expect(container.querySelector('.chart-scrub-indicator')).not.toBeNull();
+    expect(onHoverTimeChange).not.toHaveBeenCalled();
+    expect(container.querySelector('.chart-scrub-indicator')).toBeNull();
     expect(container.querySelector('rect[fill="var(--chart-tooltip-bg)"]')).toBeNull();
     expect(screen.queryByText(/Jump to last similar/i)).toBeNull();
-
-    fireEvent.pointerLeave(svg);
-    expect(onHoverTimeChange).toHaveBeenLastCalledWith(null);
-    expect(container.querySelector('.chart-scrub-indicator')).toBeNull();
   });
 
-  it('draws a single subtle past-flood reference tick ONLY when viewed level is above flood stage and renders clickable past peak pins', () => {
+  it('renders unified clickable tide extremum pills and shows the past-flood reference tick ONLY above flood stage', () => {
     const onJumpToTime = vi.fn();
-    const pastPeakTime = new Date(start.getTime() + 20 * 60_000).toISOString();
+    const peakT = new Date(start.getTime() + 30 * 60_000);
+    const pastPeakTime = peakT.toISOString();
     const pastEvents = [{
       startTime: start.toISOString(),
       endTime: now.toISOString(),
@@ -237,13 +228,13 @@ describe('ChartViewer with comments', () => {
       source: 'fiman' as const,
     }];
 
-    // Below flood stage at playhead -> no horizontal reference tick
+    // Curve with a real local high peak inside [start, now], below flood stage at playhead (now)
     const { container, rerender } = render(
       <ChartViewer
         locationId="carolina-beach"
-        observedPoints={[pt(start, 4.1), pt(now, 4.8)]}
-        predictedPoints={[pt(start, 4.0), pt(end, 4.9)]}
-        adjustedPoints={[pt(now, 4.8), pt(end, 4.9)]}
+        observedPoints={[pt(start, 4.1), pt(peakT, 5.1), pt(now, 4.4)]}
+        predictedPoints={[pt(start, 4.0), pt(peakT, 5.0), pt(end, 4.2)]}
+        adjustedPoints={[pt(now, 4.4), pt(end, 4.2)]}
         deltaPoints={[]}
         domainStart={start}
         domainEnd={end}
@@ -256,20 +247,24 @@ describe('ChartViewer with comments', () => {
       />,
     );
 
-    expect(container.querySelector('.past-flood-reference-tick')).toBeNull();
-    // Past flood pin inside visible viewport IS clickable
-    const pin = container.querySelector('.historical-flood-pin');
-    expect(pin).not.toBeNull();
-    fireEvent.click(pin!);
+    // Unified tide pill renders (no duplicate separate historical-flood-pin)
+    expect(container.querySelector('.historical-flood-pin')).toBeNull();
+    const pill = container.querySelector('.tide-extremum-pill');
+    expect(pill).not.toBeNull();
+    expect(pill?.textContent).toContain("5.10'");
+    fireEvent.click(pill!);
     expect(onJumpToTime).toHaveBeenCalledTimes(1);
-    expect(onJumpToTime).toHaveBeenCalledWith(new Date(pastPeakTime));
+    expect(onJumpToTime).toHaveBeenCalledWith(peakT);
 
-    // Above flood stage at playhead -> horizontal reference tick appears cleanly
+    // Below flood stage at playhead -> no horizontal reference tick
+    expect(container.querySelector('.past-flood-reference-tick')).toBeNull();
+
+    // Above flood stage at playhead -> single horizontal reference tick with weekday appears cleanly
     rerender(
       <ChartViewer
         locationId="carolina-beach"
-        observedPoints={[pt(start, 4.1), pt(now, 6.4)]}
-        predictedPoints={[pt(start, 4.0), pt(end, 6.4)]}
+        observedPoints={[pt(start, 4.1), pt(peakT, 6.2), pt(now, 6.4)]}
+        predictedPoints={[pt(start, 4.0), pt(peakT, 6.0), pt(end, 6.4)]}
         adjustedPoints={[pt(now, 6.4), pt(end, 6.4)]}
         deltaPoints={[]}
         domainStart={start}
@@ -285,6 +280,7 @@ describe('ChartViewer with comments', () => {
 
     const refTick = container.querySelector('.past-flood-reference-tick');
     expect(refTick).not.toBeNull();
+    expect(refTick?.textContent).toContain('Sat, Oct 10');
     expect(refTick?.textContent).toContain("6.20'");
   });
 });

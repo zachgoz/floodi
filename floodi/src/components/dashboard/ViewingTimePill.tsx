@@ -8,7 +8,14 @@ export function ViewingTimePill({ time, fallbackLabel, onClick }: ViewingTimePil
   if (!time && !fallbackLabel) return null;
 
   const label = time
-    ? time.toLocaleString([], { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    ? time.toLocaleString('en-US', {
+        timeZone: 'America/New_York',
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
     : fallbackLabel;
 
   if (onClick) {

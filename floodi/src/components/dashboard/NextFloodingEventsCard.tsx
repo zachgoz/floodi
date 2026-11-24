@@ -69,6 +69,7 @@ const INITIAL_VISIBLE_EVENTS = 2;
 function formatDateTime(date: Date): string {
   return date.toLocaleString('en-US', {
     timeZone: LOCAL_ZONE,
+    weekday: 'short',
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
