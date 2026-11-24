@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { ChallengerOutlookDocument, ChallengerPoint } from '../forecast/challenger';
 import type { SurgeDriversBreakdown } from '../forecast/basinPhysics';
+import { sanitizeFirestorePayload } from '../utils/firestorePayload';
 
 export type FloodSeverityTier = 'minor' | 'moderate' | 'major' | 'extreme';
 export type OperationalAlertCategory =
@@ -575,7 +576,7 @@ export function evaluateOperationalAlertStep(
         ...adv,
         episodeId: existing.episodeId,
         severity: effectiveSeverity,
-        isProbabilisticWatch: existing.advisory.isProbabilisticWatch && adv.isProbabilisticWatch,
+        isProbabilisticWatch: Boolean(existing.advisory.isProbabilisticWatch && adv.isProbabilisticWatch),
       };
 
       const wasCleared = existing.status === 'cleared';
@@ -879,21 +880,26 @@ export async function runOperationalAlertsForForecast(
     CAROLINA_BEACH_THRESHOLDS
   );
 
-  const writes: Array<Promise<unknown>> = [stateRef.set(nextState), feedRef.set(feed)];
+  const writes: Array<Promise<unknown>> = [
+    stateRef.set(sanitizeFirestorePayload(nextState)),
+    feedRef.set(sanitizeFirestorePayload(feed)),
+  ];
 
   for (const notif of notifications) {
     writes.push(
-      db.doc(`shadow_alert_outbox/${notif.intentId}`).set({
-        kind: 'operational_v2',
-        intentId: notif.intentId,
-        locationId: notif.locationId,
-        forecastGeneratedAt: forecast.generatedAt,
-        issuedAt: notif.issuedAt,
-        expiresAt: notif.expiresAt,
-        decision: 'would-notify',
-        state: 'simulated',
-        event: notif,
-      })
+      db.doc(`shadow_alert_outbox/${notif.intentId}`).set(
+        sanitizeFirestorePayload({
+          kind: 'operational_v2',
+          intentId: notif.intentId,
+          locationId: notif.locationId,
+          forecastGeneratedAt: forecast.generatedAt,
+          issuedAt: notif.issuedAt,
+          expiresAt: notif.expiresAt,
+          decision: 'would-notify',
+          state: 'simulated',
+          event: notif,
+        })
+      )
     );
   }
 

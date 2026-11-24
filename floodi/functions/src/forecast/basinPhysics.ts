@@ -609,12 +609,19 @@ export function synthesizeOperationalForecast(
       const dRain = rawRainFt * (1 - alpha);
 
       // Operational TimesFM-3 Subtidal Foundation Model:
-      // Weight increased to 45% primary generator (0.55 baseOceanTarget + 0.45 tfmVal) when within physical bounds
-      // Hydrodynamic fallback to baseOceanTarget if tfmVal is unavailable or diverges
+      // Smooth Gaussian divergence taper prevents vertical step cliffs during rapid storm surge
+      // onset while retaining ~45% AI weight during calm/normal conditions (small divergence).
+      // As NOAA ETSS signals a rapid storm surge diverging from the past 48h baseline, TimesFM
+      // weight decays smoothly via w = 0.45 * exp(-(diff / 0.75)^2), handing authority to physical
+      // storm-surge guidance without discontinuities.
       const baseOceanTarget = harmonics.subtidalMean + oceanDelta;
+      const tfmWeight =
+        tfmVal !== null && Number.isFinite(tfmVal)
+          ? 0.45 * Math.exp(-Math.pow((tfmVal - baseOceanTarget) / 0.75, 2))
+          : 0;
       const blendedOceanTarget =
-        tfmVal !== null && Math.abs(tfmVal - baseOceanTarget) <= 1.5
-          ? 0.55 * baseOceanTarget + 0.45 * tfmVal
+        tfmWeight > 0.001 && tfmVal !== null
+          ? (1 - tfmWeight) * baseOceanTarget + tfmWeight * tfmVal
           : baseOceanTarget;
 
       oceanComponentFt = blendedOceanTarget + (harmonics.sOrigin - blendedOceanTarget) * alpha;

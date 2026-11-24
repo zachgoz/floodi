@@ -497,4 +497,57 @@ test('synthesizeOperationalForecast blends TimesFM-3 at 45% weight in Regime A a
   );
 });
 
+test('TimesFM-3 Gaussian divergence taper eliminates vertical step cliffs during rapid storm surge onset', () => {
+  const origin = new Date('2026-11-24T12:00:00Z');
+  const past = Array.from({ length: 48 }, (_, i) => ({
+    t: new Date(origin.getTime() - (48 - i) * 1800_000).toISOString(),
+    v: 0.5,
+  }));
+
+  // Ramp NOAA Ocean ETSS smoothly from +0.5 ft up to +2.8 ft over 36 hours (72 half-hour steps),
+  // while TimesFM-3 lags near the calm 48h baseline (+0.6 ft).
+  const tide = [];
+  const oceanEtss = [];
+  const timesFmSubtidal = [];
+  for (let s = 0; s <= 72; s++) {
+    const t = new Date(origin.getTime() + s * 1800_000);
+    tide.push({ t, v: 3.5 });
+    oceanEtss.push({ t, v: 0.5 + (2.3 * s) / 72 });
+    timesFmSubtidal.push({ t, v: 0.6 });
+  }
+
+  const pts = synthesizeOperationalForecast({
+    spec: CAROLINA_BEACH_BASIN_SPEC,
+    issuedAt: origin,
+    recentResidual: past,
+    tide,
+    oceanEtss,
+    timesFmSubtidal,
+  });
+
+  // 1. No vertical step cliff: max 30-min jump in oceanSurgeFt across the entire 2.3 ft surge ramp must stay smooth (< 0.12 ft)
+  let maxJump = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const jump = Math.abs(pts[i].drivers.oceanSurgeFt - pts[i - 1].drivers.oceanSurgeFt);
+    if (jump > maxJump) maxJump = jump;
+  }
+  assert.ok(maxJump < 0.12, `Expected smooth storm-surge taper without cliffs (<0.12 ft/30m), got max jump ${maxJump.toFixed(3)} ft`);
+
+  // 2. Compare against pure NOAA ETSS (no TimesFM): at peak surge (~2.2 ft divergence),
+  // Gaussian taper must yield cleanly to physical NOAA ETSS (< 0.05 ft difference, zero AI drag-down)
+  const pureEtssPts = synthesizeOperationalForecast({
+    spec: CAROLINA_BEACH_BASIN_SPEC,
+    issuedAt: origin,
+    recentResidual: past,
+    tide,
+    oceanEtss,
+  });
+  const peakPt = pts[pts.length - 1];
+  const purePeakPt = pureEtssPts[pureEtssPts.length - 1];
+  assert.ok(
+    Math.abs(peakPt.drivers.oceanSurgeFt - purePeakPt.drivers.oceanSurgeFt) < 0.05,
+    `Expected Gaussian taper to converge to pure NOAA ETSS at peak surge (${purePeakPt.drivers.oceanSurgeFt}), got ${peakPt.drivers.oceanSurgeFt}`
+  );
+});
+
 

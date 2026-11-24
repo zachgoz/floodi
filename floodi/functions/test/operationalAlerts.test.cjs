@@ -281,5 +281,28 @@ test('probabilistic P90 Near-Threshold Flood Watch is triggered when upperFt cro
   assert.equal(step.notifications[0].category, 'upcoming_watch');
   assert.match(step.notifications[0].bulletin.headline, /Near-Threshold Flood Watch/);
   assert.match(step.notifications[0].bulletin.summary, /90th percentile upper confidence bound/);
+
+  // Upgrade from Near-Threshold Watch (5.45 ft) to confirmed flood (6.85 ft):
+  // Regression check: isProbabilisticWatch must be strict boolean `false`, never `undefined` (which crashes Firestore writes).
+  const tUpgrade = originMs + 20 * 60_000;
+  const confirmedFc = buildMockForecast(tUpgrade, [{ hourOffset: 13.67, peakFt: 6.85 }]);
+  const upgradeStep = evaluateOperationalAlertStep(step.nextState, confirmedFc, new Date(tUpgrade));
+  assert.equal(upgradeStep.notifications.length, 1);
+  assert.equal(upgradeStep.notifications[0].category, 'forecast_change');
+  assert.match(upgradeStep.notifications[0].whatChanged, /Upgraded from Near-Threshold Watch/);
+  assert.equal(upgradeStep.nextState.episodes[0].advisory.isProbabilisticWatch, false);
+  assert.equal(upgradeStep.feed.activeAdvisories[0].isProbabilisticWatch, false);
+
+  // Recursive check: zero `undefined` values anywhere in Firestore write payloads
+  const assertNoUndefined = (val, path = 'root') => {
+    assert.notEqual(val, undefined, `Firestore payload must not contain undefined at ${path}`);
+    if (Array.isArray(val)) val.forEach((v, i) => assertNoUndefined(v, `${path}[${i}]`));
+    else if (val && typeof val === 'object') {
+      for (const [k, v] of Object.entries(val)) assertNoUndefined(v, `${path}.${k}`);
+    }
+  };
+  assertNoUndefined(upgradeStep.nextState, 'nextState');
+  assertNoUndefined(upgradeStep.feed, 'feed');
+  assertNoUndefined(upgradeStep.notifications, 'notifications');
 });
 
