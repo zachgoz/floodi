@@ -15,25 +15,52 @@ import type { ObservationBucket, PredictionBucket, WaterLevelPeak, FloodEvent } 
 import { markPerf, measurePerf } from 'src/lib/perfLogger';
 import { reportClientError } from 'src/lib/errorReporting';
 
+const imageUrlCache = new Map<string, Promise<string>>();
+
 /**
- * Resolves a URL that might be a storage:// path.
+ * Resolves a URL that might be a storage:// path, caching successful lookups.
  */
 export async function getImageUrl(pathOrUrl: string): Promise<string> {
-  if (pathOrUrl.startsWith('storage://')) {
-    const path = pathOrUrl.replace('storage://', '');
-    try {
-      return await getDownloadURL(ref(storage, path));
-    } catch (err) {
-      console.error('Failed to get download URL for', path, err);
-      return '';
-    }
+  if (typeof pathOrUrl !== 'string') return '';
+  const trimmed = pathOrUrl.trim();
+  if (!trimmed) return '';
+
+  if (trimmed.startsWith('storage://')) {
+    const path = trimmed.slice('storage://'.length).replace(/^\/+/, '');
+    if (!path) return '';
+
+    const cached = imageUrlCache.get(path);
+    if (cached) return cached;
+
+    const pending = getDownloadURL(ref(storage, path))
+      .then((url) => {
+        if (!url) {
+          imageUrlCache.delete(path);
+          return '';
+        }
+        return url;
+      })
+      .catch((err) => {
+        console.error('Failed to get download URL for', path, err);
+        imageUrlCache.delete(path);
+        return '';
+      });
+
+    imageUrlCache.set(path, pending);
+    return pending;
   }
-  return pathOrUrl;
+
+  if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+    return trimmed;
+  }
+
+  return '';
 }
 
 const bucketCache: Record<string, { timestamp: number; value: Promise<unknown> }> = {};
 export function clearDataServiceCache() {
   Object.keys(bucketCache).forEach(key => delete bucketCache[key]);
+  imageUrlCache.clear();
 }
 
 /**

@@ -110,3 +110,102 @@ test('forecast compass directions retain supported degree values', async () => {
   });
   assert.deepEqual(await api.fetchNwsForecast(34, -78), { [time]: { windSpeed: 15, windDirection: 22.5 } });
 });
+
+test('forecast merges Open-Meteo precipitation onto timezone-offset NWS keys without duplicating timestamps', async () => {
+  const nwsKey = '2026-11-25T14:00:00-05:00'; // equals 2026-11-25T19:00:00Z
+  const extendedKey = '2026-12-03T19:00:00+00:00';
+  const api = loadWeather(async url => {
+    if (url.includes('/points/')) return response({ properties: { forecastHourly: 'https://api.weather.gov/hourly' } });
+    if (url.includes('api.weather.gov/hourly')) {
+      return response({ properties: { periods: [
+        { startTime: nwsKey, temperature: 62, windSpeed: '18 mph', windDirection: 'NE', shortForecast: 'Rain', icon: 'https://api.weather.gov/icon' },
+      ] } });
+    }
+    if (url.includes('api.open-meteo.com')) {
+      return response({
+        hourly_units: { temperature_2m: '°C', wind_speed_10m: 'km/h', precipitation: 'mm', surface_pressure: 'hPa' },
+        hourly: {
+          time: ['2026-11-25T19:00', '2026-12-03T19:00'],
+          temperature_2m: [15, 10],
+          wind_speed_10m: [25, 16],
+          wind_direction_10m: [60, 180],
+          precipitation: [19.812, 0], // 0.78 in and valid zero
+          surface_pressure: [1004.5, 1018.2],
+        },
+      });
+    }
+    throw new Error(`Unexpected request ${url}`);
+  });
+
+  const result = await api.fetchNwsForecast(34.04, -77.89);
+  assert.deepEqual(Object.keys(result).sort(), [nwsKey, extendedKey]);
+  assert.equal(result[nwsKey].temp, 62); // preserves NWS temp
+  assert.equal(result[nwsKey].windSpeed, 18); // preserves NWS windSpeed
+  assert.equal(result[nwsKey].windDirection, 45); // preserves NWS NE
+  assert.equal(result[nwsKey].pressure, 1004.5);
+  assert.ok(Math.abs(result[nwsKey].precip - 19.812 * 0.0393701) < 1e-6);
+  // Extended range beyond NWS populates full Open-Meteo record including zero precip
+  assert.deepEqual(result[extendedKey], {
+    temp: 50,
+    windSpeed: 16 * 0.621371,
+    windDirection: 180,
+    precip: 0,
+    pressure: 1018.2,
+  });
+});
+
+test('forecast rejects negative, NaN, and null Open-Meteo precipitation while honoring inch units', async () => {
+  const api = loadWeather(async url => {
+    if (url.includes('/points/')) return response({ properties: { forecastHourly: 'https://api.weather.gov/hourly' } });
+    if (url.includes('api.weather.gov/hourly')) return response({ properties: { periods: [] } });
+    if (url.includes('api.open-meteo.com')) {
+      return response({
+        hourly_units: { temperature_2m: '°F', wind_speed_10m: 'mph', precipitation: 'inch' },
+        hourly: {
+          time: ['2026-11-25T19:00', '2026-11-25T20:00', '2026-11-25T21:00', 'bad-date'],
+          temperature_2m: [64, 63, NaN, 60],
+          wind_speed_10m: [12, -5, null, 10],
+          wind_direction_10m: [90, 400, -10, 45],
+          precipitation: [0.42, -0.1, null, 1.0],
+          surface_pressure: [1010, 0, null, 1012],
+        },
+      });
+    }
+    throw new Error(`Unexpected request ${url}`);
+  });
+
+  const result = await api.fetchNwsForecast(34.04, -77.89);
+  assert.deepEqual(result, {
+    '2026-11-25T19:00:00+00:00': { temp: 64, windSpeed: 12, windDirection: 90, precip: 0.42, pressure: 1010 },
+    '2026-11-25T20:00:00+00:00': { temp: 63 },
+  });
+});
+
+test('forecast degrades gracefully when NWS fails (Open-Meteo fallback) or Open-Meteo fails (NWS fallback), and throws if both fail', async () => {
+  const omOnly = loadWeather(async url => {
+    if (url.includes('api.weather.gov')) throw new Error('NWS 503');
+    if (url.includes('api.open-meteo.com')) {
+      return response({
+        hourly: { time: ['2026-11-25T19:00'], precipitation: [25.4], wind_speed_10m: [10], wind_direction_10m: [90] },
+      });
+    }
+    throw new Error(`Unexpected request ${url}`);
+  });
+  const omResult = await omOnly.fetchNwsForecast(34.04, -77.89);
+  assert.ok(Math.abs(omResult['2026-11-25T19:00:00+00:00'].precip - 25.4 * 0.0393701) < 1e-6);
+
+  const nwsOnly = loadWeather(async url => {
+    if (url.includes('/points/')) return response({ properties: { forecastHourly: 'https://api.weather.gov/hourly' } });
+    if (url.includes('api.weather.gov/hourly')) {
+      return response({ properties: { periods: [{ startTime: time, temperature: 68, windSpeed: '10 mph', windDirection: 'E' }] } });
+    }
+    if (url.includes('api.open-meteo.com')) throw new Error('Open-Meteo timeout');
+    throw new Error(`Unexpected request ${url}`);
+  });
+  assert.deepEqual(await nwsOnly.fetchNwsForecast(34.04, -77.89), {
+    [time]: { temp: 68, windSpeed: 10, windDirection: 90 },
+  });
+
+  const bothFailed = loadWeather(async () => { throw new Error('Upstream down'); });
+  await assert.rejects(bothFailed.fetchNwsForecast(34.04, -77.89), /Upstream down/);
+});

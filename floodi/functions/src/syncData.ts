@@ -78,7 +78,7 @@ export const syncWaterLevels = onSchedule({ schedule: 'every 10 minutes', memory
   if (failures.length) throw new AggregateError(failures, 'Observation sync did not complete successfully');
 });
 
-export const syncPredictions = onSchedule({ schedule: 'every 24 hours', memory: '512MiB', timeoutSeconds: 540, maxInstances: 1, concurrency: 1 }, async () => {
+export const syncPredictions = onSchedule({ schedule: 'every 3 hours', memory: '512MiB', timeoutSeconds: 540, maxInstances: 1, concurrency: 1 }, async () => {
   const failures: unknown[] = [];
   for (const loc of LOCATIONS) {
     const now = new Date();

@@ -132,21 +132,85 @@ function compassToDeg(val: string | number | undefined): number | undefined {
 }
 
 export async function fetchNwsForecast(lat: number, lon: number): Promise<Record<string, WeatherData>> {
-  const pointData = await providerJson(`https://api.weather.gov/points/${lat},${lon}`, { provider: 'nws', headers: HEADERS, cacheMs: 24 * 3600_000 });
-  const forecastData = await providerJson(pointData.properties.forecastHourly, { provider: 'nws', headers: HEADERS, cacheMs: 30 * 60_000 });
-
   const out: Record<string, WeatherData> = {};
-  for (const period of forecastData.properties?.periods || []) {
-    const t = period?.startTime;
-    if (!validTimestamp(t)) continue;
-    const record = weatherRecord({
-      temp: measurement(period.temperature, value => period.temperatureUnit === 'C' ? (value * 9/5) + 32 : value),
-      windSpeed: measurement(typeof period.windSpeed === 'string' ? parseFloat(period.windSpeed) : undefined, undefined, 0),
-      windDirection: compassToDeg(period.windDirection),
-      description: period.shortForecast,
-      icon: period.icon
-    });
-    if (Object.keys(record).length) out[t] = record;
+  const keyByMs = new Map<number, string>();
+  let nwsFailure: unknown;
+
+  try {
+    const pointData = await providerJson(`https://api.weather.gov/points/${lat},${lon}`, { provider: 'nws', headers: HEADERS, cacheMs: 24 * 3600_000 });
+    const forecastData = await providerJson(pointData.properties.forecastHourly, { provider: 'nws', headers: HEADERS, cacheMs: 30 * 60_000 });
+
+    for (const period of forecastData.properties?.periods || []) {
+      const t = period?.startTime;
+      if (!validTimestamp(t)) continue;
+      const record = weatherRecord({
+        temp: measurement(period.temperature, value => period.temperatureUnit === 'C' ? (value * 9/5) + 32 : value),
+        windSpeed: measurement(typeof period.windSpeed === 'string' ? parseFloat(period.windSpeed) : undefined, undefined, 0),
+        windDirection: compassToDeg(period.windDirection),
+        description: period.shortForecast,
+        icon: period.icon
+      });
+      if (Object.keys(record).length) {
+        out[t] = record;
+        keyByMs.set(Date.parse(t), t);
+      }
+    }
+  } catch (error) {
+    nwsFailure = error;
+    logger.warn('NWS forecast unavailable; attempting independent Open-Meteo forecast augmentation', { event: 'weather_source_partial', provider: 'nws', error: safeError(error) });
   }
+
+  // Augment NWS hourly forecast with Open-Meteo precipitation (and pressure / extended days 8-16),
+  // aligning onto existing NWS timestamp keys by epoch ms to avoid duplicate hourly entries.
+  const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,precipitation,surface_pressure,wind_speed_10m,wind_direction_10m&forecast_days=16&timezone=UTC`;
+  try {
+    const omData = await providerJson(omUrl, { provider: 'open_meteo', headers: HEADERS, cacheMs: 30 * 60_000 });
+    const hourly = omData?.hourly;
+    const units = omData?.hourly_units || {};
+    if (Array.isArray(hourly?.time)) {
+      const tempToF = units.temperature_2m === '°F'
+        ? (value: number) => value
+        : (value: number) => (value * 9/5) + 32;
+      const windToMph = units.wind_speed_10m === 'mp/h' || units.wind_speed_10m === 'mph'
+        ? (value: number) => value
+        : (value: number) => value * 0.621371;
+      const precipToIn = units.precipitation === 'inch' || units.precipitation === 'in'
+        ? (value: number) => value
+        : (value: number) => value * 0.0393701;
+
+      for (let i = 0; i < hourly.time.length; i++) {
+        const rawTime = hourly.time[i];
+        if (typeof rawTime !== 'string') continue;
+        const t = /(Z|[+-]\d\d:\d\d)$/i.test(rawTime) ? rawTime : `${rawTime}:00+00:00`;
+        if (!validTimestamp(t)) continue;
+
+        const ms = Date.parse(t);
+        const targetKey = keyByMs.get(ms) ?? t;
+        const tempF = measurement(hourly.temperature_2m?.[i], tempToF);
+        const windMph = measurement(hourly.wind_speed_10m?.[i], windToMph, 0);
+        const windDir = measurement(hourly.wind_direction_10m?.[i], undefined, 0, 360);
+        const precipIn = measurement(hourly.precipitation?.[i], precipToIn, 0);
+        const pressureHpa = measurement(hourly.surface_pressure?.[i], undefined, Number.MIN_VALUE);
+
+        const record = { ...out[targetKey] };
+        if (tempF !== undefined) record.temp = record.temp ?? tempF;
+        if (windMph !== undefined) record.windSpeed = record.windSpeed ?? windMph;
+        if (windDir !== undefined) record.windDirection = record.windDirection ?? windDir;
+        if (precipIn !== undefined) record.precip = precipIn;
+        if (pressureHpa !== undefined) record.pressure = record.pressure ?? pressureHpa;
+
+        if (Object.keys(record).length) {
+          out[targetKey] = record;
+          keyByMs.set(ms, targetKey);
+        }
+      }
+    } else if (nwsFailure) {
+      throw nwsFailure;
+    }
+  } catch (error) {
+    logger.warn('Open-Meteo forecast augmentation unavailable', { event: 'weather_source_partial', provider: 'open_meteo', error: safeError(error) });
+    if (nwsFailure || !Object.keys(out).length) throw error;
+  }
+
   return out;
 }

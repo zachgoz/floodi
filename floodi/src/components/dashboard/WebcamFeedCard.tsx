@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   IonIcon,
   IonButton,
@@ -17,7 +17,9 @@ import {
 import { WEBCAMS } from '../../constants/webcams';
 import './WebcamFeedCard.css';
 import { trackWebcamChange, trackWebcamTimeShift } from 'src/lib/analytics';
+import { getImageUrl } from 'src/lib/dataService';
 import { formatWebcamCaptureTime, webcamFrameStatus } from './webcamFreshness';
+import { buildWebcamCandidates, shouldUseSecooraGuessFallback } from './webcamCandidates';
 
 interface WebcamFeedCardProps {
   locationName: string;
@@ -68,9 +70,7 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
   onClose,
   loading = false,
 }) => {
-  const [attemptIdx, setAttemptIdx] = useState(0);
-  const [apiFailed, setApiFailed] = useState(false);
-  const [hasError, setHasError] = useState(false);
+  const [resolvedUrl, setResolvedUrl] = useState('');
   const [isImageLoading, setIsImageLoading] = useState(true);
   const [clock, setClock] = useState(() => new Date());
   useEffect(() => {
@@ -79,63 +79,131 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
   }, []);
 
   const MAX_ATTEMPTS = FALLBACK_OFFSETS_MINUTES.length;
-
-  // Reset attempts when time, camera, or data-backed imagery changes.
-  useEffect(() => {
-    setAttemptIdx(0);
-    setApiFailed(false);
-    setHasError(false);
-    setIsImageLoading(true);
-  }, [targetTime, cameraId, imagery]);
-
   const isFuture = (targetTime.getTime() - Date.now()) > 60 * 1000;
 
-  // 1. Try to find image in API response first
-  const { imageUrl, finalImageDate, foundInApi } = useMemo(() => {
-    let url = '';
-    let date = new Date();
-    let found = false;
+  const apiCandidates = useMemo(
+    () => buildWebcamCandidates(imagery, targetTime, { now: new Date(), allowAfterMs: isLive ? 0 : 60 * 60_000 }),
+    [imagery, targetTime, isLive],
+  );
+  const allowSecooraGuess = useMemo(
+    () => shouldUseSecooraGuessFallback(targetTime, clock),
+    [targetTime, clock],
+  );
 
-    if (imagery && Object.keys(imagery).length > 0 && !apiFailed) {
-      const targetMs = targetTime.getTime();
-      const sortedTimes = Object.keys(imagery)
-        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  // Bind candidate cursor to the active target/camera/imagery scope so stale indices
+  // from a previous timestamp can never leak into a new lookup.
+  const scopeKey = useMemo(
+    () => `${targetTime.getTime()}|${cameraId}|${apiCandidates.map(c => c.rawUrl).join('|')}`,
+    [targetTime, cameraId, apiCandidates],
+  );
+  const [navState, setNavState] = useState({
+    scopeKey,
+    apiCandidateIdx: 0,
+    attemptIdx: 0,
+    hasError: false,
+  });
+  const activeNav = navState.scopeKey === scopeKey
+    ? navState
+    : { scopeKey, apiCandidateIdx: 0, attemptIdx: 0, hasError: false };
+  const { apiCandidateIdx, attemptIdx, hasError } = activeNav;
 
-      for (const iso of sortedTimes) {
-        const t = new Date(iso).getTime();
-        if (t <= targetMs) {
-          url = imagery[iso];
-          date = new Date(iso);
-          found = true;
-          break;
-        }
-      }
+  // 1. Walk ordered API/archived candidates first, then recent SECOORA minute guesses.
+  const { rawImageUrl, finalImageDate, usingApiCandidate } = useMemo(() => {
+    if (apiCandidateIdx < apiCandidates.length) {
+      const candidate = apiCandidates[apiCandidateIdx];
+      return {
+        rawImageUrl: candidate.rawUrl,
+        finalImageDate: candidate.date,
+        usingApiCandidate: true,
+      };
     }
 
-    if (!found) {
+    if (allowSecooraGuess && attemptIdx < MAX_ATTEMPTS) {
       const baseDate = getBaseMinute(targetTime);
       const offsetMinutes = FALLBACK_OFFSETS_MINUTES[attemptIdx] || 0;
-      date = new Date(baseDate.getTime() - offsetMinutes * 60 * 1000);
+      const date = new Date(baseDate.getTime() - offsetMinutes * 60 * 1000);
       const dateString = formatDateToIsoString(date);
-      url = `https://wl.secoora.org/webcam/${cameraId}.${dateString}.jpg`;
+      return {
+        rawImageUrl: `https://wl.secoora.org/webcam/${cameraId}.${dateString}.jpg`,
+        finalImageDate: date,
+        usingApiCandidate: false,
+      };
     }
 
-    return { imageUrl: url, finalImageDate: date, foundInApi: found };
-  }, [imagery, targetTime, cameraId, apiFailed, attemptIdx]);
+    return {
+      rawImageUrl: '',
+      finalImageDate: targetTime,
+      usingApiCandidate: false,
+    };
+  }, [apiCandidates, apiCandidateIdx, allowSecooraGuess, attemptIdx, MAX_ATTEMPTS, targetTime, cameraId]);
+
+  const advanceCandidate = useCallback(() => {
+    setNavState(prev => {
+      const curr = prev.scopeKey === scopeKey
+        ? prev
+        : { scopeKey, apiCandidateIdx: 0, attemptIdx: 0, hasError: false };
+
+      if (curr.apiCandidateIdx < apiCandidates.length) {
+        if (curr.apiCandidateIdx + 1 < apiCandidates.length) {
+          return { ...curr, apiCandidateIdx: curr.apiCandidateIdx + 1 };
+        }
+        if (allowSecooraGuess) {
+          return { ...curr, apiCandidateIdx: apiCandidates.length, attemptIdx: 0 };
+        }
+        return { ...curr, hasError: true };
+      }
+
+      if (allowSecooraGuess && curr.attemptIdx < MAX_ATTEMPTS - 1) {
+        return { ...curr, attemptIdx: curr.attemptIdx + 1 };
+      }
+      return { ...curr, hasError: true };
+    });
+  }, [scopeKey, apiCandidates.length, allowSecooraGuess, MAX_ATTEMPTS]);
+
+  // Resolve storage:// URIs via Firebase Storage with stale-request cancellation.
+  useEffect(() => {
+    if (isFuture || loading) return;
+    if (!rawImageUrl) {
+      setResolvedUrl('');
+      setNavState(prev => ({
+        ...(prev.scopeKey === scopeKey ? prev : { scopeKey, apiCandidateIdx: 0, attemptIdx: 0 }),
+        hasError: true,
+      }));
+      setIsImageLoading(false);
+      return;
+    }
+
+    if (!rawImageUrl.startsWith('storage://')) {
+      setResolvedUrl(rawImageUrl);
+      setIsImageLoading(true);
+      return;
+    }
+
+    let cancelled = false;
+    setResolvedUrl('');
+    setIsImageLoading(true);
+
+    void getImageUrl(rawImageUrl).then(url => {
+      if (cancelled) return;
+      if (url) {
+        setResolvedUrl(url);
+      } else {
+        advanceCandidate();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rawImageUrl, isFuture, loading, scopeKey, advanceCandidate]);
+
   const frameStatus = webcamFrameStatus(finalImageDate, clock, isLive);
 
   const handleError = () => {
-    if (foundInApi) {
-      setApiFailed(true);
-      setAttemptIdx(0);
-    } else {
-      if (attemptIdx < MAX_ATTEMPTS - 1) {
-        setAttemptIdx(a => a + 1);
-      } else {
-        setHasError(true);
-        setIsImageLoading(false);
-      }
+    if (!usingApiCandidate && (!allowSecooraGuess || attemptIdx >= MAX_ATTEMPTS - 1)) {
+      setIsImageLoading(false);
     }
+    advanceCandidate();
   };
 
   const handleLoad = () => {
@@ -224,13 +292,15 @@ export const WebcamFeedCard: React.FC<WebcamFeedCardProps> = ({
                   </IonButton>
                 </div>
               ) : !hasError ? (
-                <img
-                  src={imageUrl}
-                  alt={`${locationName}, captured ${formatWebcamCaptureTime(finalImageDate)}`}
-                  className={`webcam-image ${isImageLoading ? 'loading' : 'loaded'}`}
-                  onLoad={handleLoad}
-                  onError={handleError}
-                />
+                resolvedUrl ? (
+                  <img
+                    src={resolvedUrl}
+                    alt={`${locationName}, captured ${formatWebcamCaptureTime(finalImageDate)}`}
+                    className={`webcam-image ${isImageLoading ? 'loading' : 'loaded'}`}
+                    onLoad={handleLoad}
+                    onError={handleError}
+                  />
+                ) : null
               ) : (
                 <div className="webcam-placeholder-glass">
                   <IonIcon icon={warningOutline} color="warning" className="placeholder-icon" />

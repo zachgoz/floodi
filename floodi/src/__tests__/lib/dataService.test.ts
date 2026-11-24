@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDoc } from 'firebase/firestore';
 import { fetchObservedWaterLevels } from 'src/lib/noaa';
-import { clearDataServiceCache, extractWeatherData, fetchObservations, fetchPredictions, fetchUnifiedObservations } from 'src/lib/dataService';
+import { getDownloadURL, ref } from 'firebase/storage';
+import { clearDataServiceCache, extractWeatherData, fetchObservations, fetchPredictions, fetchUnifiedObservations, getImageUrl } from 'src/lib/dataService';
 import { reportClientError } from 'src/lib/errorReporting';
 
 vi.mock('src/lib/firebase', () => ({ db: {}, storage: {} }));
@@ -352,6 +353,56 @@ describe('fetchUnifiedObservations source freshness and recovery', () => {
     const result = await fetchPredictions('carolina-beach', now, new Date(at(120)));
     expect(result.data[at(60)]).toBe(4.2);
     expect(getDoc).toHaveBeenCalledTimes(1);
+  });
+
+  describe('getImageUrl', () => {
+    it('rejects empty, whitespace, malformed, and unsupported URL schemes', async () => {
+      expect(await getImageUrl('')).toBe('');
+      expect(await getImageUrl('   ')).toBe('');
+      expect(await getImageUrl('storage://')).toBe('');
+      expect(await getImageUrl('storage:///')).toBe('');
+      expect(await getImageUrl('javascript:alert(1)')).toBe('');
+      expect(getDownloadURL).not.toHaveBeenCalled();
+    });
+
+    it('passes through valid https/http URLs without hitting Firebase Storage', async () => {
+      const direct = 'https://wl.secoora.org/webcam/SUNNYD_CB_03.2026-11-23T08:58Z.jpg';
+      expect(await getImageUrl(direct)).toBe(direct);
+      expect(getDownloadURL).not.toHaveBeenCalled();
+    });
+
+    it('resolves storage:// paths via Firebase Storage and caches repeat lookups until cache reset', async () => {
+      vi.mocked(ref).mockImplementation((_storage, path) => ({ fullPath: path }) as ReturnType<typeof ref>);
+      vi.mocked(getDownloadURL).mockResolvedValue('https://firebasestorage.googleapis.com/v0/b/floodcastwebapp.firebasestorage.app/o/imagery%2Fcb.jpg?alt=media');
+
+      const first = await getImageUrl('storage://imagery/carolina-beach/SUNNYD_CB_03/20261015T130000000Z.jpg');
+      const second = await getImageUrl('storage://imagery/carolina-beach/SUNNYD_CB_03/20261015T130000000Z.jpg');
+
+      expect(first).toBe('https://firebasestorage.googleapis.com/v0/b/floodcastwebapp.firebasestorage.app/o/imagery%2Fcb.jpg?alt=media');
+      expect(second).toBe(first);
+      expect(ref).toHaveBeenCalledTimes(1);
+      expect(ref).toHaveBeenCalledWith(expect.anything(), 'imagery/carolina-beach/SUNNYD_CB_03/20261015T130000000Z.jpg');
+      expect(getDownloadURL).toHaveBeenCalledTimes(1);
+
+      clearDataServiceCache();
+      await getImageUrl('storage://imagery/carolina-beach/SUNNYD_CB_03/20261015T130000000Z.jpg');
+      expect(getDownloadURL).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not permanently cache failed storage:// lookups so transient errors recover', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.mocked(ref).mockImplementation((_storage, path) => ({ fullPath: path }) as ReturnType<typeof ref>);
+      vi.mocked(getDownloadURL)
+        .mockRejectedValueOnce(new Error('storage/unauthorized'))
+        .mockResolvedValueOnce('https://firebasestorage.googleapis.com/v0/b/bucket/o/recovered.jpg?alt=media');
+
+      expect(await getImageUrl('storage://imagery/carolina-beach/SUNNYD_CB_03/frame.jpg')).toBe('');
+      expect(await getImageUrl('storage://imagery/carolina-beach/SUNNYD_CB_03/frame.jpg')).toBe(
+        'https://firebasestorage.googleapis.com/v0/b/bucket/o/recovered.jpg?alt=media',
+      );
+      expect(getDownloadURL).toHaveBeenCalledTimes(2);
+      errorSpy.mockRestore();
+    });
   });
 
 });
