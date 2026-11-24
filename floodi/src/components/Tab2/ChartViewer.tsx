@@ -1107,7 +1107,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                   const accentColor = isFloodPeak
                     ? getFloodSeverityColor(severity)
                     : isHigh
-                    ? 'var(--ion-color-danger, #eb445a)'
+                    ? 'var(--ion-color-success, #2ecc71)'
                     : 'var(--ion-color-primary, #3880ff)';
                   const timeStr = new Intl.DateTimeFormat(undefined, {
                     hour: 'numeric',
@@ -1137,7 +1137,7 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                       <circle
                         cx={x}
                         cy={curveY}
-                        r={isFloodPeak ? 4.5 : 3.25}
+                        r={isFloodPeak ? 4.5 : 3.5}
                         fill={accentColor}
                         stroke="var(--chart-bg, #ffffff)"
                         strokeWidth={1.75}
@@ -1148,16 +1148,16 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                         width={pillW}
                         height={pillH}
                         rx={8}
-                        fill="var(--chart-bg, #ffffff)"
+                        fill="var(--chart-pill-bg, rgba(248, 250, 252, 0.88))"
                         stroke={accentColor}
-                        strokeWidth={isFloodPeak ? 1.5 : 1}
-                        opacity={0.94}
+                        strokeWidth={isFloodPeak ? 1.75 : 1.25}
+                        style={{ filter: 'drop-shadow(0 1px 3px rgba(15, 23, 42, 0.18))' }}
                       />
                       <text
                         x={pillX + pillW / 2}
                         y={pillY + (compactLabel ? 11.5 : 12.5)}
                         textAnchor="middle"
-                        fill={isFloodPeak ? accentColor : 'var(--chart-label-text, #1e293b)'}
+                        fill="var(--chart-pill-text, #0f172a)"
                         fontSize={compactLabel ? '10.5' : '11'}
                         fontWeight="700"
                       >
@@ -1167,9 +1167,9 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                         x={pillX + pillW / 2}
                         y={pillY + (compactLabel ? 21.5 : 23)}
                         textAnchor="middle"
-                        fill="var(--chart-axis-text)"
+                        fill="var(--chart-pill-subtext, #334155)"
                         fontSize={compactLabel ? '9' : '9.5'}
-                        fontWeight="500"
+                        fontWeight="600"
                       >
                         {timeStr}
                       </text>
@@ -1281,18 +1281,18 @@ export const ChartViewer: React.FC<ChartViewerProps> = ({
                 width={pillW}
                 height={17}
                 rx={8.5}
-                fill="var(--chart-bg, #ffffff)"
+                fill="var(--chart-pill-bg, rgba(248, 250, 252, 0.88))"
                 stroke="var(--ion-color-primary, #3880ff)"
-                strokeWidth={1}
-                opacity={0.92}
+                strokeWidth={1.25}
+                style={{ filter: 'drop-shadow(0 1px 2px rgba(15, 23, 42, 0.16))' }}
               />
               <text
                 x={pillX + pillW / 2}
                 y={Math.max(margins.t + 13.5, refY - 7.5)}
                 textAnchor="middle"
-                fill="var(--ion-color-primary, #3880ff)"
+                fill="var(--chart-pill-ref-text, #1d4ed8)"
                 fontSize="10"
-                fontWeight="600"
+                fontWeight="700"
               >
                 {label}
               </text>

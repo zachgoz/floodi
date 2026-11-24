@@ -247,11 +247,14 @@ describe('ChartViewer with comments', () => {
       />,
     );
 
-    // Unified tide pill renders (no duplicate separate historical-flood-pin)
+    // Unified tide pill renders with light translucent fill and green outline/dot below flood stage
     expect(container.querySelector('.historical-flood-pin')).toBeNull();
     const pill = container.querySelector('.tide-extremum-pill');
     expect(pill).not.toBeNull();
     expect(pill?.textContent).toContain("5.10'");
+    expect(pill?.querySelector('circle')?.getAttribute('fill')).toBe('var(--ion-color-success, #2ecc71)');
+    expect(pill?.querySelector('rect')?.getAttribute('stroke')).toBe('var(--ion-color-success, #2ecc71)');
+    expect(pill?.querySelector('rect')?.getAttribute('fill')).toBe('var(--chart-pill-bg, rgba(248, 250, 252, 0.88))');
     fireEvent.click(pill!);
     expect(onJumpToTime).toHaveBeenCalledTimes(1);
     expect(onJumpToTime).toHaveBeenCalledWith(peakT);

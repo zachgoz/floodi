@@ -8,6 +8,10 @@
   --chart-label-text: #334155;
   --chart-tooltip-bg: #ffffff;
   --chart-tooltip-stroke: #cbd5e1;
+  --chart-pill-bg: rgba(248, 250, 252, 0.88);
+  --chart-pill-text: #0f172a;
+  --chart-pill-subtext: #334155;
+  --chart-pill-ref-text: #1d4ed8;
   --settings-bg: #ffffff;
   --settings-border: #e5e7eb;
   --settings-header-bg: #f3f4f6; /* subtle tint for headers */
@@ -24,6 +28,10 @@
     --chart-label-text: #c8d5e3;
     --chart-tooltip-bg: #1b2433;
     --chart-tooltip-stroke: #2a3a55;
+    --chart-pill-bg: rgba(241, 245, 249, 0.88);
+    --chart-pill-text: #0f172a;
+    --chart-pill-subtext: #334155;
+    --chart-pill-ref-text: #1d4ed8;
     --settings-bg: #111827;
     --settings-border: #243040;
     --settings-header-bg: #0f172a;
