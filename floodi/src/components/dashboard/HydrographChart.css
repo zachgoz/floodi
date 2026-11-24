@@ -27,7 +27,14 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px 12px;
+  gap: 6px 10px;
+}
+
+.title-group .similar-peak-chip {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  margin-left: auto;
 }
 
 .hydrograph-subtitle {

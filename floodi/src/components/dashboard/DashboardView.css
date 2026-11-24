@@ -118,10 +118,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: nowrap;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   font-variant-numeric: tabular-nums;
-  overflow: hidden;
 }
 
 .cc-gauge-status-pill {
@@ -181,6 +180,35 @@
   padding-left: 6px;
   border-left: 1px solid var(--chart-grid, rgba(148, 163, 184, 0.3));
   flex-shrink: 0;
+}
+
+.cc-reset-live-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding: 2px 9px;
+  min-height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: var(--ion-color-primary);
+  color: #ffffff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(var(--ion-color-primary-rgb), 0.35);
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+
+.cc-reset-live-btn:hover {
+  background: var(--ion-color-primary-tint, #508dff);
+}
+
+.cc-reset-live-btn:active {
+  transform: translateY(1px);
 }
 
 .cc-actions-group {
@@ -283,25 +311,33 @@
 @media (max-width: 600px) {
   .dashboard-current-conditions {
     padding: 5px 10px;
-    gap: 6px;
+    gap: 5px 8px;
   }
   .cc-gauge-status-pill {
     padding: 4px 8px;
-    font-size: 11.5px;
-    gap: 5px;
+    font-size: 11px;
+    gap: 4px;
+    max-width: 100%;
   }
-  .cc-gauge-time,
+  .cc-gauge-time {
+    font-size: 10.5px;
+    padding-left: 5px;
+  }
   .cc-tide-delta {
     display: none;
   }
   .cc-next-tide-pill {
     padding: 4px 8px;
-    font-size: 11.5px;
+    font-size: 11px;
   }
 }
 
 @media (pointer: coarse) {
   .dashboard-current-conditions button {
     min-height: 36px;
+  }
+  .dashboard-current-conditions .cc-reset-live-btn {
+    min-height: 28px;
+    padding: 3px 10px;
   }
 }

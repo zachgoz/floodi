@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { CurrentConditions } from 'src/components/dashboard/CurrentConditions';
 import { HydrographChart } from 'src/components/dashboard/HydrographChart';
+import { PastSimilarFloodChip } from 'src/components/dashboard/AtmosphericOverlay';
 import { SettingsModal } from 'src/components/Tab2/SettingsModal';
 import type { AppConfiguration } from 'src/components/Tab2/types';
 
@@ -55,11 +56,20 @@ describe('Dashboard header, hydrograph reset, and settings consolidation', () =>
     expect(container.querySelector('select.location-select')).toBeNull();
     expect(container.querySelector('.accuracy-pill-trigger')).toBeNull();
 
-    // Gauge + Below threshold live together inside one compact status pill
+    // Gauge + Below threshold + current weekday/date/time live together inside one compact status pill
     const statusPill = container.querySelector('.cc-gauge-status-pill.is-normal');
     expect(statusPill).not.toBeNull();
     expect(statusPill?.textContent).toContain('4.12 ft');
     expect(statusPill?.textContent).toContain('Below threshold');
+    const expectedDateTime = recent.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    expect(statusPill?.querySelector('.cc-gauge-time')?.textContent).toBe(expectedDateTime);
 
     // Next tide countdown lives in CurrentConditions and invokes callback
     const tideBtn = screen.getByRole('button', { name: /Next high tide in 2 hours 15 minutes/i });
@@ -67,56 +77,56 @@ describe('Dashboard header, hydrograph reset, and settings consolidation', () =>
     fireEvent.click(tideBtn);
     expect(onNextTideClick).toHaveBeenCalledTimes(1);
 
-    // Above threshold switches tone to is-elevated and exact label
+    // Above threshold switches tone to is-elevated, and scrolling off live renders Reset to Live inside the Current Gauge pill
+    const onResetToLive = vi.fn();
     rerender(
       <CurrentConditions
         points={[{ t: recent, v: 6.05 }]}
         thresholdFt={5.6}
         customView={false}
         onSettings={vi.fn()}
+        isLive={false}
+        onResetToLive={onResetToLive}
       />,
     );
     const elevatedPill = container.querySelector('.cc-gauge-status-pill.is-elevated');
     expect(elevatedPill).not.toBeNull();
     expect(elevatedPill?.textContent).toContain('6.05 ft');
     expect(elevatedPill?.textContent).toContain('Above threshold');
+    const resetBtn = elevatedPill?.querySelector('.cc-reset-live-btn') as HTMLButtonElement | null;
+    expect(resetBtn).not.toBeNull();
+    expect(resetBtn).toHaveTextContent('Reset to Live');
+    fireEvent.click(resetBtn!);
+    expect(onResetToLive).toHaveBeenCalledTimes(1);
   });
 
-  it('removes the redundant Hydrograph Date row and shows Reset to Live only when scrolled off live', () => {
-    const onResetToLive = vi.fn();
+  it('places the Past Similar button in the hydrograph header without Hydrograph Date or Reset to Live', () => {
+    const onJumpToTime = vi.fn();
     const now = new Date('2026-10-10T10:00:00Z');
     const domainStart = new Date(+now - 60 * 60_000);
     const domainEnd = new Date(+now + 60 * 60_000);
+    const pastEvents = [{
+      startTime: '2026-09-20T10:00:00Z',
+      endTime: '2026-09-20T12:30:00Z',
+      peakTime: '2026-09-20T11:15:00Z',
+      peakValue: 6.79,
+      thresholdType: 'minor' as const,
+      thresholdValue: 5.6,
+      source: 'fiman' as const,
+    }];
 
-    const { container, rerender } = render(
+    const { container } = render(
       <HydrographChart
         locationName="Water Level Forecast"
-        locationId="carolina-beach"
-        observedPoints={[]}
-        predictedPoints={[]}
-        adjustedPoints={[]}
-        deltaPoints={[]}
-        domainStart={domainStart}
-        domainEnd={domainEnd}
-        now={now}
-        thresholds={baseConfig.thresholds}
-        showDelta={false}
-        timezone="local"
-        isLive={true}
-        time={now}
-        onResetToLive={onResetToLive}
-        controls={<div>Bottom controls</div>}
-      />,
-    );
-
-    // Redundant Hydrograph Date pill is absent; Reset to Live hidden while live
-    expect(container.querySelector('.viewing-time-pill')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Reset hydrograph to live' })).toBeNull();
-
-    // When scrolled away from live (even with bottom controls present), Reset to Live appears and resets
-    rerender(
-      <HydrographChart
-        locationName="Water Level Forecast"
+        headerAction={
+          <PastSimilarFloodChip
+            observedWaterLevel={6.80}
+            thresholds={baseConfig.thresholds}
+            floodEvents={pastEvents}
+            now={now}
+            onJumpToTime={onJumpToTime}
+          />
+        }
         locationId="carolina-beach"
         observedPoints={[]}
         predictedPoints={[]}
@@ -129,17 +139,21 @@ describe('Dashboard header, hydrograph reset, and settings consolidation', () =>
         showDelta={false}
         timezone="local"
         isLive={false}
-        time={new Date(+now + 3 * 3600_000)}
-        onResetToLive={onResetToLive}
+        time={now}
+        onResetToLive={vi.fn()}
         controls={<div>Bottom controls</div>}
       />,
     );
 
-    expect(container.querySelector('.viewing-time-pill')).toBeNull();
-    const resetBtn = screen.getByRole('button', { name: 'Reset hydrograph to live' });
-    expect(resetBtn).toHaveTextContent('Reset to Live');
-    fireEvent.click(resetBtn);
-    expect(onResetToLive).toHaveBeenCalledTimes(1);
+    const titleGroup = container.querySelector('.title-group')!;
+    expect(titleGroup.querySelector('.viewing-time-pill')).toBeNull();
+    expect(titleGroup.querySelector('.reset-to-live-btn')).toBeNull();
+    const pastChip = titleGroup.querySelector('.similar-peak-chip') as HTMLButtonElement | null;
+    expect(pastChip).not.toBeNull();
+    expect(pastChip).toHaveTextContent('Past similar: Sun, Sep 20 (6.79 ft)');
+    fireEvent.click(pastChip!);
+    expect(onJumpToTime).toHaveBeenCalledTimes(1);
+    expect(onJumpToTime).toHaveBeenCalledWith(new Date('2026-09-20T11:15:00Z'));
   });
 
   it('hosts both Location selector and Forecast Accuracy trigger inside SettingsModal', () => {

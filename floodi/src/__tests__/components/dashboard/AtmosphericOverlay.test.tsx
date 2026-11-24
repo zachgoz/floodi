@@ -1,7 +1,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AtmosphericOverlay } from 'src/components/dashboard/AtmosphericOverlay';
+import { AtmosphericOverlay, PastSimilarFloodChip } from 'src/components/dashboard/AtmosphericOverlay';
 import type { FloodEvent } from 'src/types/data';
 
 vi.mock('@ionic/react', async () => {
@@ -96,24 +96,37 @@ describe('AtmosphericOverlay decluttered readout & tappable past events', () => 
     expect(screen.queryByRole('button', { name: /Jump to similar past tide/i })).toBeNull();
   });
 
-  it('renders a stationary tappable past-similar chip above the chart and jumps directly to the matching historical peak', () => {
+  it('renders PastSimilarFloodChip for matching historical peaks and does not duplicate it inside AtmosphericOverlay', () => {
     const onJumpToTime = vi.fn();
-    render(
-      <AtmosphericOverlay
-        observedWaterLevel={6.80}
-        surge={1.15}
-        windSpeed={22}
-        windDirection={35}
-        precipitationAccumulation={0.45}
-        statusLabel="Predicted"
-        isLive={false}
-        targetTime={new Date('2026-11-25T12:45:00Z')}
-        thresholds={thresholds}
-        floodEvents={pastFloodEvents}
-        now={now}
-        onJumpToTime={onJumpToTime}
-      />,
+    const { container } = render(
+      <>
+        <PastSimilarFloodChip
+          observedWaterLevel={6.80}
+          thresholds={thresholds}
+          floodEvents={pastFloodEvents}
+          now={now}
+          onJumpToTime={onJumpToTime}
+        />
+        <AtmosphericOverlay
+          observedWaterLevel={6.80}
+          surge={1.15}
+          windSpeed={22}
+          windDirection={35}
+          precipitationAccumulation={0.45}
+          statusLabel="Predicted"
+          isLive={false}
+          targetTime={new Date('2026-11-25T12:45:00Z')}
+          thresholds={thresholds}
+          floodEvents={pastFloodEvents}
+          now={now}
+          onJumpToTime={onJumpToTime}
+        />
+      </>,
     );
+
+    // Only one chip rendered (outside .atmospheric-sentinel)
+    expect(container.querySelectorAll('.similar-peak-chip')).toHaveLength(1);
+    expect(container.querySelector('.atmospheric-sentinel .similar-peak-chip')).toBeNull();
 
     // Sun, Sep 20 (6.79 ft) is closer to 6.80 ft than Thu, Oct 15 (6.82 ft)
     const pastChip = screen.getByRole('button', { name: /Jump to similar past flood on Sun, Sep 20 at 6\.79 feet/i });
@@ -128,15 +141,8 @@ describe('AtmosphericOverlay decluttered readout & tappable past events', () => 
   it('shows Closest past flood with weekday and exact inch delta when forecast exceeds recorded peaks', () => {
     const onJumpToTime = vi.fn();
     render(
-      <AtmosphericOverlay
+      <PastSimilarFloodChip
         observedWaterLevel={7.24}
-        surge={1.45}
-        windSpeed={28}
-        windDirection={35}
-        precipitationAccumulation={0.78}
-        statusLabel="Predicted"
-        isLive={false}
-        targetTime={new Date('2026-11-25T12:45:00Z')}
         thresholds={thresholds}
         floodEvents={pastFloodEvents}
         now={now}
@@ -145,7 +151,7 @@ describe('AtmosphericOverlay decluttered readout & tappable past events', () => 
     );
 
     const closestChip = screen.getByRole('button', { name: /Jump to closest past flood on Thu, Oct 15 at 6\.82 feet/i });
-    expect(closestChip).toHaveTextContent('Closest past flood: Thu, Oct 15 (6.82 ft, 5" lower)');
+    expect(closestChip).toHaveTextContent('Closest past: Thu, Oct 15 (6.82 ft, 5" lower)');
     fireEvent.click(closestChip);
     expect(onJumpToTime).toHaveBeenCalledWith(new Date('2026-10-15T13:30:00Z'));
   });

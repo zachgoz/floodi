@@ -16,6 +16,8 @@ type ChartViewerProps = React.ComponentProps<typeof ChartViewer>;
 interface HydrographChartProps extends ChartViewerProps {
   /** Display name shown above the chart */
   locationName?: string;
+  /** Optional action rendered on the right side of the title row (e.g. Past Similar button) */
+  headerAction?: React.ReactNode;
   /** Optional atmospheric overlay rendered in the header (e.g. AtmosphericOverlay) */
   sentinel?: React.ReactNode;
   /** Show the loading spinner overlay on the chart area */
@@ -43,11 +45,10 @@ interface HydrographChartProps extends ChartViewerProps {
 
 export const HydrographChart: React.FC<HydrographChartProps> = ({
   locationName = 'Carolina Beach',
+  headerAction,
   sentinel,
   loading = false,
-  isLive = true,
   onViewportChange,
-  onResetToLive,
   warnings,
   floodEvents,
   onResetView,
@@ -75,16 +76,7 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({
             <h2 className="hydrograph-title">{locationName}</h2>
           )}
 
-          {!loading && !isLive && onResetToLive && (
-            <button
-              type="button"
-              className="reset-to-live-btn"
-              onClick={onResetToLive}
-              aria-label="Reset hydrograph to live"
-            >
-              <span aria-hidden="true">↺</span> Reset to Live
-            </button>
-          )}
+          {!loading && headerAction}
         </div>
         {sentinel}
       </div>

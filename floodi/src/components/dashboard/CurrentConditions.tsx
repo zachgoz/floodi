@@ -16,6 +16,8 @@ export function CurrentConditions({
   onSettings,
   nextTideInfo,
   onNextTideClick,
+  isLive = true,
+  onResetToLive,
 }: {
   location?: string;
   points: Point[];
@@ -24,18 +26,25 @@ export function CurrentConditions({
   onSettings: () => void;
   nextTideInfo?: NextTideInfo;
   onNextTideClick?: () => void;
+  isLive?: boolean;
+  onResetToLive?: () => void;
 }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
   const status = currentGaugeStatus(points, thresholdFt, now);
   const statusTone = status.above ? 'is-elevated' : status.fresh ? 'is-normal' : 'is-stale';
   const shortStatus = formatShortThresholdLabel(status);
-  const timeText = status.latest
-    ? status.latest.t.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })
-    : null;
+  const dateTimeText = (status.latest?.t ?? now).toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
   const fullGaugeAria = status.latest
-    ? `Current gauge ${status.latest.v.toFixed(2)} feet at ${timeText} Eastern, ${status.label}`
-    : `Current gauge ${status.label}`;
+    ? `Current gauge ${status.latest.v.toFixed(2)} feet on ${dateTimeText} Eastern, ${status.label}`
+    : `Current gauge ${status.label} as of ${dateTimeText} Eastern`;
 
   return (
     <div className="dashboard-current-conditions">
@@ -50,10 +59,23 @@ export function CurrentConditions({
             <strong className="cc-gauge-val">{status.latest.v.toFixed(2)} ft</strong>
             <span className="cc-sep" aria-hidden="true">·</span>
             <span className="cc-threshold-label">{shortStatus}</span>
-            {timeText && <span className="cc-gauge-time">{timeText} ET</span>}
+            <span className="cc-gauge-time">{dateTimeText}</span>
           </>
         ) : (
-          <span className="cc-threshold-label">{status.label}</span>
+          <>
+            <span className="cc-threshold-label">{status.label}</span>
+            <span className="cc-gauge-time">{dateTimeText}</span>
+          </>
+        )}
+        {!isLive && onResetToLive && (
+          <button
+            type="button"
+            className="cc-reset-live-btn"
+            onClick={onResetToLive}
+            aria-label="Reset hydrograph to live"
+          >
+            <span aria-hidden="true">↺</span> Reset to Live
+          </button>
         )}
       </div>
 

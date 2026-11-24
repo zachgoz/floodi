@@ -39,6 +39,66 @@ function formatInchDelta(deltaInches: number): string {
   return `${Math.abs(deltaInches)}" ${deltaInches < 0 ? 'lower' : 'higher'}`;
 }
 
+export interface PastSimilarFloodChipProps {
+  observedWaterLevel: number | null | undefined;
+  thresholds?: { minor: number; moderate: number; major: number; extreme: number };
+  floodEvents?: FloodEvent[];
+  now?: Date;
+  loading?: boolean;
+  onJumpToTime?: (time: Date) => void;
+}
+
+export const PastSimilarFloodChip: React.FC<PastSimilarFloodChipProps> = ({
+  observedWaterLevel,
+  thresholds,
+  floodEvents,
+  now,
+  loading = false,
+  onJumpToTime,
+}) => {
+  const minorThreshold = thresholds?.minor ?? 5.6;
+  const referenceNow = now ?? new Date();
+  const isAtOrAboveFlood =
+    !loading &&
+    typeof observedWaterLevel === 'number' &&
+    Number.isFinite(observedWaterLevel) &&
+    observedWaterLevel >= minorThreshold;
+
+  const comparison = useHistoricalComparisonEvents(
+    floodEvents,
+    isAtOrAboveFlood ? observedWaterLevel : null,
+    referenceNow,
+  );
+  const topComparison = comparison.items[0] ?? null;
+
+  if (!topComparison || !onJumpToTime) return null;
+
+  const handleClick = () => {
+    const peakTime = new Date(topComparison.event.peakTime);
+    if (!Number.isFinite(peakTime.getTime())) return;
+    onJumpToTime(peakTime);
+  };
+
+  return (
+    <button
+      type="button"
+      className={`similar-peak-chip ${comparison.matchType === 'closest' ? 'is-closest' : 'is-similar'}`}
+      onClick={handleClick}
+      aria-label={`Jump to ${comparison.matchType === 'closest' ? 'closest' : 'similar'} past flood on ${formatShortPeakDate(new Date(topComparison.event.peakTime))} at ${topComparison.event.peakValue.toFixed(2)} feet`}
+    >
+      <span className="similar-peak-dot" aria-hidden="true" />
+      <IonIcon icon={videocamOutline} aria-hidden="true" />
+      <span>
+        {comparison.matchType === 'closest' ? 'Closest past: ' : 'Past similar: '}
+        <strong>{formatShortPeakDate(new Date(topComparison.event.peakTime))}</strong>
+        {' '}({topComparison.event.peakValue.toFixed(2)} ft
+        {comparison.matchType === 'closest' ? `, ${formatInchDelta(topComparison.deltaInches)}` : ''})
+      </span>
+      <IonIcon icon={chevronForwardOutline} aria-hidden="true" />
+    </button>
+  );
+};
+
 interface AtmosphericOverlayProps {
   nextTideInfo?: NextTideInfo;
   precipitationAccumulation: number | null; // in inches
@@ -114,7 +174,6 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
     isAtOrAboveFlood ? observedWaterLevel : null,
     referenceNow,
   );
-  const topComparison = comparison.items[0] ?? null;
   const hasSurge = typeof surge === 'number' && Number.isFinite(surge);
 
   // Format time for the modal
@@ -213,26 +272,6 @@ export const AtmosphericOverlay: React.FC<AtmosphericOverlayProps> = ({
         windDirection={windDirection}
         loading={loading}
       />
-
-      {/* Stationary, mobile-friendly Past Flood visual cue (lets users jump directly to historical webcam photos) */}
-      {!loading && topComparison && onJumpToTime && (
-        <button
-          type="button"
-          className={`similar-peak-chip ${comparison.matchType === 'closest' ? 'is-closest' : 'is-similar'}`}
-          onClick={() => handleJumpSimilar(topComparison.event)}
-          aria-label={`Jump to ${comparison.matchType === 'closest' ? 'closest' : 'similar'} past flood on ${formatShortPeakDate(new Date(topComparison.event.peakTime))} at ${topComparison.event.peakValue.toFixed(2)} feet`}
-        >
-          <span className="similar-peak-dot" aria-hidden="true" />
-          <IonIcon icon={videocamOutline} aria-hidden="true" />
-          <span>
-            {comparison.matchType === 'closest' ? 'Closest past flood: ' : 'Past similar: '}
-            <strong>{formatShortPeakDate(new Date(topComparison.event.peakTime))}</strong>
-            {' '}({topComparison.event.peakValue.toFixed(2)} ft
-            {comparison.matchType === 'closest' ? `, ${formatInchDelta(topComparison.deltaInches)}` : ''})
-          </span>
-          <IonIcon icon={chevronForwardOutline} aria-hidden="true" />
-        </button>
-      )}
 
       {/* Water Level Info Modal */}
       <IonModal 

@@ -18,7 +18,7 @@ vi.mock('src/components/dashboard/InundationMap', () => ({ default: () => <div d
 vi.mock('@vis.gl/react-google-maps', () => ({ APIProvider: ({ children }: React.PropsWithChildren) => <>{children}</> }));
 vi.mock('src/components/dashboard/SurgeChart', () => ({ SurgeChart: () => null }));
 vi.mock('src/components/dashboard/HydrographChart', () => ({ default: () => <div>Water level chart</div> }));
-vi.mock('src/components/dashboard/AtmosphericOverlay', () => ({ default: () => null }));
+vi.mock('src/components/dashboard/AtmosphericOverlay', () => ({ default: () => null, PastSimilarFloodChip: () => null }));
 vi.mock('src/components/dashboard/InundationSimulator', () => ({ default: () => null }));
 vi.mock('src/components/dashboard/WebcamFeedCard', () => ({ default: () => null }));
 vi.mock('src/components/dashboard/NextFloodingEventsCard', () => ({ default: () => null }));

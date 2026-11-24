@@ -37,7 +37,7 @@ import 'src/components/Tab2/styles/Tab2.css';
 import './Tab2.css';
 import 'src/components/dashboard/DashboardView.css';
 import HydrographChart from 'src/components/dashboard/HydrographChart';
-import AtmosphericOverlay from 'src/components/dashboard/AtmosphericOverlay';
+import AtmosphericOverlay, { PastSimilarFloodChip } from 'src/components/dashboard/AtmosphericOverlay';
 import { findNextTideExtremum } from 'src/utils/tideExtrema';
 import type { RoadProperties } from 'src/components/dashboard/InundationMap';
 import InundationSimulator from 'src/components/dashboard/InundationSimulator';
@@ -724,6 +724,8 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
           onSettings={() => setShowSettings(true)}
           nextTideInfo={currentNextTideInfo ?? undefined}
           onNextTideClick={() => setShowWLInfo(true)}
+          isLive={activeAtmo.isLive}
+          onResetToLive={resetToLive}
         />
       </IonHeader>
 
@@ -816,6 +818,16 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                           setResetCount(c => c + 1);
                         }}
                         locationName="Water Level Forecast"
+                        headerAction={
+                          <PastSimilarFloodChip
+                            observedWaterLevel={activeAtmo.wl}
+                            thresholds={config.thresholds}
+                            floodEvents={processedData?.floodEvents}
+                            now={processedData?.timeDomain.now}
+                            loading={loading}
+                            onJumpToTime={handleTimeChange}
+                          />
+                        }
                         controls={<ForecastTimeControls
                           viewport={currentViewport || processedData?.timeDomain || { start: new Date(Date.now() - 36 * 3600_000), end: new Date(Date.now() + 48 * 3600_000) }}
                           now={processedData?.timeDomain.now || new Date()}
