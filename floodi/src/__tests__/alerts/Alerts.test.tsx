@@ -6,6 +6,7 @@ import type { CitizenStatusResponse, PublicAlertFeedDocument } from 'src/lib/cit
 
 vi.mock('src/lib/analytics', () => ({ trackEvent: vi.fn() }));
 vi.mock('src/components/alerts/useCitizenAlerts', () => ({ useCitizenAlerts: () => hook }));
+vi.mock('src/components/alerts/OutlookAndEventsSection', () => ({ OutlookAndEventsSection: () => <div data-testid="outlook-and-events-section" /> }));
 vi.mock('firebase/auth', () => ({ sendEmailVerification: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('src/lib/citizenAlerts', () => ({
   unsubscribeCitizenAlerts: vi.fn().mockResolvedValue(undefined),

@@ -4,8 +4,12 @@
 .alerts-page h3 { font-size:15px; font-weight:650; margin:14px 0 8px; }
 .alerts-page p { line-height:1.55; }
 .alerts-toolbar-row { display:flex; align-items:center; gap:8px; }
-.alerts-back-link { display:inline-flex; align-items:center; min-height:40px; padding:0 12px; font-size:13px; font-weight:600; color:var(--ion-color-primary); text-decoration:none; }
+.alerts-toolbar-title { position:static; text-align:left; padding-inline:4px 12px; font-size:1.05rem; min-width:0; }
+.alerts-back-link { display:inline-flex; align-items:center; min-height:40px; padding:0 12px; font-size:13px; font-weight:600; color:var(--ion-color-primary); text-decoration:none; flex-shrink:0; }
 .alerts-back-link:hover { text-decoration:underline; }
+.alerts-outlook-stack { display:flex; flex-direction:column; gap:16px; margin-bottom:16px; }
+.alerts-outlook-stack .next-flood-card,
+.alerts-outlook-stack .forecast-panel { margin:0; }
 .alerts-hero { padding:8px 4px 20px; }
 .alerts-hero > ion-icon { font-size:32px; color:var(--ion-color-primary); }
 .alerts-eyebrow { color:var(--dash-subtitle-color); font-size:13px; margin:12px 0 4px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }

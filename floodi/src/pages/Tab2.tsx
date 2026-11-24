@@ -1,15 +1,9 @@
 import { LOCATIONS } from 'src/constants/locations';
-import { AlertInvitation } from 'src/components/alerts/AlertInvitation';
-import { CurrentConditions } from 'src/components/dashboard/CurrentConditions';
-import { interpolate } from 'src/utils/waterForecast';
-import { projectResidualPattern } from '../../functions/src/forecast/pattern';
-import { selectWaterForecast } from 'src/utils/selectWaterForecast';
+import { CurrentConditions, formatCompactGaugeDateTime } from 'src/components/dashboard/CurrentConditions';
 import { SurgeChart } from 'src/components/dashboard/SurgeChart';
 import { ForecastTimeControls } from 'src/components/dashboard/ForecastTimeControls';
-import { FloodOutlook } from 'src/components/dashboard/FloodOutlook';
-import { useChallengerOutlook } from 'src/components/dashboard/useChallengerOutlook';
+import { useOperationalForecast } from 'src/components/dashboard/useOperationalForecast';
 import type { Point } from 'src/components/Tab2/types';
-import { decomposeResidualHarmonics } from 'src/utils/residualHarmonics';
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   IonContent,
@@ -27,7 +21,6 @@ import { settingsOutline, notificationsOutline, personCircleOutline } from 'ioni
 import { SettingsModal } from 'src/components/Tab2/SettingsModal';
 import { TimeSettingsModal } from 'src/components/Tab2/TimeSettingsModal';
 import { useSettingsStorage } from 'src/components/Tab2/hooks/useSettingsStorage';
-import { useChartData } from 'src/components/Tab2/hooks/useChartData';
 import { useAtmosphericState, resolveHydrographWaterLevel } from 'src/components/Tab2/hooks/useAtmosphericState';
 import { useChartComments } from 'src/components/Tab2/hooks/useChartComments';
 import { ChartCommentModal } from 'src/components/Tab2/ChartCommentModal';
@@ -39,15 +32,15 @@ import 'src/components/dashboard/DashboardView.css';
 import HydrographChart from 'src/components/dashboard/HydrographChart';
 import AtmosphericOverlay, { PastSimilarFloodChip } from 'src/components/dashboard/AtmosphericOverlay';
 import { findNextTideExtremum } from 'src/utils/tideExtrema';
+import { getFloodSeverityForLevel, getFloodSeverityLabel } from 'src/utils/floodSeverity';
 import type { RoadProperties } from 'src/components/dashboard/InundationMap';
 import InundationSimulator from 'src/components/dashboard/InundationSimulator';
 import WebcamFeedCard from 'src/components/dashboard/WebcamFeedCard';
-import NextFloodingEventsCard from 'src/components/dashboard/NextFloodingEventsCard';
 import { WEBCAMS } from 'src/constants/webcams';
 import { markPerf, measurePerf } from 'src/lib/perfLogger';
 import { IntroTourOverlay } from 'src/components/onboarding/IntroTourOverlay';
-import { useHistory, useLocation } from 'react-router-dom';
-import { floodWindows, hasUpcomingFlooding } from 'src/utils/waterForecast';
+import { Link, useHistory, useLocation } from 'react-router-dom';
+import { floodWindows } from 'src/utils/waterForecast';
 import { AdSenseUnit } from 'src/components/common/AdSenseUnit';
 import { reportClientError } from 'src/lib/errorReporting';
 
@@ -148,293 +141,40 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
     setCenterRequest({ time: targetDate, id: Date.now() });
   }, [routerLocation.search]);
 
-  // Professional data fetching and processing
+  // Shared operational forecast pipeline (also powers Outlook & Alerts tab)
   const {
     loading,
     error,
     data,
     processedData,
     refresh,
-  } = useChartData(config);
-
-  const {
     challenger,
-    refresh: refreshChallenger,
-    totalPoints: challengerTotalPoints,
-    lowerPoints: challengerLowerPoints,
-    upperPoints: challengerUpperPoints,
-    residualPoints: challengerResidualPoints,
-  } = useChallengerOutlook(config.locationId);
+    refreshChallenger,
+    patternProjection,
+    surgeEstimatePoints,
+    isTimesFmPrimary,
+    operationalSurgePoints,
+    operationalForecastPoints,
+    operationalForecastLabel,
+    operationalForecastDescription,
+    forecastData,
+  } = useOperationalForecast(config);
   const { accuracy: rollingAccuracy } = useForecastAccuracy(config.locationId);
-  const FORECAST_INTERPOLATE_GAP_MS = 3 * 3600_000; // 3 hours to safely bridge 30-min to 1-hour model intervals and anchor observations
 
-  const anchoredChallengerResidual = useMemo(() => {
-    if (!challengerResidualPoints.length) return [];
-    const anchor = processedData?.deltaPoints.at(-1);
-    if (!anchor) return challengerResidualPoints;
-    const futureChallenger = challengerResidualPoints.filter(p => +p.t > +anchor.t);
-    return futureChallenger.length ? [anchor, ...futureChallenger] : [anchor];
-  }, [challengerResidualPoints, processedData]);
-  const anchoredChallengerTotal = useMemo(() => {
-    if (!challengerTotalPoints.length) return [];
-    const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
-    if (!anchor) return challengerTotalPoints;
-    const futureChallenger = challengerTotalPoints.filter(p => +p.t > +anchor.t);
-    return futureChallenger.length ? [anchor, ...futureChallenger] : [anchor];
-  }, [challengerTotalPoints, processedData]);
-  const anchoredChallengerLower = useMemo(() => {
-    if (!challengerLowerPoints.length) return [];
-    const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
-    if (!anchor) return challengerLowerPoints;
-    const futureChallenger = challengerLowerPoints.filter(p => +p.t > +anchor.t);
-    return futureChallenger.length ? [anchor, ...futureChallenger] : [anchor];
-  }, [challengerLowerPoints, processedData]);
-  const anchoredChallengerUpper = useMemo(() => {
-    if (!challengerUpperPoints.length) return [];
-    const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
-    if (!anchor) return challengerUpperPoints;
-    const futureChallenger = challengerUpperPoints.filter(p => +p.t > +anchor.t);
-    return futureChallenger.length ? [anchor, ...futureChallenger] : [anchor];
-  }, [challengerUpperPoints, processedData]);
-  const patternProjection = useMemo(() => {
-    if (!processedData) return null;
-    const reference = { station: processedData.observationStation, datum: 'MLLW', units: 'ft' };
-    return projectResidualPattern(processedData.deltaPoints, processedData.predictedPoints.map(p => p.t), processedData.timeDomain.now, reference, reference);
-  }, [processedData]);
-  const surgeEstimatePoints = useMemo(() => {
-    if (!processedData) return [];
-    const estimates = processedData.observedPoints.filter(p => p.estimated).flatMap(p => {
-      const tide = interpolate(processedData.predictedPoints, p.t, FORECAST_INTERPOLATE_GAP_MS);
-      return tide === null ? [] : [{ ...p, v: p.v - tide }];
-    });
-    const anchor = processedData.deltaPoints.at(-1);
-    return estimates.length ? [...(anchor ? [anchor] : []), ...estimates] : [];
-  }, [processedData]);
-  const selectedForecast = useMemo(() => selectWaterForecast({
-    outlook: null,
-    weatherCompatible: false,
-    weatherTotalPoints: [],
-    weatherResidualPoints: [],
-    steadyTotalPoints: processedData?.adjustedPoints || [],
-    tidePoints: processedData?.predictedPoints || [],
-    now: processedData?.timeDomain.now || new Date(),
-    validationNow: new Date(),
-    manualOverride: config.offset.mode === 'manual',
-  }), [processedData, config.offset.mode]);
-  const isTimesFmPrimary = Boolean(
-    config.offset.mode !== 'manual' &&
-    challenger &&
-    challenger.locationId === config.locationId &&
-    (challengerTotalPoints.length > 0 || challengerResidualPoints.length > 0)
-  );
-  const hasBackendBasinPhysics = Boolean(challenger?.points?.some(p => p.drivers));
-  const selectedBounds = useMemo(() => ({
-    lower: selectedForecast.lowerPoints ?? [],
-    upper: selectedForecast.upperPoints ?? [],
-  }), [selectedForecast.lowerPoints, selectedForecast.upperPoints]);
-
-  // Dynamic 48-hour estuarine tidal harmonic decomposition (M2 12.4206h, S1 24h, M4 6.2103h)
-  // calibrated from recent observed water level residuals (used for horizon tail & legacy cache fallback).
-  const decomposedHarmonics = useMemo(() => {
-    const anchor = processedData?.deltaPoints?.at(-1);
-    return decomposeResidualHarmonics(processedData?.deltaPoints || [], anchor?.t ?? new Date(), 48);
-  }, [processedData?.deltaPoints]);
-
-  // Extract 12-hour tidal-cycle smoothed subtidal storm surge anomalies only for older cached
-  // challenger documents that predate backend basinPhysics drivers.
-  const subtidalStormAnomalies = useMemo(() => {
-    if (!challenger?.points?.length || hasBackendBasinPhysics) return [] as Point[];
-    const rawSubtidal = challenger.points.map(p => ({
-      tMs: Date.parse(p.t),
-      v: typeof p.noaaSurgeFt === 'number' && Number.isFinite(p.noaaSurgeFt) ? p.noaaSurgeFt : p.residualFt,
-    })).filter(p => Number.isFinite(p.tMs) && Number.isFinite(p.v));
-    if (!rawSubtidal.length) return [] as Point[];
-
-    const halfWinMs = 6.2103 * 3600_000;
-    const smoothed = rawSubtidal.map(pt => {
-      const neighbors = rawSubtidal.filter(n => Math.abs(n.tMs - pt.tMs) <= halfWinMs);
-      const meanVal = neighbors.reduce((s, n) => s + n.v, 0) / neighbors.length;
-      return { t: new Date(pt.tMs), v: meanVal };
-    });
-    const baseSubtidal0 = smoothed[0].v;
-    return smoothed.map(pt => ({ t: pt.t, v: pt.v - baseSubtidal0 }));
-  }, [challenger, hasBackendBasinPhysics]);
-
-  const operationalSurgePoints = useMemo(() => {
-    if (!isTimesFmPrimary || !challengerResidualPoints.length) {
-      return selectedForecast.residualPoints;
-    }
-    const chalEndMs = +challengerResidualPoints.at(-1)!.t;
-    const anchor = processedData?.deltaPoints.at(-1);
-    const startMs = anchor ? +anchor.t : Date.now();
-    const surge: Point[] = [];
-    if (anchor) surge.push(anchor);
-
-    const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > startMs);
-    if (hasBackendBasinPhysics) {
-      if (futureTides.length > 0) {
-        const lastBackendRes = challengerResidualPoints.at(-1)!.v;
-        for (const tp of futureTides) {
-          const tMs = +tp.t;
-          if (tMs <= chalEndMs) {
-            const res = interpolate(anchoredChallengerResidual, tp.t, FORECAST_INTERPOLATE_GAP_MS);
-            if (res !== null) {
-              surge.push({ t: tp.t, v: Math.round(res * 1000) / 1000 });
-            }
-          } else {
-            const hoursPast = Math.max(0, (tMs - chalEndMs) / 3600_000);
-            const blend = Math.exp(-hoursPast / 48);
-            const harmonicTail = decomposedHarmonics.projectSurge(tp.t);
-            const res = blend * lastBackendRes + (1 - blend) * harmonicTail;
-            surge.push({ t: tp.t, v: Math.round(res * 1000) / 1000 });
-          }
-        }
-      } else {
-        for (const cp of anchoredChallengerResidual) {
-          if (anchor && +cp.t <= +anchor.t) continue;
-          surge.push({ t: cp.t, v: Math.round(cp.v * 1000) / 1000 });
-        }
-      }
-      return surge;
-    }
-
-    if (futureTides.length > 0) {
-      let lastStormAnomaly = 0;
-      for (const tp of futureTides) {
-        const tMs = +tp.t;
-        if (tMs <= chalEndMs && subtidalStormAnomalies.length > 0) {
-          const anom = interpolate(subtidalStormAnomalies, tp.t, FORECAST_INTERPOLATE_GAP_MS) ?? 0;
-          lastStormAnomaly = anom;
-          const subtidalTarget = decomposedHarmonics.subtidalMean + anom;
-          const res = decomposedHarmonics.projectSurge(tp.t, subtidalTarget);
-          surge.push({ t: tp.t, v: Math.round(res * 1000) / 1000 });
-        } else {
-          const hoursPast = Math.max(0, (tMs - chalEndMs) / 3600_000);
-          const decayedAnom = lastStormAnomaly * Math.exp(-hoursPast / 48);
-          const subtidalTarget = decomposedHarmonics.subtidalMean + decayedAnom;
-          const res = decomposedHarmonics.projectSurge(tp.t, subtidalTarget);
-          surge.push({ t: tp.t, v: Math.round(res * 1000) / 1000 });
-        }
-      }
-    } else {
-      for (const cp of anchoredChallengerResidual) {
-        if (anchor && +cp.t <= +anchor.t) continue;
-        const anom = subtidalStormAnomalies.length
-          ? (interpolate(subtidalStormAnomalies, cp.t, FORECAST_INTERPOLATE_GAP_MS) ?? 0)
-          : 0;
-        const subtidalTarget = decomposedHarmonics.subtidalMean + anom;
-        const res = decomposedHarmonics.projectSurge(cp.t, subtidalTarget);
-        surge.push({ t: cp.t, v: Math.round(res * 1000) / 1000 });
-      }
-    }
-
-    // Physical bounds clamp: coastal surge anomaly along US Atlantic coast is strictly bounded [-5.0, 15.0] ft
-    return surge.map(p => ({ ...p, v: Math.max(-5.0, Math.min(15.0, p.v)) }));
-  }, [isTimesFmPrimary, hasBackendBasinPhysics, challengerResidualPoints, anchoredChallengerResidual, processedData, selectedForecast.residualPoints, subtidalStormAnomalies, decomposedHarmonics, FORECAST_INTERPOLATE_GAP_MS]);
-
-  // High-resolution 6-minute TimesFM AI + NOAA ETSS operational forecast
-  // that seamlessly extends to the full NOAA prediction horizon (up to 21 days)
-  const operationalForecastPoints = useMemo(() => {
-    if (!isTimesFmPrimary || !challengerResidualPoints.length || !processedData?.predictedPoints?.length) {
-      return selectedForecast.totalPoints;
-    }
-    const anchor = processedData.observedPoints.findLast(p => !p.estimated);
-    const startMs = anchor ? +anchor.t : Date.now();
-
-    const points: Point[] = [];
-    if (anchor) points.push(anchor);
-
-    const futureTides = processedData.predictedPoints.filter(p => +p.t > startMs);
-    const surgeMap = new Map(operationalSurgePoints.map(p => [+p.t, p.v]));
-
-    for (const tp of futureTides) {
-      const surgeVal = surgeMap.get(+tp.t) ?? interpolate(operationalSurgePoints, tp.t, FORECAST_INTERPOLATE_GAP_MS);
-      if (surgeVal !== null) {
-        points.push({ t: tp.t, v: Math.round((tp.v + surgeVal) * 1000) / 1000 });
-      } else {
-        const fallbackRes = decomposedHarmonics.projectSurge(tp.t);
-        points.push({ t: tp.t, v: Math.round((tp.v + fallbackRes) * 1000) / 1000 });
-      }
-    }
-
-    // Physical bounds clamp: total coastal water level is strictly bounded [-3.0, 22.0] ft MLLW
-    return points.map(p => ({ ...p, v: Math.max(-3.0, Math.min(22.0, p.v)) }));
-  }, [isTimesFmPrimary, challengerResidualPoints, processedData, selectedForecast.totalPoints, operationalSurgePoints, decomposedHarmonics, FORECAST_INTERPOLATE_GAP_MS]);
-
-  const operationalLower = useMemo(() => {
-    if (!isTimesFmPrimary || !challengerLowerPoints.length) {
-      return selectedBounds.lower;
-    }
-    const chalEndMs = +challengerLowerPoints.at(-1)!.t;
-    const bounds: Point[] = [];
-    const totalMap = new Map(operationalForecastPoints.map(p => [+p.t, p.v]));
-
-    const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
-    const startMs = anchor ? +anchor.t : Date.now();
-    const tideInWindow = (processedData?.predictedPoints || []).filter(p => +p.t > startMs && +p.t <= chalEndMs);
-    for (const tp of tideInWindow) {
-      const estTotal = totalMap.get(+tp.t) ?? tp.v;
-      const rawLow = interpolate(anchoredChallengerLower, tp.t, FORECAST_INTERPOLATE_GAP_MS);
-      const rawTot = interpolate(anchoredChallengerTotal, tp.t, FORECAST_INTERPOLATE_GAP_MS);
-      const spread = rawLow !== null && rawTot !== null ? Math.max(0.2, rawTot - rawLow) : 0.35;
-      bounds.push({ t: tp.t, v: Math.round((estTotal - spread) * 1000) / 1000 });
-    }
-
-    const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > chalEndMs);
-    for (const tp of futureTides) {
-      const hoursPast = (+tp.t - chalEndMs) / 3600_000;
-      const uncertainty = Math.min(1.2, 0.8 + 0.001 * hoursPast);
-      const estTotal = totalMap.get(+tp.t) ?? tp.v;
-      bounds.push({ t: tp.t, v: Math.round((estTotal - uncertainty) * 1000) / 1000 });
-    }
-    return bounds;
-  }, [isTimesFmPrimary, challengerLowerPoints, anchoredChallengerLower, anchoredChallengerTotal, selectedBounds.lower, processedData?.observedPoints, processedData?.predictedPoints, operationalForecastPoints, FORECAST_INTERPOLATE_GAP_MS]);
-
-  const operationalUpper = useMemo(() => {
-    if (!isTimesFmPrimary || !challengerUpperPoints.length) {
-      return selectedBounds.upper;
-    }
-    const chalEndMs = +challengerUpperPoints.at(-1)!.t;
-    const bounds: Point[] = [];
-    const totalMap = new Map(operationalForecastPoints.map(p => [+p.t, p.v]));
-
-    const anchor = processedData?.observedPoints.findLast(p => !p.estimated);
-    const startMs = anchor ? +anchor.t : Date.now();
-    const tideInWindow = (processedData?.predictedPoints || []).filter(p => +p.t > startMs && +p.t <= chalEndMs);
-    for (const tp of tideInWindow) {
-      const estTotal = totalMap.get(+tp.t) ?? tp.v;
-      const rawUp = interpolate(anchoredChallengerUpper, tp.t, FORECAST_INTERPOLATE_GAP_MS);
-      const rawTot = interpolate(anchoredChallengerTotal, tp.t, FORECAST_INTERPOLATE_GAP_MS);
-      const spread = rawUp !== null && rawTot !== null ? Math.max(0.2, rawUp - rawTot) : 0.35;
-      bounds.push({ t: tp.t, v: Math.round((estTotal + spread) * 1000) / 1000 });
-    }
-
-    const futureTides = (processedData?.predictedPoints || []).filter(p => +p.t > chalEndMs);
-    for (const tp of futureTides) {
-      const hoursPast = (+tp.t - chalEndMs) / 3600_000;
-      const uncertainty = Math.min(1.2, 0.8 + 0.001 * hoursPast);
-      const estTotal = totalMap.get(+tp.t) ?? tp.v;
-      bounds.push({ t: tp.t, v: Math.round((estTotal + uncertainty) * 1000) / 1000 });
-    }
-    return bounds;
-  }, [isTimesFmPrimary, challengerUpperPoints, anchoredChallengerUpper, anchoredChallengerTotal, selectedBounds.upper, processedData?.observedPoints, processedData?.predictedPoints, operationalForecastPoints, FORECAST_INTERPOLATE_GAP_MS]);
-
-  const operationalForecastLabel = isTimesFmPrimary
-    ? 'Forecast'
-    : selectedForecast.method === 'steady'
-    ? 'Steady forecast'
-    : 'Tide only';
-  const operationalForecastDescription = isTimesFmPrimary
-    ? 'Solid blue line shows the primary operational forecast combining NOAA astronomical tides (8658163), NOAA ETSS ocean & Cape Fear River surge guidance, directional N/NE Myrtle Grove Sound wind setup, USGS Lock #1 discharge, Google TimesFM AI, and 48-hour estuarine tidal harmonics.'
-    : selectedForecast.reason;
-
-  // One selected physical forecast drives both charts and every hazard calculation.
-  // Actual measurements and the near-live display estimate remain untouched.
-  const forecastData = useMemo(() => processedData ? {
-    ...processedData,
-    adjustedPoints: operationalForecastPoints,
-    surgeForecastPoints: operationalSurgePoints,
-  } : null, [processedData, operationalForecastPoints, operationalSurgePoints]);
+  const nextUpcomingFlood = useMemo(() => {
+    if (!processedData || operationalForecastPoints.length === 0) return null;
+    const liveNow = processedData.timeDomain.now || new Date();
+    const upcoming = floodWindows(operationalForecastPoints, config.thresholds.minor)
+      .find(event => +(event.endTime ?? event.lastSampleTime) > +liveNow);
+    if (!upcoming) return null;
+    const severity = getFloodSeverityForLevel(upcoming.peakValue, config.thresholds) ?? 'minor';
+    return {
+      severity,
+      severityLabel: getFloodSeverityLabel(severity),
+      peakTime: upcoming.peakTime,
+      peakValue: upcoming.peakValue,
+    };
+  }, [processedData, operationalForecastPoints, config.thresholds]);
 
   useEffect(() => {
     markPerf('tab2.dataState', {
@@ -754,26 +494,21 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
         {(processedData || error || loading) && (
           <div className="dashboard-scroll-container">
             <div className="dashboard-grid">
-              {(processedData || loading) && (
-                <div className="dashboard-sidebar" id="dashboard-section-events">
-                  <div className="dashboard-next-events" data-tour-id="events">
-                    <NextFloodingEventsCard
-                      adjustedPoints={operationalForecastPoints}
-                      predictedPoints={processedData?.predictedPoints || []}
-                      windPoints={processedData?.windPoints || []}
-                      precipPoints={processedData?.precipPoints || []}
-                      floodEvents={processedData?.floodEvents || []}
-                      thresholds={config.thresholds}
-                      now={processedData?.timeDomain.now || new Date()}
-                      onTimeChange={handleTimeChange}
-                      loading={loading}
-                      streetCalibration={LOCATIONS[config.locationId]?.streetCalibration}
-                      forecastHorizon={operationalForecastPoints.at(-1)?.t ?? null}
-                      upperForecastPoints={operationalUpper}
-                    />
-                  </div>
-                  <div className="dashboard-alert-invitation"><AlertInvitation /></div>
-                </div>
+              {!error && nextUpcomingFlood && (
+                <Link
+                  to="/alerts"
+                  className={`dashboard-threat-banner sev-${nextUpcomingFlood.severity}`}
+                  aria-label={`${nextUpcomingFlood.severityLabel} flood forecast ${formatCompactGaugeDateTime(nextUpcomingFlood.peakTime)} at ${nextUpcomingFlood.peakValue.toFixed(2)} feet — open Outlook and Alerts`}
+                >
+                  <span className="threat-banner-main">
+                    <span className="threat-banner-dot" aria-hidden="true" />
+                    <strong>{nextUpcomingFlood.severityLabel} flood</strong>
+                    <span>
+                      {formatCompactGaugeDateTime(nextUpcomingFlood.peakTime)} · {nextUpcomingFlood.peakValue.toFixed(2)} ft
+                    </span>
+                  </span>
+                  <span className="threat-banner-cta">Outlook ›</span>
+                </Link>
               )}
 
               <div className="dashboard-main-col">
@@ -946,19 +681,6 @@ const Tab2: React.FC<Tab2Props> = ({ showIntroTour = false }) => {
                       patternAnalysis={patternProjection?.analysis}
                     />
                       </HydrographChart>
-                    </div>
-                    <div id="dashboard-section-outlook">
-                      <FloodOutlook
-                        selection={isTimesFmPrimary ? { ...selectedForecast, totalPoints: operationalForecastPoints, residualPoints: operationalSurgePoints, horizonEnd: operationalForecastPoints.at(-1)?.t ?? selectedForecast.horizonEnd, reason: operationalForecastDescription } : selectedForecast}
-                        thresholdFt={config.thresholds.minor}
-                        thresholds={config.thresholds}
-                        currentSurgeFt={processedData?.deltaPoints.at(-1)?.v ?? challenger?.currentResidualFt ?? null}
-                        now={processedData?.timeDomain.now || new Date()}
-                        floodExpected={hasUpcomingFlooding(operationalForecastPoints, config.thresholds.minor, processedData?.timeDomain.now || new Date())}
-                        floodPossible={hasUpcomingFlooding(operationalUpper, config.thresholds.minor, processedData?.timeDomain.now || new Date())}
-                        challenger={challenger}
-                        isTimesFmPrimary={isTimesFmPrimary}
-                      />
                     </div>
                   <div className="dashboard-webcam-card" id="dashboard-section-cams" data-tour-id="webcam">
                     <WebcamFeedCard

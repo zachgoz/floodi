@@ -151,5 +151,33 @@ describe('below-fold map startup', () => {
     expect(gaugePill.textContent).toContain('4.00 ft');
     const tideBtn = screen.getByRole('button', { name: /Next high tide in 2 hours 0 minutes/i });
     expect(tideBtn).toHaveTextContent('High in 2h 0m');
+    // Below minor flood threshold (5.6 ft) -> zero-clutter home page with no threat banner
+    expect(document.querySelector('.dashboard-threat-banner')).toBeNull();
+  });
+
+  it('shows a slim Outlook threat banner on Tab2 ONLY when upcoming flooding is forecast', () => {
+    const pt = (min: number, v: number) => ({ t: new Date(+now + min * 60_000), v });
+    const floodCurve = [
+      pt(0, 4.2),
+      pt(60, 5.2),
+      pt(120, 6.12),
+      pt(180, 5.0),
+    ];
+    vi.mocked(useChartData).mockReturnValue({
+      ...state,
+      processedData: {
+        ...state.processedData!,
+        observedPoints: [pt(0, 4.2)],
+        predictedPoints: floodCurve,
+        adjustedPoints: floodCurve,
+      },
+    } as unknown as ReturnType<typeof useChartData>);
+
+    render(<MemoryRouter><Tab2 /></MemoryRouter>);
+    const banner = document.querySelector('a.dashboard-threat-banner.sev-minor') as HTMLAnchorElement | null;
+    expect(banner).not.toBeNull();
+    expect(banner?.getAttribute('href')).toBe('/alerts');
+    expect(banner?.textContent).toContain('Minor flood');
+    expect(banner?.textContent).toContain('6.12 ft');
   });
 });

@@ -291,8 +291,15 @@ export const NextFloodingEventsCard: React.FC<NextFloodingEventsCardProps> = ({
               statusLabel="Predicted"
               onClose={() => setSelectedEvent(null)}
             >
-              <IonButton expand="block" fill="outline" routerLink="/alerts" onClick={() => setSelectedEvent(null)}>
-                Get flood alert updates
+              <IonButton
+                expand="block"
+                fill="solid"
+                onClick={() => {
+                  onTimeChange(selectedEvent.peakTime);
+                  setSelectedEvent(null);
+                }}
+              >
+                View Peak on Hydrograph
               </IonButton>
               <div className="similar-events-section">
                 <div className="similar-events-header">

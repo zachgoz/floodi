@@ -10,6 +10,7 @@ import type {
   PublicFloodAdvisory,
 } from 'src/lib/citizenAlerts';
 import { trackEvent } from 'src/lib/analytics';
+import { OutlookAndEventsSection } from 'src/components/alerts/OutlookAndEventsSection';
 import 'src/components/alerts/Alerts.css';
 
 const FALLBACK_PREFERENCES: CitizenAlertPreferences = {
@@ -396,7 +397,7 @@ export function Alerts() {
             <Link to="/tab2" className="alerts-back-link">
               ← Forecast
             </Link>
-            <IonTitle>Flood Alerts</IonTitle>
+            <IonTitle className="alerts-toolbar-title">Outlook &amp; Alerts</IonTitle>
           </div>
         </IonToolbar>
       </IonHeader>
@@ -422,6 +423,9 @@ export function Alerts() {
               {data?.deliveryReady ? 'Email pilot' : 'Early access'}
             </span>
           </section>
+
+          {/* Combined Next Flooding Events & Multi-Day Flood Outlook */}
+          <OutlookAndEventsSection />
 
           {/* Public In-App Live Advisories & 48h Hydrograph (No Login Required) */}
           {feed && (
